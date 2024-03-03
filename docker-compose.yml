@@ -10,19 +10,11 @@ services:
     ports:
      - "80:80"
     volumes:
-#      - ./apache/conf.d:/usr/local/etc/conf.d
+      - ./Docker/conf.d/php.ini:/usr/local/etc/php/php.ini
       - ./Docker/sites-enabled:/etc/apache2/sites-enabled
       - ./Docker/logs:/var/log/apache2
       - ./html:/var/www/html
+      - ./src:/var/www/src
+      - ./data:/var/www/data
 
-#  db:
-#    image: antzcode/mariadb-ubuntu:mariadb10.6-focal
-#    container_name: db
-#    restart: always
-#    env_file: 
-#      - .env
-#    volumes:
-#      - ./mariadb/init:/docker-entrypoint-initdb.d
-#      - ./mariadb/data:/var/lib/mysql
-#      - ./mariadb/files:/var/lib/mysql-files
 
