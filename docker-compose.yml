@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  apache:
+    build: ./Docker
+    container_name: fuppi-apache
+    restart: always
+    environment:
+      - VIRTUAL_HOST=fuppi.loc
+    ports:
+     - "80:80"
+    volumes:
+#      - ./apache/conf.d:/usr/local/etc/conf.d
+      - ./Docker/sites-enabled:/etc/apache2/sites-enabled
+      - ./Docker/logs:/var/log/apache2
+      - ./html:/var/www/html
+
+#  db:
+#    image: antzcode/mariadb-ubuntu:mariadb10.6-focal
+#    container_name: db
+#    restart: always
+#    env_file: 
+#      - .env
+#    volumes:
+#      - ./mariadb/init:/docker-entrypoint-initdb.d
+#      - ./mariadb/data:/var/lib/mysql
+#      - ./mariadb/files:/var/lib/mysql-files
+
