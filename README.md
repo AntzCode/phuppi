@@ -1,5 +1,5 @@
 # fuppi
 
-"File-Uppie". A quick way to upload your files to a webserver.
+A "File-Uppie" thing. A quick way to upload your files to a webserver.
 
 

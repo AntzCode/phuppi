@@ -2,7 +2,7 @@
 
 require('../src/fuppi.php');
 
-if ($user->getId() <= 0) {
+if ($user->user_id <= 0) {
     redirect('/login.php?redirectAfterLogin=' . urlencode('/file.php?id=' . $_GET['id']));
 }
 
@@ -14,7 +14,7 @@ if (!array_key_exists('id', $_GET)) {
 
     $statement = $pdo->prepare('SELECT f.`filename`, f.`mimetype`, f.`user_id`, u.`username` FROM `fuppi_uploaded_files` f JOIN `fuppi_users` u ON f.`user_id` = u.`user_id` WHERE f.`file_id` = :file_id AND f.`user_id` = :user_id');
 
-    if ($statement->execute(['file_id' => $_GET['id'], 'user_id' => 1 || $user->getId()]) && $fileData = $statement->fetch()) {
+    if ($statement->execute(['file_id' => $_GET['id'], 'user_id' => 1 || $user->user_id]) && $fileData = $statement->fetch()) {
 
         header('Content-Type: ' . $fileData['mimetype']);
         header('Content-Disposition: attachment; filename="' . $fileData['filename'] . '"');

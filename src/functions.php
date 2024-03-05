@@ -14,6 +14,10 @@ function fuppi_end()
     if (!ob_end_clean()) {
         throw new Exception('fuppie_end() called before fuppie_start() at line ' . __LINE__ . ' of ' . __FILE__);
     }
+    $config = Fuppi\Config::getInstance();
+    $app = Fuppi\App::getInstance();
+    $pdo = $app->getDb()->getPdo();
+    $user = $app->getUser();
 
     require(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'templates/layout.php');
 }
@@ -29,6 +33,37 @@ function fuppi_stop()
         ob_end_clean();
     }
     define('FUPPI_STOP', 1);
+}
+
+function fuppi_component(string $componentName, array $variables = [])
+{
+    if (file_exists(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'components' . DIRECTORY_SEPARATOR . $componentName . '.php')) {
+        $config = Fuppi\Config::getInstance();
+        $app = Fuppi\App::getInstance();
+        $pdo = $app->getDb()->getPdo();
+        $user = $app->getUser();
+        extract($variables);
+
+        include(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'components' . DIRECTORY_SEPARATOR . $componentName . '.php');
+    }
+}
+
+function human_readable_bytes($bytes, $decimals = 2, $system = 'binary')
+{
+    $mod = ($system === 'binary') ? 1024 : 1000;
+
+    $units = [
+        'binary' => ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'],
+        'metric' => ['B', 'kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+    ];
+
+    $factor = floor((strlen($bytes) - 1) / 3);
+
+    return sprintf("%.{$decimals}f%s", $bytes / pow($mod, $factor), $units[$system][$factor]);
+}
+
+function fuppi_version(){
+    return \Fuppi\App::getInstance()->getConfig()->fuppi_version;
 }
 
 function logout()

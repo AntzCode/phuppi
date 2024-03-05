@@ -24,28 +24,31 @@ if (!empty($_POST)) {
 }
 ?>
 <div class="content">
-    <?php if (!empty($errors)) { ?>
-        <p>
-            <strong style="display: inline-block; border: solid 0.25em red; color: red; padding: 1em;">
-                <?= !array_walk($errors, function ($errors) {
-                    echo implode(', ', $errors);
-                }) ?>
-            </strong>
-        </p>
-    <?php } ?>
 
-    <form action="<?= $_SERVER['REQUEST_URI'] ?>" method="POST">
-        <div class="form-group <?= (!empty($errors['username'] ?? []) ? 'error' : '') ?>">
-            <label for="username">Username: </label>
-            <input id="username" type="text" name="username" value="<?= $_POST['username'] ?? '' ?>" />
-        </div>
-        <div class="form-group <?= (!empty($errors['password'] ?? []) ? 'error' : '') ?>">
-            <label for="password">Password: </label>
-            <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
-        </div>
-        <div class="form-group submit">
-            <button type="submit">Log In</button>
-        </div>
-    </form>
+    <?php if (!empty($errors)) {
+        fuppi_component('errorMessage', ['errors' => $errors]);
+    } ?>
+
+    <div class="ui segment">
+
+        <div class="ui top attached label"><i class="user icon"></i> <label for="files">Authentication</label></div>
+
+        <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+
+            <div class="field <?= (!empty($errors['username'] ?? []) ? 'error' : '') ?>">
+                <label for="username">Username: </label>
+                <input id="username" type="text" name="username" value="<?= $_POST['username'] ?? '' ?>" />
+            </div>
+
+            <div class="field <?= (!empty($errors['password'] ?? []) ? 'error' : '') ?>">
+                <label for="password">Password: </label>
+                <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
+            </div>
+
+            <button class="ui right labeled icon button" type="submit"><i class="user icon left"></i> Log In</button>
+
+        </form>
+
+    </div>
 
 </div>

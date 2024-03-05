@@ -1,0 +1,8 @@
+Family: NettiesHand
+Subfamily: Regular
+Full name: NettiesHand Regular
+PostScript: name NettiesHand-Plain
+Version: The IMSI MasterFonts Collection, tm 1996 IMSI (International Microcomputer Software Inc.)
+Unique ID: Weatherly Systems, Inc. NettiesHand Regular
+Trademark: Digital font data provided under commercial license to by W.S.I. (205-880-2277)
+Copyright: Copyright (c)1995 Weatherly Systems, Inc.
