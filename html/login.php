@@ -1,18 +1,23 @@
 <?php
 
+use Fuppi\User;
+
 require('../src/fuppi.php');
 
 $errors = [];
 
 if (!empty($_POST)) {
 
-    $statement = $pdo->prepare("SELECT `user_id`, `username`, `password` FROM `fuppi_users` WHERE `username` = :username");
+    if ($authenticatingUser = User::findByUsername($_POST['username'] ?? '')) {
 
-    if ($statement->execute(['username' => $_POST['username']]) && $row = $statement->fetch(PDO::FETCH_ASSOC)) {
-
-        if (password_verify($_POST['password'], $row['password'])) {
-            $user->setData($row);
-            redirect($_GET['redirectAfterLogin'] ?? '/');
+        if (!empty("{$authenticatingUser->password}") && password_verify($_POST['password'], $authenticatingUser->password)) {
+            if (!is_null($authenticatingUser->disabled_at)) {
+                fuppi_add_error_message('Your account has been disabled.');
+                
+            } else {
+                $user->setData($authenticatingUser->getData());
+                redirect($_GET['redirectAfterLogin'] ?? '/');
+            }
         } else {
             $errors['password'] = ['Password is incorrect'];
             sleep(5);
@@ -21,17 +26,17 @@ if (!empty($_POST)) {
         $errors['username'] = ['User not found'];
         sleep(5);
     }
+
+    if (!empty($errors)) {
+        fuppi_add_error_message($errors);
+    }
 }
 ?>
 <div class="content">
 
-    <?php if (!empty($errors)) {
-        fuppi_component('errorMessage', ['errors' => $errors]);
-    } ?>
-
     <div class="ui segment">
 
-        <div class="ui top attached label"><i class="user icon"></i> <label for="files">Authentication</label></div>
+        <div class="ui top attached label"><i class="user icon"></i> <label for="username">Authentication</label></div>
 
         <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
 
@@ -45,7 +50,7 @@ if (!empty($_POST)) {
                 <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
             </div>
 
-            <button class="ui right labeled icon button" type="submit"><i class="user icon left"></i> Log In</button>
+            <button class="ui right labeled icon green button" type="submit"><i class="user icon left"></i> Log In</button>
 
         </form>
 

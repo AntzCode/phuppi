@@ -48,6 +48,54 @@ function fuppi_component(string $componentName, array $variables = [])
     }
 }
 
+function fuppi_add_error_message($message)
+{
+    if (is_array($message)) {
+        foreach ($message as $_message) {
+            fuppi_add_error_message($_message);
+        }
+    } else {
+        $_SESSION['fuppi_error_messages'] = array_merge($_SESSION['fuppi_error_messages'] ?? [], [$message]);
+    }
+}
+
+function fuppi_add_success_message($message)
+{
+    if (is_array($message)) {
+        foreach ($message as $_message) {
+            fuppi_add_success_message($_message);
+        }
+    } else {
+        $_SESSION['fuppi_success_messages'] = array_merge($_SESSION['fuppi_success_messages'] ?? [], [$message]);
+    }
+}
+
+function fuppi_get_error_messages($preserve = false)
+{
+    if (!empty($_SESSION['fuppi_error_messages'] ?? [])) {
+        $messages = $_SESSION['fuppi_error_messages'] ?? [];
+        if (!$preserve) {
+            $_SESSION['fuppi_error_messages'] = [];
+        }
+        if (!empty($messages)) {
+            return $messages;
+        }
+    }
+}
+
+function fuppi_get_success_messages($preserve = false)
+{
+    if (!empty($_SESSION['fuppi_success_messages'] ?? [])) {
+        $messages = $_SESSION['fuppi_success_messages'] ?? [];
+        if (!$preserve) {
+            $_SESSION['fuppi_success_messages'] = [];
+        }
+        if (!empty($messages)) {
+            return $messages;
+        }
+    }
+}
+
 function human_readable_bytes($bytes, $decimals = 2, $system = 'binary')
 {
     $mod = ($system === 'binary') ? 1024 : 1000;
@@ -62,7 +110,27 @@ function human_readable_bytes($bytes, $decimals = 2, $system = 'binary')
     return sprintf("%.{$decimals}f%s", $bytes / pow($mod, $factor), $units[$system][$factor]);
 }
 
-function fuppi_version(){
+function unlink_recursive($pathname)
+{
+    if (is_dir($pathname)) {
+        $filenames = scandir($pathname);
+        foreach ($filenames as $filename) {
+            if (!in_array($filename, ['.', '..'])) {
+                if (is_dir($pathname . DIRECTORY_SEPARATOR . $filename) && !is_link($pathname . DIRECTORY_SEPARATOR . $filename)) {
+                    unlink_recursive($pathname . DIRECTORY_SEPARATOR . $filename);
+                } else {
+                    unlink($pathname . DIRECTORY_SEPARATOR . $filename);
+                }
+            }
+        }
+        rmdir($pathname);
+    } else {
+        unlink($pathname);
+    }
+}
+
+function fuppi_version()
+{
     return \Fuppi\App::getInstance()->getConfig()->fuppi_version;
 }
 

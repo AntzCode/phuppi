@@ -21,12 +21,15 @@ class App
     {
         $this->config = Config::getInstance();
         $this->db = new Db();
-        $this->user = new User($_SESSION['\Fuppi\App.user'] ?? []);
+        $this->user = new User();
+        $this->user->setData($_SESSION['\Fuppi\App.user'] ?? []);
     }
 
     public function __destruct()
     {
-        $_SESSION['\Fuppi\App.user'] = $this->user->getData();
+        if (($this->user ?? null) instanceof User) {
+            $_SESSION['\Fuppi\App.user'] = $this->user->getData();
+        }
     }
 
     public static function getInstance($namespace = "Fuppi")

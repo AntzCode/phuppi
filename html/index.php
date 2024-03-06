@@ -1,6 +1,8 @@
 <?php
 
 use Fuppi\UploadedFile;
+use Fuppi\User;
+use Fuppi\UserPermission;
 
 require('../src/fuppi.php');
 
@@ -10,12 +12,20 @@ if ($user->user_id <= 0) {
 
 $errors = [];
 
+$profileUser = $user;
+
+if (!empty($_GET['userId'])) {
+    if ($user->hasPermission(UserPermission::USERS_READ)) {
+        $profileUser = User::getOne($_GET['userId']) ?? $user;
+    }
+}
+
 if (!empty($_POST)) {
     switch ($_POST['_method'] ?? 'post') {
         case 'delete':
             $fileId = $_POST['fileId'] ?? 0;
             UploadedFile::deleteOne($fileId);
-            redirect('/');
+            redirect($_SERVER['REQUEST_URI']);
             break;
     }
 }
@@ -67,142 +77,155 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
         ]);
     }
 
-    if (empty($errors)) {
-        // prevent re-submit on page refresh
-        redirect('/');
+    if (!empty($errors)) {
+        fuppi_add_error_message($errors);
     }
+
+    redirect($_SERVER['REQUEST_URI']);
 }
 
-$statement = $pdo->prepare("SELECT * FROM `fuppi_uploaded_files` WHERE `user_id` = :user_id ORDER BY `uploaded_at` DESC");
-$statement->execute(['user_id' => $user->user_id]);
-$uploadedFiles = [];
-foreach ($statement->fetchAll() as $uploadedFileData) {
-    $uploadedFiles[] = new UploadedFile($uploadedFileData);
-}
+$uploadedFiles = $profileUser->getUploadedFiles();
+
 ?>
-<h2>Welcome back, <?= $user->username ?>!</h2>
 
-<?php if (!empty($errors)) {
-    fuppi_component('errorMessage', ['errors' => $errors]);
-} ?>
+<h2>Welcome back, <?= $profileUser->username ?>!</h2>
 
-<div class="ui segment">
+<?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_PUT)) { ?>
 
-    <div class="ui top attached label">
-        <i class="upload icon"></i> <label for="files">Upload Files</label>
-    </div>
+    <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
 
-    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
-        <div class="field">
-            <input id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
-        </div>
-        <button class="ui right labeled icon button" type="submit"><i class="upload icon right"></i> Upload</button>
-    </form>
-
-</div>
-
-<div class="ui segment">
-
-    <div class="ui top attached label">
-        <i data-content="Copy code" class="upload icon"></i> Your Uploaded Files</h2>
-    </div>
-
-    <?php if (empty($uploadedFiles)) { ?>
-
-        <div class="ui content">
-            <p>- Empty -</p>
+        <div class="ui top attached label">
+            <i class="upload icon"></i> <label for="files">Upload Files</label>
         </div>
 
-    <?php } else { ?>
+        <form disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
+            <div class="field">
+                <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+            </div>
+            <div class="ui container right aligned">
+                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon button" type="submit"><i class="upload icon right"></i> Upload</button>
+            </div>
 
-        <div class="ui divided items">
+        </form>
 
-            <?php foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) { ?>
+    </div>
 
-                <div class="ui item " style="position: relative">
+<?php } ?>
 
-                    <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
-                        <i class="trash icon"></i> Delete
-                    </button>
+<?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_LIST)) { ?>
 
-                    <div class="ui modal modal<?= $uploadedFileIndex ?>">
+    <div class="ui segment">
 
-                        <i class="close icon"></i>
+        <div class="ui top attached label">
+            <i class="upload icon"></i> Your Uploaded Files</h2>
+        </div>
 
-                        <div class="header">
-                            Image Preview
-                        </div>
+        <?php if (empty($uploadedFiles)) { ?>
 
-                        <div class="image content">
-                            <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->file_id ?>&icon">
-                        </div>
+            <div class="ui content">
+                <p>- Empty -</p>
+            </div>
 
-                        <div class="actions">
-                            <div class="ui positive right labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->file_id ?>">
-                                Download
-                                <i class="download icon"></i>
+        <?php } else { ?>
+
+            <div class="ui divided items">
+
+                <?php foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) { ?>
+
+                    <div class="ui item " style="position: relative">
+
+                        <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
+                            <i class="trash icon"></i> Delete
+                        </button>
+
+                        <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>
+
+                            <div class="ui modal modal<?= $uploadedFileIndex ?>">
+
+                                <i class="close icon"></i>
+
+                                <div class="header">
+                                    Image Preview
+                                </div>
+
+                                <div class="image content">
+                                    <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon">
+                                </div>
+                                <div class="actions">
+                                    <div class="ui positive right labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
+                                        Download
+                                        <i class="download icon"></i>
+                                    </div>
+                                </div>
+
                             </div>
+
+                        <?php } ?>
+
+                        <?php if (
+                            in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
+                            && $user->hasPermission(UserPermission::UPLOADEDFILES_READ)
+                        ) { ?>
+
+                            <div class="ui tiny rounded image clickable raised" onclick="$('.modal<?= $uploadedFileIndex ?>').modal('show')">
+                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon" />
+                            </div>
+
+                        <?php } else if (empty("{$uploadedFile->extension}")) { ?>
+
+                            <div class="ui tiny image raised">
+                                <img src="/assets/images/filetype-icons/unknown.png" />
+                            </div>
+
+                        <?php } else { ?>
+
+                            <div class="ui tiny image raised">
+                                <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                            </div>
+
+                        <?php } ?>
+
+                        <div class="content">
+
+                            <span class="header"><?= $uploadedFile->filename ?></span>
+
+                            <div class="meta">
+                                <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
+                                <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
+                            </div>
+
+                            <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>
+                                <div class="extra">
+                                    <button class="ui labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>"><i class="download icon"></i> Download</button>
+                                </div>
+                            <?php } ?>
+
                         </div>
 
-                    </div>
+                        <div class="right ui grid middle aligned">
 
-                    <?php if (in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])) { ?>
+                            <div class="one wide column">
 
-                        <div class="ui tiny rounded image clickable raised" onclick="$('.modal<?= $uploadedFileIndex ?>').modal('show')">
-                            <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->file_id ?>&icon" />
-                        </div>
-
-                    <?php } else if (empty("{$uploadedFile->extension}")) { ?>
-
-                        <div class="ui tiny image raised">
-                            <img src="/assets/images/filetype-icons/unknown.png" />
-                        </div>
-
-                    <?php } else { ?>
-
-                        <div class="ui tiny image raised">
-                            <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
-                        </div>
-
-                    <?php } ?>
-
-                    <div class="content">
-
-                        <span class="header"><?= $uploadedFile->filename ?></span>
-
-                        <div class="meta">
-                            <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
-                            <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
-                        </div>
-
-                        <div class="extra">
-                            <button class="ui labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->file_id ?>"><i class="download icon"></i> Download</button>
-                        </div>
-
-                    </div>
-
-                    <div class="right ui grid middle aligned">
-
-                        <div class="one wide column">
-
-                            <form id="deleteUploadedFileForm<?= $uploadedFileIndex ?>" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>">
-                                <input name="_method" type="hidden" value="delete" />
-                                <input type="hidden" name="fileId" value="<?= $uploadedFile->file_id ?>" />
-                                <!-- <button class="red circular ui icon button clickable-confirm" title="Delete" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
+                                <form id="deleteUploadedFileForm<?= $uploadedFileIndex ?>" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>">
+                                    <input name="_method" type="hidden" value="delete" />
+                                    <input type="hidden" name="fileId" value="<?= $uploadedFile->uploaded_file_id ?>" />
+                                    <!-- <button class="red circular ui icon button clickable-confirm" title="Delete" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
                                     <i class="icon trash"></i>
                                 </button> -->
-                            </form>
+                                </form>
+
+                            </div>
 
                         </div>
 
                     </div>
 
-                </div>
+                <?php } ?>
 
-            <?php } ?>
+            </div>
 
-        </div>
+        <?php } ?>
 
-    <?php } ?>
+    </div>
 
-</div>
+<?php } ?>

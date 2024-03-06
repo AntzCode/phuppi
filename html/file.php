@@ -1,5 +1,8 @@
 <?php
 
+use Fuppi\UploadedFile;
+use Fuppi\UserPermission;
+
 require('../src/fuppi.php');
 
 if ($user->user_id <= 0) {
@@ -8,32 +11,22 @@ if ($user->user_id <= 0) {
 
 $errors = [];
 
-if (!array_key_exists('id', $_GET)) {
-    $errors[] = ['Invalid file id'];
-} else {
+if ($uploadedFile = UploadedFile::getOne((int) $_GET['id'] ?? 0)) {
 
-    $statement = $pdo->prepare('SELECT f.`filename`, f.`mimetype`, f.`user_id`, u.`username` FROM `fuppi_uploaded_files` f JOIN `fuppi_users` u ON f.`user_id` = u.`user_id` WHERE f.`file_id` = :file_id AND f.`user_id` = :user_id');
+    $isMyFile = $uploadedFile->user_id === $user->user_id;
+    $canReadUsers = $user->hasPermission(UserPermission::USERS_READ);
+    $canReadFiles = $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
 
-    if ($statement->execute(['file_id' => $_GET['id'], 'user_id' => 1 || $user->user_id]) && $fileData = $statement->fetch()) {
-
-        header('Content-Type: ' . $fileData['mimetype']);
-        header('Content-Disposition: attachment; filename="' . $fileData['filename'] . '"');
+    if (($isMyFile || $canReadUsers) && $canReadFiles) {
+        header('Content-Type: ' . $uploadedFile->mimetype);
+        header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
         fuppi_stop();
-        readfile($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $fileData['username'] . DIRECTORY_SEPARATOR . $fileData['filename']);
+        readfile($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
         exit;
     } else {
-        $errors[] = ['Cannot find that file'];
+        fuppi_add_error_message('Not authorized');
     }
+    
+} else {
+    fuppi_add_error_message('Cannot find that file');
 }
-?>
-<?php if (!empty($errors)) { ?>
-    <div>
-        <p>
-            <strong style="display: inline-block; border: solid 0.25em red; color: red; padding: 1em;">
-                <?= !array_walk($errors, function ($errors) {
-                    echo implode(', ', $errors);
-                }) ?>
-            </strong>
-        </p>
-    </div>
-<?php }
