@@ -15,7 +15,7 @@
 <body>
     <header class="ui grid padded page-header middle aligned">
         <div class="three wide column left aligned clickable" data-url="/">
-            <img src="/assets/images/fuppi-logo-horizontal.svg" width="280" height="122" />
+            <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg" width="280" height="122" />
         </div>
         <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
             <?php if ($user->hasPermission(\Fuppi\UserPermission::USERS_LIST)) { ?>
@@ -36,7 +36,7 @@
     <div class="ui container content page-content"><?= $content ?></div>
     <footer class="page-footer">
         <div class="ui container two column grid">
-            <span class="column">&copy; <?= date('Y') ?> Fuppi, a "File-Uppie" thing.</span>
+            <span class="column">&copy; <?= date('Y') ?> <a href="http://www.phuppi.com">Phuppi</a>, a "File-Uppie" thing.</span>
             <span class="column right aligned">v<?= fuppi_version() ?></span>
         </div>
     </footer>
