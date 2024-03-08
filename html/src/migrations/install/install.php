@@ -26,7 +26,7 @@ foreach (scandir(__DIR__) as $filename) {
     }
 }
 
-$statement = $pdo->prepare('INSERT INTO `fuppi_users` (`user_id`, `username`, `password`) VALUES (:username, :password)');
+$statement = $pdo->prepare('INSERT INTO `fuppi_users` (`user_id`, `username`, `password`) VALUES (:user_id, :username, :password)');
 
 $statement->execute([
     'user_id' => $userId,
@@ -34,10 +34,10 @@ $statement->execute([
     'password' => password_hash($password, PASSWORD_BCRYPT)
 ]);
 
-$statement = $pdo->prepare('INSERT INTO `fuppi_user_permissions` (`user_id`, `password`) VALUES (:username, :password)');
+$statement = $pdo->prepare('INSERT INTO `fuppi_user_permissions` (`user_id`, `permission_name`, `permission_value`) VALUES (:user_id, :permission_name, :permission_value)');
 
 $statement->execute([
     'user_id' => $userId,
     'permission_name' => UserPermission::IS_ADMINISTRATOR,
-    'value' => json_encode(true)
+    'permission_value' => json_encode(true)
 ]);

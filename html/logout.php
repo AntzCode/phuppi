@@ -1,6 +1,6 @@
 <?php
 
-require('../src/fuppi.php');
+require('fuppi.php');
 
 $errors = [];
 

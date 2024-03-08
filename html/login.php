@@ -2,7 +2,7 @@
 
 use Fuppi\User;
 
-require('../src/fuppi.php');
+require('fuppi.php');
 
 $errors = [];
 

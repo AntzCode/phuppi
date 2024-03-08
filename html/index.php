@@ -4,7 +4,7 @@ use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
 
-require('../src/fuppi.php');
+require('fuppi.php');
 
 if ($user->user_id <= 0) {
     redirect('/login.php?redirectAfterLogin=' . urlencode('/'));

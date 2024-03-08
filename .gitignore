@@ -1,15 +1,12 @@
 # html/install.php is moved to src/install.php after it has run, to keep a local copy instead of deleting it from the public folder 
-src/install.php
+html/src/install.php
 
-# do not allow any uploaded files into the repository
-data/uploadedFiles/*
-
-# Prevent accidentally committing the database of FUPPI_DB.sqlite3. It should be an empty file in the repository.
-# git update-index --skip-worktree data/FUPPI_DB.sqlite3
+# do not allow any data into the repository
+html/data
 
 # Prevent accidentally committing the delete of html/install.php  
 # git update-index --skip-worktree html/install.php
 
-# Note: use the following command if it is necessary to commit changes to html/install.php
+# Note: temporarily use the following command if it is necessary to commit changes to html/install.php
 # use update-index --no-skip-worktree html/install.php 
 

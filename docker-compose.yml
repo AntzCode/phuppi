@@ -14,7 +14,5 @@ services:
       - ./Docker/sites-enabled:/etc/apache2/sites-enabled
       - ./Docker/logs:/var/log/apache2
       - ./html:/var/www/html
-      - ./src:/var/www/src
-      - ./data:/var/www/data
 
 

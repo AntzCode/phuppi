@@ -3,7 +3,7 @@
 use Fuppi\User;
 use Fuppi\UserPermission;
 
-require('../../src/fuppi.php');
+require('../fuppi.php');
 
 if (!$user->hasPermission(UserPermission::USERS_LIST)) {
     // not allowed to access the users list
