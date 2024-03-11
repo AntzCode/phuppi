@@ -95,7 +95,7 @@ $uploadedFiles = $profileUser->getUploadedFiles();
     <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
 
         <div class="ui top attached label">
-            <i class="upload icon"></i> <label for="files">Upload Files</label>
+            <i class="upload icon"></i> <label for="files">Upload Files (max <?= $config->post_max_size ?>)</label>
         </div>
 
         <form disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
