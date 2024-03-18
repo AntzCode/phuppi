@@ -22,6 +22,7 @@ class User extends Model
         'created_at' => '',
         'updated_at' => '',
         'disabled_at' => null,
+        'session_expires_at' => null,
         'notes' => ''
     ];
 
@@ -114,4 +115,5 @@ class User extends Model
             }
         }
     }
+
 }

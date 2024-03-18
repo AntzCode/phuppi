@@ -3,6 +3,7 @@
 namespace Fuppi;
 
 use Fuppi\Abstract\Model;
+use PDO;
 
 class UserPermission extends Model
 {
@@ -49,7 +50,7 @@ class UserPermission extends Model
         $instances = [];
         $db = \Fuppi\App::getInstance()->getDb();
         $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '` WHERE `user_id` = :user_id');
-        if ($statement->execute(['user_id' => $user->user_id]) && $permissions = $statement->fetchAll()) {
+        if ($statement->execute(['user_id' => $user->user_id]) && $permissions = $statement->fetchAll(PDO::FETCH_ASSOC)) {
             foreach ($permissions as $permissionData) {
                 $instance = new self();
                 $instance->setData($instance->fromDb($permissionData));
@@ -65,7 +66,7 @@ class UserPermission extends Model
         $instance = new self();
         $db = \Fuppi\App::getInstance()->getDb();
         $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '` WHERE `user_id` = :user_id AND `permission_name` = :permission_name');
-        if ($statement->execute(['user_id' => $user->user_id, 'permission_name' => $permissionName]) && $permissionData = $statement->fetch()) {
+        if ($statement->execute(['user_id' => $user->user_id, 'permission_name' => $permissionName]) && $permissionData = $statement->fetch(PDO::FETCH_ASSOC)) {
             $instance->setData($instance->fromDb($permissionData));
             return $instance;
         }

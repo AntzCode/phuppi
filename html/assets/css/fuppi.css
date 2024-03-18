@@ -38,7 +38,9 @@ body>footer.page-footer {
 }
 
 .clickable .icon,
-.clickable-confirm .icon {
+.clickable label,
+.clickable-confirm .icon,
+.clickable-confirm label {
     cursor: pointer !important;
 }
 

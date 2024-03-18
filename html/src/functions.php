@@ -110,6 +110,13 @@ function human_readable_bytes($bytes, $decimals = 2, $system = 'binary')
     return sprintf("%.{$decimals}f%s", $bytes / pow($mod, $factor), $units[$system][$factor]);
 }
 
+function human_readable_time_remaining(int $unixTimestamp)
+{
+    $dh = new Date_HumanDiff();
+    return $dh->get($unixTimestamp);
+}
+
+
 function unlink_recursive($pathname)
 {
     if (is_dir($pathname)) {

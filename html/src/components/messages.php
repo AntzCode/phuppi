@@ -35,7 +35,7 @@ if (!empty($messages)) {
             break;
     }
 ?>
-    <div class="ui container">
+    <div class="ui container" <?= (!empty($id ?? '') ? 'id="' . $id . '"' : '') ?>>
 
         <div class="ui attached padded segment" id="component_messages_<?= $componentId ?>">
 

@@ -5,5 +5,6 @@ CREATE TABLE `fuppi_users` (
     `created_at` DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `disabled_at` DATE NULL DEFAULT NULL,
+    `session_expires_at` DATE NULL DEFAULT NULL,
     `notes` TEXT NOT NULL DEFAULT ''
 );

@@ -2,13 +2,17 @@
 
 namespace Fuppi;
 
+use Fuppi\Abstract\HasUser;
 use Fuppi\Abstract\Model;
+use PDO;
 
 class UploadedFile extends Model
 {
+    use HasUser;
 
     protected string $_tablename = 'fuppi_uploaded_files';
     protected string $_primaryKeyColumnName = 'uploaded_file_id';
+    protected string $_userColumnName = 'user_id';
 
     protected $data = [
         'uploaded_file_id' => 0,
@@ -50,7 +54,7 @@ class UploadedFile extends Model
         $results = $statement->execute(['user_id' => $user->user_id]);
 
         if ($results) {
-            foreach ($statement->fetchAll() as $data) {
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $data) {
                 $uploadedFile = new self();
                 $uploadedFile->setData($uploadedFile->fromDb($data));
                 $uploadedFiles[] = $uploadedFile;
@@ -59,14 +63,4 @@ class UploadedFile extends Model
         return $uploadedFiles;
     }
 
-    public function getUser(): ?User
-    {
-        if ($this->user_id > 0) {
-            if (!isset($this->user) || $this->user->user_id !== $this->user_id) {
-                $this->user = User::getOne($this->user_id);
-            }
-            return $this->user;
-        }
-        return null;
-    }
 }

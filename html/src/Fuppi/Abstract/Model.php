@@ -2,6 +2,8 @@
 
 namespace Fuppi\Abstract;
 
+use PDO;
+
 abstract class Model
 {
     protected string $_tablename;
@@ -46,7 +48,7 @@ abstract class Model
         $db = \Fuppi\App::getInstance()->getDb();
         $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '` WHERE `' . $instance->_primaryKeyColumnName . '` = :id');
         if ($statement->execute(['id' => $id])) {
-            $data = $statement->fetch();
+            $data = $statement->fetch(PDO::FETCH_ASSOC);
             if ($data) {
                 $instance->setData($instance->fromDb($data));
             }
@@ -69,7 +71,7 @@ abstract class Model
             $results = $statement->execute();
         }
         if ($results) {
-            foreach ($statement->fetchAll() as $userPermissionData) {
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $userPermissionData) {
                 $userPermission = new $className();
                 $userPermission->setData($userPermission->fromDb($userPermissionData));
                 $userPermissions[] = $userPermission;
