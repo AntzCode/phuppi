@@ -12,6 +12,8 @@ class Voucher extends Model
 {
     use HasUser;
 
+    protected \Fuppi\VoucherPermission $voucherPermission;
+
     protected \Fuppi\App $app;
     protected \Fuppi\Db $db;
 
@@ -51,6 +53,11 @@ class Voucher extends Model
     public static function deleteOne(int $voucherId)
     {
         if ($voucher = self::getOne($voucherId)) {
+            if (is_null($voucher->expires_at) || strtotime($voucher->expires_at) > time()) {
+                $db = \Fuppi\App::getInstance()->getDb();
+                $statement = $db->getPdo()->query('UPDATE `' . $voucher->_tablename . '` SET `expires_at` = CURRENT_TIMESTAMP WHERE `' . $voucher->_primaryKeyColumnName . '` = :id');
+                $statement->execute(['id' => $voucherId]);
+            }
             $db = \Fuppi\App::getInstance()->getDb();
             $statement = $db->getPdo()->query('UPDATE `' . $voucher->_tablename . '` SET `deleted_at` = CURRENT_TIMESTAMP WHERE `' . $voucher->_primaryKeyColumnName . '` = :id');
             return $statement->execute(['id' => $voucherId]);
@@ -80,5 +87,33 @@ class Voucher extends Model
             }
         }
         return $userPermissions;
+    }
+
+    public function hasPermission(string $permissionName)
+    {
+        return VoucherPermission::isVoucherPermitted($permissionName, $this);
+    }
+
+    public function addPermission(string $permissionName)
+    {
+        if ($this->voucher_id < 1) {
+            throw new \Exception('Voucher must be saved before adding permission');
+        }
+        if (!$this->hasPermission($permissionName)) {
+            $voucherPermission = new VoucherPermission();
+            $voucherPermission->voucher_id = $this->voucher_id;
+            $voucherPermission->permission_name = $permissionName;
+            $voucherPermission->permission_value = true;
+            $voucherPermission->save();
+        }
+    }
+
+    public function deletePermission(string $permissionName)
+    {
+        if ($this->hasPermission($permissionName)) {
+            if ($voucherPermission = VoucherPermission::getVoucherPermission($permissionName, $this)) {
+                VoucherPermission::deleteOne($voucherPermission->voucher_permission_id);
+            }
+        }
     }
 }

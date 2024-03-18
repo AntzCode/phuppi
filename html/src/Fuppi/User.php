@@ -90,6 +90,9 @@ class User extends Model
 
     public function hasPermission(string $permissionName)
     {
+        if ($voucher = \Fuppi\App::getInstance()->getVoucher()) {
+            return $voucher->hasPermission($permissionName);
+        }
         return UserPermission::isUserPermitted($permissionName, $this);
     }
 
@@ -110,10 +113,9 @@ class User extends Model
     public function deletePermission(string $permissionName)
     {
         if ($this->hasPermission($permissionName)) {
-            if ($userPermission = UserPermission::getUserPermission($_POST['permissionName'], $this)) {
+            if ($userPermission = UserPermission::getUserPermission($permissionName, $this)) {
                 UserPermission::deleteOne($userPermission->user_permission_id);
             }
         }
     }
-
 }

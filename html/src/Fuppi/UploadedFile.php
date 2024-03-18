@@ -17,6 +17,7 @@ class UploadedFile extends Model
     protected $data = [
         'uploaded_file_id' => 0,
         'user_id' => 0,
+        'voucher_id' => 0,
         'filename' => '',
         'filesize' => 0,
         'mimetype' => '',

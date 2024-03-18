@@ -55,6 +55,7 @@ if (!empty($_POST)) {
                             $user->session_expires_at = ''.$voucher->expires_at;
                             $user->save();
                         }
+                        $app->setVoucher($voucher);
                         redirect($_GET['redirectAfterLogin'] ?? '/');
                     }
                 } else {

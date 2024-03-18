@@ -3,6 +3,8 @@
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
+use Fuppi\Voucher;
+use Fuppi\VoucherPermission;
 
 require('fuppi.php');
 
@@ -23,8 +25,10 @@ if (!empty($_GET['userId'])) {
 if (!empty($_POST)) {
     switch ($_POST['_method'] ?? 'post') {
         case 'delete':
-            $fileId = $_POST['fileId'] ?? 0;
-            UploadedFile::deleteOne($fileId);
+            if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) {
+                $fileId = $_POST['fileId'] ?? 0;
+                UploadedFile::deleteOne($fileId);
+            }
             redirect($_SERVER['REQUEST_URI']);
             break;
     }
@@ -67,9 +71,11 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
         $storedFilepath = $config->uploadedFilesPath . DIRECTORY_SEPARATOR . $user->username . DIRECTORY_SEPARATOR . $sanitizedFilename;
         move_uploaded_file($_FILES['files']['tmp_name'][$k], $storedFilepath);
 
-        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `filename`, `filesize`, `mimetype`, `extension`) VALUES (:user_id, :filename, :filesize, :mimetype, :extension)");
+        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension)");
+
         $statement->execute([
             'user_id' => $user->user_id,
+            'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
             'filename' => $sanitizedFilename,
             'filesize' => filesize($storedFilepath),
             'mimetype' => mime_content_type($storedFilepath),
@@ -85,6 +91,17 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
 }
 
 $uploadedFiles = $profileUser->getUploadedFiles();
+
+if ($voucher = $app->getVoucher()) {
+    if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
+        foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) {
+            if ($uploadedFile->voucher_id !== $voucher->voucher_id) {
+                unset($uploadedFiles[$uploadedFileIndex]);
+            }
+        }
+        $uploadedFiles = array_values($uploadedFiles);
+    }
+}
 
 ?>
 
@@ -134,9 +151,11 @@ $uploadedFiles = $profileUser->getUploadedFiles();
 
                     <div class="ui item " style="position: relative">
 
-                        <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
-                            <i class="trash icon"></i> Delete
-                        </button>
+                        <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) { ?>
+                            <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
+                                <i class="trash icon"></i> Delete
+                            </button>
+                        <?php } ?>
 
                         <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>
 
@@ -192,6 +211,9 @@ $uploadedFiles = $profileUser->getUploadedFiles();
                             <div class="meta">
                                 <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
                                 <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
+                                <?php if ($uploadedFile->voucher_id > 0) { ?>
+                                    <span>Voucher: <?= Voucher::getOne($uploadedFile->voucher_id)->voucher_code ?></span>
+                                <?php } ?>
                             </div>
 
                             <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>

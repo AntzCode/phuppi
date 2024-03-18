@@ -145,6 +145,7 @@ function logout()
 {
     $_SESSION = [];
     Fuppi\App::getInstance()->getUser()->setData(['user_id' => 0, 'username' => '', 'password' => '']);
+    Fuppi\App::getInstance()->setVoucher(null);
 }
 
 function redirect(string $url = '')

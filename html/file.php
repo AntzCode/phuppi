@@ -2,6 +2,7 @@
 
 use Fuppi\UploadedFile;
 use Fuppi\UserPermission;
+use Fuppi\VoucherPermission;
 
 require('fuppi.php');
 
@@ -14,6 +15,14 @@ $errors = [];
 if ($uploadedFile = UploadedFile::getOne((int) $_GET['id'] ?? 0)) {
 
     $isMyFile = $uploadedFile->user_id === $user->user_id;
+    if($voucher = $app->getVoucher()){
+        if($uploadedFile->voucher_id !== $voucher->voucher_id){
+            if(!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)){
+                // not allowed to read a file that was not uploaded with the voucher they are using
+                $isMyFile = false;
+            }
+        }
+    }
     $canReadUsers = $user->hasPermission(UserPermission::USERS_READ);
     $canReadFiles = $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
 
