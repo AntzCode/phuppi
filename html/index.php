@@ -345,10 +345,10 @@ if ($voucher = $app->getVoucher()) {
                             <?php if (_can_read_file($uploadedFile)) { ?>
                                 <div class="extra">
                                     <button class="ui labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>"><i class="download icon"></i> Download</button>
-                                </div>
-                                <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $uploadedFileIndex ?>').modal('show')">
-                                    Share
-                                    <i class="share icon"></i>
+                                    <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $uploadedFileIndex ?>').modal('show')">
+                                        Share
+                                        <i class="share icon"></i>
+                                    </div>
                                 </div>
                             <?php } ?>
 
