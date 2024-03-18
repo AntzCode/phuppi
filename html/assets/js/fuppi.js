@@ -21,7 +21,7 @@ $(() => {
         let button = event.currentTarget;
         if ($(button).data('content')) {
             navigator.clipboard.writeText($(button).data('content'));
-            $.toast({ message: 'Code "' + $(button).data('content') + '" copied to clipboard!' })
+            $.toast({ message: '"' + $(button).data('content') + '" copied to clipboard!' })
         }
     });
     $('.tabular.menu .item').tab();

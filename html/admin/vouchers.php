@@ -14,10 +14,6 @@ if (!$user->hasPermission(UserPermission::USERS_PUT)) {
     redirect('/');
 }
 
-$validForOptions = [
-    300 => "5 mins", 600 => "10 mins", 1800 => "30 mins", 3600 => "1 hr", 7200 => "2 hrs", 14400 => "4 hrs", 43200 => "12 hrs", 86400 => "1 day", 259200 => "3 days", 604800 => "1 wk", 2678400 => "1 mth", 7884000 => "3 mths", 15768000 => "6 mths", 31536000 => "1 yr", 0 => "Permanent"
-];
-
 $permissionTitles = [
     VoucherPermission::UPLOADEDFILES_DELETE => 'Delete Files',
     VoucherPermission::UPLOADEDFILES_PUT => 'Upload Files',
@@ -52,7 +48,7 @@ if (!empty($_POST)) {
                         fuppi_add_error_message('Voucher code is too long: max 255 characters long');
                     } else if ($voucher = Voucher::findByVoucherCode($voucherCode)) {
                         fuppi_add_error_message('There is already a voucher with that voucher code');
-                    } else if (!array_key_exists(intval($_POST['valid_for']), $validForOptions)) {
+                    } else if (!array_key_exists(intval($_POST['valid_for']), $config->voucher_valid_for_options)) {
                         fuppi_add_error_message('Valid for is outside the allowed range');
                     } else {
                         try {
@@ -237,7 +233,7 @@ foreach ($allVouchers as $voucher) {
         <div class="field <?= (!empty($errors['valid_for'] ?? []) ? 'error' : '') ?>">
             <label for="validForSlider">Valid For: </label>
             <select name="valid_for" id="validForDropdown" style="display: none">
-                <?php foreach ($validForOptions as $value => $title) {
+                <?php foreach ($config->voucher_valid_for_options as $value => $title) {
                     echo '<option value="' . $value . '"' . (intval($_POST['valid_for'] ?? 0) === $value ? 'selected="selected"' : '') . '>' . $title . '</option>';
                 } ?>
             </select>
@@ -248,15 +244,14 @@ foreach ($allVouchers as $voucher) {
                 $('#validForSlider')
                     .slider({
                         min: 0,
-                        max: <?= count($validForOptions) - 1 ?>,
-                        start: <?= (array_search($_POST['valid_for'] ?? 0, array_keys($validForOptions))) ?>,
+                        max: <?= count($config->voucher_valid_for_options) - 1 ?>,
+                        start: <?= (array_search($_POST['valid_for'] ?? 0, array_keys($config->voucher_valid_for_options))) ?>,
                         autoAdjustLabels: true,
                         onChange: (v) => {
-                            console.log('It changes to ' + v);
                             document.getElementById('validForDropdown').selectedIndex = v;
                         },
                         interpretLabel: function(value) {
-                            let _labels = JSON.parse('<?= json_encode(array_values($validForOptions)) ?>');
+                            let _labels = JSON.parse('<?= json_encode(array_values($config->voucher_valid_for_options)) ?>');
                             return _labels[value];
                         }
                     });
@@ -326,7 +321,7 @@ foreach ($allVouchers as $voucher) {
                             <p>Created at <?= $voucher->created_at ?></p>
                             <?= (!is_null($voucher->redeemed_at) ? '<p>Redeemed At: ' . $voucher->redeemed_at . '</p>' : '') ?>
                             <?= (!is_null($voucher->expires_at) ? '<p>Expires At: ' . $voucher->expires_at . '</p>' : '') ?>
-                            <?= (!is_null($voucher->valid_for) ? '<p>Valid For: ' . $validForOptions[$voucher->valid_for] . '</p>' : '') ?>
+                            <?= (!is_null($voucher->valid_for) ? '<p>Valid For: ' . $config->voucher_valid_for_options[$voucher->valid_for] . '</p>' : '') ?>
                         </div>
 
                         <div class="extra">

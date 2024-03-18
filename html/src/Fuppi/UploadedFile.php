@@ -64,4 +64,44 @@ class UploadedFile extends Model
         return $uploadedFiles;
     }
 
+    public function createToken(int $lifetimeSeconds, int $voucherId = null)
+    {
+        if ($lifetimeSeconds > 0) {
+            $expiresTime = time() + $lifetimeSeconds;
+            $token = md5($this->uploaded_file_id . $expiresTime . rand());
+            $db = \Fuppi\App::getInstance()->getDb();
+
+            $statement = $db->getPdo()->prepare('INSERT INTO `fuppi_uploaded_file_tokens` (`uploaded_file_id`, `voucher_id`, `token`, `created_at`, `expires_at`) VALUES (:uploaded_file_id, :voucher_id, :token, :created_at, :expires_at)');
+
+            $results = $statement->execute([
+                'uploaded_file_id' => $this->uploaded_file_id,
+                'voucher_id' => $voucherId,
+                'token' => $token,
+                'created_at' => date('Y-m-d H:i:s'),
+                'expires_at' => date('Y-m-d H:i:s', $expiresTime)
+            ]);
+
+            return $token;
+        }
+    }
+
+    public function getTokenExpiresAt(string $token)
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->query('SELECT `expires_at` FROM `fuppi_uploaded_file_tokens` WHERE `token` = :token and `uploaded_file_id` = :uploaded_file_id');
+        if ($statement->execute(['token' => $token, 'uploaded_file_id' => $this->uploaded_file_id])) {
+            $data = $statement->fetch(PDO::FETCH_ASSOC);
+            if ($data) {
+                return $data['expires_at'];
+            }
+        }
+    }
+
+    public function isValidToken(string $token)
+    {
+        if ($expiresAt = $this->getTokenExpiresAt($token)) {
+            return strtotime($expiresAt) > time();
+        }
+        return false;
+    }
 }

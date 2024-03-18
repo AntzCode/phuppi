@@ -1,5 +1,6 @@
 <?php
 
+use Fuppi\ApiResponse;
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
@@ -30,6 +31,33 @@ if (!empty($_POST)) {
                 UploadedFile::deleteOne($fileId);
             }
             redirect($_SERVER['REQUEST_URI']);
+            break;
+        case 'post':
+            switch ($_POST['_action'] ?? '') {
+                case 'createSharableLink':
+                    $apiResponse = new ApiResponse();
+                    $validFor = (int) $_POST['validFor'];
+                    if (!array_key_exists($validFor, $config->token_valid_for_options)) {
+                        $apiResponse->throwException('Valid for "' . $validFor . '" is not a valid option');
+                    }
+                    $uploadedFileId = (int) $_POST['fileId'];
+                    if ($uploadedFile = UploadedFile::getOne($uploadedFileId)) {
+                        if (!_can_read_file($uploadedFile)) {
+                            $apiResponse->throwException('Not permitted');
+                        } else {
+                            $token = $uploadedFile->createToken($validFor);
+                            $apiResponse->data = [
+                                'token' => $token,
+                                'url' => base_url() . '/file.php?id=' . $uploadedFile->uploaded_file_id . '&token=' . $token,
+                                'expiresAt' => $uploadedFile->getTokenExpiresAt($token)
+                            ];
+                            $apiResponse->sendResponse();
+                        }
+                    } else {
+                        $apiResponse->throwException('Invalid file id "' . $uploadedFileId . '"');
+                    }
+                    break;
+            }
             break;
     }
 }
@@ -157,9 +185,9 @@ if ($voucher = $app->getVoucher()) {
                             </button>
                         <?php } ?>
 
-                        <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>
+                        <?php if (_can_read_file($uploadedFile)) {  ?>
 
-                            <div class="ui modal modal<?= $uploadedFileIndex ?>">
+                            <div class="ui modal preview<?= $uploadedFileIndex ?>">
 
                                 <i class="close icon"></i>
 
@@ -175,6 +203,108 @@ if ($voucher = $app->getVoucher()) {
                                         Download
                                         <i class="download icon"></i>
                                     </div>
+                                    <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $uploadedFileIndex ?>').modal('show')">
+                                        Share
+                                        <i class="share icon"></i>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="ui modal share<?= $uploadedFileIndex ?>">
+
+                                <i class="close icon"></i>
+
+                                <div class="header">
+                                    Share File
+                                </div>
+
+                                <div class="content ui items">
+
+                                    <div class="item">
+
+                                        <div class="image">
+                                            <?php if (
+                                                in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
+                                                && _can_read_file($uploadedFile)
+                                            ) { ?>
+                                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon" />
+                                            <?php } else if (empty("{$uploadedFile->extension}")) { ?>
+                                                <img src="/assets/images/filetype-icons/unknown.png" />
+                                            <?php } else { ?>
+                                                <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                                            <?php } ?>
+                                        </div>
+
+                                        <div class="content">
+
+                                            <div class="header">
+                                                <?= $uploadedFile->filename ?>
+                                            </div>
+
+                                            <div class="meta">
+                                                <?= _get_meta_content($uploadedFile) ?>
+                                            </div>
+
+                                            <div class="description">
+
+                                                <select name="valid_for" id="validForDropdown<?= $uploadedFileIndex ?>" style="display: none">
+                                                    <?php foreach ($config->token_valid_for_options as $value => $title) {
+                                                        echo '<option value="' . $value . '"' . (intval($_POST['valid_for'] ?? 0) === $value ? 'selected="selected"' : '') . '>' . $title . '</option>';
+                                                    } ?>
+                                                </select>
+
+                                                <div class="ui labeled ticked slider attached" id="sharableLinkSlider<?= $uploadedFileIndex ?>"></div>
+
+                                                <script>
+                                                    $('#sharableLinkSlider<?= $uploadedFileIndex ?>')
+                                                        .slider({
+                                                            min: 0,
+                                                            max: <?= count($config->token_valid_for_options) - 1 ?>,
+                                                            start: <?= (array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[0], array_keys($config->token_valid_for_options))) ?>,
+                                                            autoAdjustLabels: true,
+                                                            fireOnInit: true,
+                                                            onChange: (v) => {
+                                                                document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex = v;
+                                                                let formData = new FormData();
+                                                                formData.append('_action', 'createSharableLink');
+                                                                formData.append('fileId', <?= $uploadedFile->uploaded_file_id ?>);
+                                                                formData.append('validFor', document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').options[document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex].value);
+                                                                axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                                                                    $('#sharableLink<?= $uploadedFileIndex ?>').text(response.data.url);
+                                                                    $('#sharableLinkCopyButton<?= $uploadedFileIndex ?>').data('content', response.data.url);
+                                                                    $('#expiresAt<?= $uploadedFileIndex ?>').text(response.data.expiresAt);
+                                                                }).catch((error) => {
+                                                                    if (error.response && error.response.data && error.response.data.message) {
+                                                                        alert(error.response.data.message);
+                                                                    } else {
+                                                                        console.log(error);
+                                                                    }
+                                                                });
+                                                            },
+                                                            interpretLabel: function(value) {
+                                                                let _labels = JSON.parse('<?= json_encode(array_values($config->token_valid_for_options)) ?>');
+                                                                return _labels[value];
+                                                            }
+                                                        });
+                                                </script>
+
+                                            </div>
+
+                                            <div class="extra">
+                                                <div>
+                                                    <p class="ui label"><span id="sharableLink<?= $uploadedFileIndex ?>"></span> <i id="sharableLinkCopyButton<?= $uploadedFileIndex ?>" class="clickable copy icon copy-to-clipboard" data-content="" title="Copy to clipboard"></i></p>
+                                                </div>
+                                                <div>
+                                                    <p class="">Expires at: <span class="ui label" id="expiresAt<?= $uploadedFileIndex ?>"></span>
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
                                 </div>
 
                             </div>
@@ -183,10 +313,10 @@ if ($voucher = $app->getVoucher()) {
 
                         <?php if (
                             in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
-                            && $user->hasPermission(UserPermission::UPLOADEDFILES_READ)
+                            && _can_read_file($uploadedFile)
                         ) { ?>
 
-                            <div class="ui tiny rounded image clickable raised" onclick="$('.modal<?= $uploadedFileIndex ?>').modal('show')">
+                            <div class="ui tiny rounded image clickable raised" onclick="$('.preview<?= $uploadedFileIndex ?>').modal('show')">
                                 <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon" />
                             </div>
 
@@ -209,16 +339,16 @@ if ($voucher = $app->getVoucher()) {
                             <span class="header"><?= $uploadedFile->filename ?></span>
 
                             <div class="meta">
-                                <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
-                                <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
-                                <?php if ($uploadedFile->voucher_id > 0) { ?>
-                                    <span>Voucher: <?= Voucher::getOne($uploadedFile->voucher_id)->voucher_code ?></span>
-                                <?php } ?>
+                                <?= _get_meta_content($uploadedFile) ?>
                             </div>
 
-                            <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_READ)) { ?>
+                            <?php if (_can_read_file($uploadedFile)) { ?>
                                 <div class="extra">
                                     <button class="ui labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>"><i class="download icon"></i> Download</button>
+                                </div>
+                                <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $uploadedFileIndex ?>').modal('show')">
+                                    Share
+                                    <i class="share icon"></i>
                                 </div>
                             <?php } ?>
 
@@ -251,3 +381,39 @@ if ($voucher = $app->getVoucher()) {
     </div>
 
 <?php } ?>
+
+<?php
+
+function _get_meta_content(UploadedFile $uploadedFile)
+{
+    ob_start();
+?>
+    <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
+    <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
+    <?php if ($uploadedFile->voucher_id > 0) { ?>
+        <span>Voucher: <?= Voucher::getOne($uploadedFile->voucher_id)->voucher_code ?></span>
+    <?php } ?>
+<?php
+    $meta = ob_get_contents();
+    ob_end_clean();
+    return $meta;
+}
+
+function _can_read_file(UploadedFile $uploadedFile)
+{
+    $app = \Fuppi\App::getInstance();
+    $user = $app->getUser();
+
+    if ($voucher = $app->getVoucher()) {
+        if ($uploadedFile->voucher_id === $voucher->voucher_id) {
+            return true;
+        }
+        if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
+            return true;
+        }
+    } else {
+        return $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
+    }
+
+    return false;
+}

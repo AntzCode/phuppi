@@ -5,7 +5,7 @@ function fuppi_start()
     ob_start();
 }
 
-function fuppi_end()
+function fuppi_end($template = 'layout')
 {
     if (defined('FUPPI_STOP')) {
         return;
@@ -19,7 +19,7 @@ function fuppi_end()
     $pdo = $app->getDb()->getPdo();
     $user = $app->getUser();
 
-    require(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'templates/layout.php');
+    require(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'templates/' . $template . '.php');
 }
 
 /**
@@ -152,4 +152,29 @@ function redirect(string $url = '')
 {
     header('Location: ' . $url);
     exit('<script type="text/javascript">window.location="' . $url . '";</script><a href="' . $url . '">Continue</a>');
+}
+
+function base_url()
+{
+    $protocol = 'http://';
+    if (
+        isset($_SERVER['HTTPS']) &&
+        ($_SERVER['HTTPS'] == 'on' || $_SERVER['HTTPS'] == 1) ||
+        isset($_SERVER['HTTP_X_FORWARDED_PROTO']) &&
+        $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https'
+    ) {
+        $protocol = 'https://';
+    }
+    return $protocol . $_SERVER['SERVER_NAME'];
+}
+
+/**
+ * @todo: implement an event to execute garbage collection
+ */
+function fuppi_gc()
+{
+    // purge expired file tokens
+    $db = \Fuppi\App::getInstance()->getDb();
+    $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_file_tokens` WHERE `expires_at` < :expires_at_floor');
+    return $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
 }
