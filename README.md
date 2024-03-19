@@ -10,7 +10,7 @@ The feature to support storing files on AWS has been added because typically PHP
 
 You will need to create an account with Amazon Web Services and configure the security policies as described below.
 
-> [!Information]
+> [!Tip]
 > AWS has a free-tier plan which means you can use a fixed amount of cloud storage for free in the first year! 
 
 1. Create a new IAM policy:
