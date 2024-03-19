@@ -20,9 +20,17 @@ if (!empty($_POST)) {
             foreach ($config->settings as $defaultSetting) {
                 $config->setSetting($defaultSetting['name'], $_POST[$defaultSetting['name']]);
             }
+            fuppi_add_success_message('Settings saved!');
+            break;
+
+        case 'garbageCollection':
+            fuppi_gc();
+            fuppi_add_success_message('Clean-up complete!');
             break;
 
         case 'syncToAwsS3':
+
+            $numFilesPut = 0;
 
             $sdk = new Aws\Sdk([
                 'region' => $config->getSetting('aws_s3_region'),
@@ -49,11 +57,15 @@ if (!empty($_POST)) {
                         'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
                         'SourceFile' => $config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename
                     ]);
+                    $numFilesPut++;
                 }
             }
+            fuppi_add_success_message($numFilesPut . ' files uploaded to S3 bucket');
             break;
 
         case 'syncFromAwsS3':
+
+            $numFilesGot = 0;
 
             $sdk = new Aws\Sdk([
                 'region' => $config->getSetting('aws_s3_region'),
@@ -91,10 +103,11 @@ if (!empty($_POST)) {
                         }
                         fclose($s3Stream);
                         fclose($fileStream);
+                        $numFilesGot++;
                     }
                 }
             }
-
+            fuppi_add_success_message($numFilesGot . ' files downloaded from S3 bucket');
             break;
     }
 }
@@ -191,6 +204,20 @@ $allSettings = $config->getSetting();
                 </div>
                 <div class="extra content">
                     <button type="submit" name="_action" value="syncToAwsS3" class="ui button green icon left labeled"><i class="up arrow icon"></i> Sync to AWS S3</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="content">
+                    <h3 class="header">Garbage Collection</h3>
+                    <div class="description">
+                        <p>From time to time the database needs to be purged of old, stale data such as expired file sharing tokens.</p>
+                        <p>Use this feature as often as you like to make sure the database remains optimized.</p>
+                    </div>
+                </div>
+                <div class="extra content">
+                    <button type="submit" name="_action" value="garbageCollection" class="ui button green icon left labeled"><i class="database icon"></i> Clean up Database</button>
+
                 </div>
             </div>
 
