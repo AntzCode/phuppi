@@ -41,3 +41,13 @@ $statement->execute([
     'permission_name' => UserPermission::IS_ADMINISTRATOR,
     'permission_value' => json_encode(true)
 ]);
+
+
+$statement = $pdo->prepare('INSERT INTO `fuppi_settings` (`name`, `value`) VALUES (:name, :value)');
+
+foreach ($config->settings as $defaultSetting) {
+    $statement->execute([
+        'name' => $defaultSetting['name'],
+        'value' => $defaultSetting['value']
+    ]);
+}

@@ -32,19 +32,6 @@ class UploadedFile extends Model
         return parent::getOne($id);
     }
 
-    public static function deleteOne(int $id)
-    {
-        $config = \Fuppi\App::getInstance()->getConfig();
-        if ($uploadedFile = UploadedFile::getOne($id)) {
-            $fileUser = $uploadedFile->getUser();
-            if (parent::deleteOne($id)) {
-                if (file_exists($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
-                    unlink($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
-                }
-            }
-        }
-    }
-
     public static function getAllByUser(User $user)
     {
         $instance = new self();
@@ -62,6 +49,23 @@ class UploadedFile extends Model
             }
         }
         return $uploadedFiles;
+    }
+
+    public static function generateUniqueFilename(string $filename){
+
+        $db = \Fuppi\App::getInstance()->getDb();
+
+        $strippedFilename = preg_replace('/[^a-zA-Z0-9\.\-_(),]/', '', str_replace(' ', '_', $filename));
+
+        $iterations = 0;
+        do {
+            $sanitizedFilename = ($iterations < 1 ? $strippedFilename : pathinfo($strippedFilename, PATHINFO_FILENAME) . '(' . ($iterations * 1) . ').' . pathinfo($strippedFilename, PATHINFO_EXTENSION));
+            $iterations++;
+            $statement = $db->getPdo()->prepare("SELECT COUNT(*) AS `tcount` FROM `fuppi_uploaded_files` WHERE `filename` = :filename");
+        } while ($statement->execute(['filename' => $sanitizedFilename]) && $statement->fetch()['tcount'] > 0 && $iterations < 500);
+
+        return $sanitizedFilename;
+
     }
 
     public function createToken(int $lifetimeSeconds, int $voucherId = null)

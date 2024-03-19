@@ -36,11 +36,50 @@ if ($uploadedFile = UploadedFile::getOne((int) $_GET['id'] ?? 0)) {
     $canReadFiles = $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
 
     if ($isValidToken || (($isMyFile || $canReadUsers) && $canReadFiles)) {
-        header('Content-Type: ' . $uploadedFile->mimetype);
-        header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
-        fuppi_stop();
-        readfile($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
-        exit;
+
+        if ($config->getSetting('use_aws_s3')) {
+
+            $sdk = new Aws\Sdk([
+                'region' => $config->getSetting('aws_s3_region'),
+                'credentials' =>  [
+                    'key'    => $config->getSetting('aws_s3_access_key'),
+                    'secret' => $config->getSetting('aws_s3_secret')
+                ]
+            ]);
+            
+            $s3Client = $sdk->createS3();
+            
+            $s3Client->registerStreamWrapper();
+            
+            if ($stream = fopen('s3://' . $config->getSetting('aws_s3_bucket') . '/' . $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, 'r')) {
+                header('Content-Type: ' . $uploadedFile->mimetype);
+                header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
+                fuppi_stop();
+                while (!feof($stream)) {
+                    echo fread($stream, 1024);
+                    ob_flush();
+                }
+                fclose($stream);
+                exit;
+            }
+            
+            // fallback to redirect if the stream failed
+            $cmd = $s3Client->getCommand('GetObject', [
+                'Bucket' => $config->getSetting('aws_s3_bucket'),
+                'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
+            ]);
+            $request = $s3Client->createPresignedRequest($cmd, '+20 minutes');
+
+            $presignedUrl = (string)$request->getUri();
+            
+            redirect($presignedUrl);
+        } else {
+            header('Content-Type: ' . $uploadedFile->mimetype);
+            header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
+            fuppi_stop();
+            readfile($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
+            exit;
+        }
     } else {
         fuppi_add_error_message('Not authorized');
     }

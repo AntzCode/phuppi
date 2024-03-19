@@ -1,5 +1,7 @@
 <?php
 
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'aws' . DIRECTORY_SEPARATOR . 'aws-autoloader.php');
+
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Pear' . DIRECTORY_SEPARATOR . 'Date' . DIRECTORY_SEPARATOR . 'HumanDiff.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Pear' . DIRECTORY_SEPARATOR . 'Date' . DIRECTORY_SEPARATOR . 'HumanDiff' . DIRECTORY_SEPARATOR . 'Locale.php');
 

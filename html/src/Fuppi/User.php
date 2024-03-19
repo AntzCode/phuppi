@@ -75,7 +75,7 @@ class User extends Model
                 foreach ($uploadedFiles as $uploadedFile) {
                     UploadedFile::deleteOne($uploadedFile->uploaded_file_id);
                 }
-                unlink_recursive($config->uploadedFilesPath . DIRECTORY_SEPARATOR . $deletedUser->username);
+                unlink_recursive($config->uploaded_files_path . DIRECTORY_SEPARATOR . $deletedUser->username);
                 foreach ($userPermissions as $userPermission) {
                     UserPermission::deleteOne($userPermission->user_permission_id);
                 }

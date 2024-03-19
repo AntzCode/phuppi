@@ -36,8 +36,11 @@ class ApiResponse
         exit;
     }
 
-    public function sendResponse()
+    public function sendResponse($data=null)
     {
+        if(!is_null($data)){
+            $this->data = $data;
+        }
         fuppi_stop();
         echo $this->__toString();
         fuppi_end('json');

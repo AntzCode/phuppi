@@ -5,18 +5,18 @@ define('FUPPI_CLI', 1);
 
 require(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config.php');
 
-if (!file_exists($fuppiConfig['sqlite3FilePath'])) {
-    if (!file_exists(dirname($fuppiConfig['sqlite3FilePath']))) {
-        mkdir(dirname($fuppiConfig['sqlite3FilePath']), 0777, true);
+if (!file_exists($fuppiConfig['sqlite3_file_path'])) {
+    if (!file_exists(dirname($fuppiConfig['sqlite3_file_path']))) {
+        mkdir(dirname($fuppiConfig['sqlite3_file_path']), 0777, true);
         $htaccess = <<<HTACCESS
 <Files ~ "^.*">
     Deny from all
 </Files>
 HTACCESS;
-        file_put_contents(dirname($fuppiConfig['sqlite3FilePath']) . DIRECTORY_SEPARATOR . '.htaccess', $htaccess);
+        file_put_contents(dirname($fuppiConfig['sqlite3_file_path']) . DIRECTORY_SEPARATOR . '.htaccess', $htaccess);
     }
-    touch($fuppiConfig['sqlite3FilePath']);
-    chmod($fuppiConfig['sqlite3FilePath'], 0777);
+    touch($fuppiConfig['sqlite3_file_path']);
+    chmod($fuppiConfig['sqlite3_file_path'], 0777);
 }
 
 require_once(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'fuppi.php');

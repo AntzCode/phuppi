@@ -2,11 +2,13 @@
 
 namespace Fuppi;
 
+use PDO;
+
 class Config
 {
     protected array $fuppiConfig = [];
-
     protected static array $instances = [];
+    protected $settings = null;
 
     protected function __construct(array $fuppiConfig)
     {
@@ -33,4 +35,34 @@ class Config
         }
         return self::$instances[$index];
     }
+
+    public function getSetting(string $name = null)
+    {
+        if (is_null($this->settings)) {
+            $db = \Fuppi\App::getInstance()->getDb();
+            $statement = $db->getPdo()->query("SELECT * FROM `fuppi_settings`");
+            $statement->execute();
+            $this->settings = [];
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+                $this->settings[$data['name']] = $data['value'];
+            }
+        }
+        if ($name === null) {
+            return $this->settings;
+        } else {
+            return array_key_exists($name, $this->settings) ? $this->settings[$name] : null;
+        }
+    }
+
+    public function setSetting($name, $value)
+    {
+        $this->settings[$name] = $value;
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare("INSERT OR REPLACE INTO `fuppi_settings` (`name`, `value`) values (:name, :value)");
+        $statement->execute([
+            'name' => $name,
+            'value' => $value
+        ]);
+    }
+
 }
