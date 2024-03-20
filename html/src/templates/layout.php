@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fuppi</title>
+    <title>Phuppi</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="stylesheet" type="text/css" href="/assets/fomantic/dist/semantic.min.css?<?= fuppi_version() ?>">
     <script src="/assets/axios/axios.min.js?<?= fuppi_version() ?>"></script>
     <script src="/assets/jquery/jquery-3.1.1.min.js?<?= fuppi_version() ?>"></script>
