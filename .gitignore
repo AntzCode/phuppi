@@ -8,5 +8,5 @@ html/data
 # git update-index --skip-worktree html/install.php
 
 # Note: temporarily use the following command if it is necessary to commit changes to html/install.php
-# use update-index --no-skip-worktree html/install.php 
+# git update-index --no-skip-worktree html/install.php 
 

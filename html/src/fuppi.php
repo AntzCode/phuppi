@@ -26,7 +26,9 @@ if (!defined('FUPPI')) {
     define('FUPPI_DATA_PATH', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data');
 
     if (file_exists(FUPPI_PUBLIC_PATH . DIRECTORY_SEPARATOR . 'install.php')) {
-        exit('You must run the <a href="/install.php">install script</a> before you can use fuppi.');
+        $installUrl = '/install.php';
+        header('Location: '.$installUrl);
+        exit('<script type="text/javascript">window.location="' . $url . '";</script><a href="' . $url . '">Continue</a>');
     }
 
     require_once('functions.php');
