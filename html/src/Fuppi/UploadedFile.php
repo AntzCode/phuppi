@@ -51,7 +51,8 @@ class UploadedFile extends Model
         return $uploadedFiles;
     }
 
-    public static function generateUniqueFilename(string $filename){
+    public static function generateUniqueFilename(string $filename)
+    {
 
         $db = \Fuppi\App::getInstance()->getDb();
 
@@ -65,7 +66,6 @@ class UploadedFile extends Model
         } while ($statement->execute(['filename' => $sanitizedFilename]) && $statement->fetch()['tcount'] > 0 && $iterations < 500);
 
         return $sanitizedFilename;
-
     }
 
     public function createToken(int $lifetimeSeconds, int $voucherId = null)
@@ -107,5 +107,50 @@ class UploadedFile extends Model
             return strtotime($expiresAt) > time();
         }
         return false;
+    }
+
+    public function getAwsPresignedUrl(string $action, $voucherId = null, int $minLifetime = 30)
+    {
+        if (in_array($action, ['GetObject'])) {
+            $db = \Fuppi\App::getInstance()->getDb();
+            $query = 'SELECT `url` FROM `fuppi_uploaded_files_aws_auth` WHERE `action` = :action AND `uploaded_file_id` = :uploaded_file_id AND `expires_at` >= :expires_at';
+            $bindings = [
+                'action' => $action,
+                'uploaded_file_id' => $this->uploaded_file_id,
+                'expires_at' => date('Y-m-d H:i:s', time() + $minLifetime)
+            ];
+            if (is_null($voucherId)) {
+                $query .= ' AND `voucher_id` IS NULL ';
+            } else {
+                $query .= ' AND `voucher_id` = :voucher_id';
+                $bindings['voucher_id'] = $voucherId;
+            }
+            $statement = $db->getPdo()->query($query);
+            if ($statement->execute($bindings)) {
+                $data = $statement->fetch(PDO::FETCH_ASSOC);
+                if ($data) {
+                    return $data['url'];
+                }
+            }
+        }
+    }
+
+    public function setAwsPresignedUrl(string $url, string $action, int $expiresAt, $voucherId = null)
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+        $query = "INSERT INTO `fuppi_uploaded_files_aws_auth` (`uploaded_file_id`, `voucher_id`, `action`, `url`, `expires_at`) VALUES (:uploaded_file_id, :voucher_id, :action, :url, :expires_at)";
+        $bindings = [
+            'uploaded_file_id' => $this->uploaded_file_id,
+            'voucher_id' => $voucherId,
+            'action' => $action,
+            'url' => $url,
+            'expires_at' => date('Y-m-d H:i:s', $expiresAt),
+        ];
+        $statement = $db->getPdo()->prepare($query);
+        if ($statement->execute($bindings)) {
+            return true;
+        } else {
+            return false;
+        }
     }
 }

@@ -252,7 +252,7 @@ if ($voucher = $app->getVoucher()) {
             </label>
         </div>
 
-        <form disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
+        <form id="uploadFilesForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
 
             <div class="field">
                 <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
@@ -262,6 +262,11 @@ if ($voucher = $app->getVoucher()) {
                 <div class="ui container right aligned">
                     <script>
                         async function processS3Uploads() {
+
+                            if (document.getElementById('files').files.length < 1) {
+                                $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                return;
+                            }
 
                             for (let file of document.getElementById('files').files) {
 
@@ -309,13 +314,13 @@ if ($voucher = $app->getVoucher()) {
 
                         }
                     </script>
-                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon button" type="button" onclick="(this.disabled='disabled', processS3Uploads())"><i class="upload icon right"></i> Upload to S3</button>
+                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon submit button" type="button" onclick="(this.disabled='disabled', processS3Uploads())"><i class="upload icon right"></i> Upload to S3</button>
                 </div>
 
             <?php } else { ?>
 
                 <div class="ui container right aligned">
-                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon button" type="submit"><i class="upload icon right"></i> Upload</button>
+                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload</button>
                 </div>
 
             <?php } ?>

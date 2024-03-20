@@ -168,13 +168,19 @@ function base_url()
     return $protocol . $_SERVER['SERVER_NAME'];
 }
 
-/**
- * @todo: implement an event to execute garbage collection
- */
 function fuppi_gc()
 {
-    // purge expired file tokens
     $db = \Fuppi\App::getInstance()->getDb();
+
+    // purge expired file tokens
     $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_file_tokens` WHERE `expires_at` < :expires_at_floor');
-    return $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
+    $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
+
+    // purge expired aws presigned urls
+    $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_aws_auth` WHERE `expires_at` < :expires_at_floor');
+    $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
+
+    // vacuum the database file
+    $statement = $db->getPdo()->query('VACUUM');
+    $statement->execute();
 }

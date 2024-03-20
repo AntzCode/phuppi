@@ -211,8 +211,9 @@ $allSettings = $config->getSetting();
                 <div class="content">
                     <h3 class="header">Garbage Collection</h3>
                     <div class="description">
-                        <p>From time to time the database needs to be purged of old, stale data such as expired file sharing tokens.</p>
-                        <p>Use this feature as often as you like to make sure the database remains optimized.</p>
+                        <p>From time to time the database needs to be purged of old, stale data such as expired tokens.</p>
+                        <p>Do this as often as you want to keep the database optimized.</p>
+                        <p>Current database filesize: <?= human_readable_bytes(filesize($config->sqlite3_file_path)) ?></p>
                     </div>
                 </div>
                 <div class="extra content">
