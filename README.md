@@ -4,11 +4,27 @@ A "File-Uppie" thing. A quick way to upload your files to a webserver.
 
 ![Preview of Phuppi file uploader](/assets/screenshots/preview.png)
 
-# How to configure AWS bucket storage
+# Features
 
-The feature to support storing files on AWS has been added because typically PHP servers have a fairly low limit on the maximum size allowed for file uploads. This way, it allows you to upload large files even while using a standard PHP hosting plan. 
+- Works with Standard PHP Hosting Services
+- Does not Require a Database (uses Sqlite3 + Local Filesystem)
+- Support for Multiple User Accounts
+- Simple & Flexible Permissions Management
+- Generate Vouchers for Limited Access
+- Generate Temporary Links for Sharing Uploaded Files
+- Supports AWS S3 Buckets for Large File Uploads
 
-You will need to create an account with Amazon Web Services and configure the security policies as described below.
+# How to Install
+
+1. Upload the entire contents of the "html" folder into the public_html or htdocs directory of your PHP server. 
+2. Enter the username and password that you want to use for the Super Administrator account and click "Submit".
+3. Log in using the username and password you chose at step 2.
+
+# How to Configure AWS Bucket Storage
+
+The feature to support storing files on AWS has been added because PHP servers normally have a limit on the maximum size allowed for file uploads. This way, it allows you to upload large files even while using a standard PHP hosting plan. 
+
+You will need to create an account with [Amazon Web Services](https://aws.amazon.com/resources/create-account/) and configure the security policies as described below.
 
 > [!Tip]
 > AWS has a free-tier plan which means you can use a fixed amount of cloud storage for free in the first year! 
