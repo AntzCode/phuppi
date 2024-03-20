@@ -88,6 +88,14 @@ class User extends Model
         return UploadedFile::getAllByUser($this);
     }
 
+    public function getSumUploadedFilesSize(){
+        $sum = 0;
+        foreach($this->getUploadedFiles() as $uploadedFile){
+            $sum += (int) $uploadedFile->filesize;
+        }
+        return $sum;
+    }
+
     public function hasPermission(string $permissionName)
     {
         if ($voucher = \Fuppi\App::getInstance()->getVoucher()) {

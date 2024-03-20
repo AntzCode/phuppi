@@ -328,39 +328,45 @@ foreach ($allUsers as $existingUser) {
                         <h2 class="header"><?= $existingUser->username ?></h2>
 
                         <div class="description">
-                            <?php if ($user->hasPermission(UserPermission::USERS_READ)) { ?>
-                                <p><a href="/index.php?userId=<?= $existingUser->user_id ?>"><?= count($existingUser->getUploadedFiles()) ?> uploaded files</a></p>
-                            <?php } else { ?>
-                                <p><?= count($existingUser->getUploadedFiles()) ?> uploaded files</p>
-                            <?php } ?>
-                            <p>Created at <?= $existingUser->created_at ?></p>
+                            <div class="ui grid container">
+                                <div class="ten wide column">
+                                    <p>Created at <?= $existingUser->created_at ?></p>
+                                </div>
+                                <div class="six wide column right aligned">
+                                    <p>
+                                        <?= human_readable_bytes($existingUser->getSumUploadedFilesSize()) ?><br />
+                                        <?= count($existingUser->getUploadedFiles()) ?> uploaded files<br />
+                                        <?php if ($user->hasPermission(UserPermission::USERS_READ)) { ?>
+                                            <a href="/index.php?userId=<?= $existingUser->user_id ?>">view files &raquo;</a>
+                                        <?php } ?>
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="extra">
-                            <div>
-                                <?php foreach ($allUsersPermissions[$existingUser->user_id] as $permission => $has) { ?>
-                                    <?php if (!$has) continue ?>
-                                    <div class="green ui label" title="<?= $permissionTitles[$permission] ?>">
-                                        <?= $permissionTitles[$permission] ?>
-                                        <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR) && $user->user_id !== $existingUser->user_id) { ?>
-                                            <span>
-                                                <i title="Remove this Permission" class="ui right remove icon attached clickable-confirm" data-confirm="Are you sure you want to remove this permission?" data-action="(e) => {let form = document.getElementById('deleteUserPermissionForm<?= $existingUserIndex ?>'); form.permissionName.value='<?= $permission ?>'; form.submit()}"></i>
-                                            </span>
-                                        <?php } ?>
-                                    </div>
-                                <?php } ?>
-                            </div>
-                            <div>
-                                <?php foreach ($allUsersNonPermissions[$existingUser->user_id] as $nonPermission => $has) { ?>
-                                    <?php if (!$has) continue ?>
-                                    <div class="gray ui icon label" title="<?= $permissionTitles[$nonPermission] ?>">
-                                        <?= $permissionTitles[$nonPermission] ?>
-                                        <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR)) { ?>
-                                            <i title="Add this Permission" class="add icon clickable-confirm" data-confirm="Are you sure you want to add this permission?" data-action="(e) => {let form = document.getElementById('addUserPermissionForm<?= $existingUserIndex ?>'); form.permissionName.value='<?= $nonPermission ?>'; form.submit()}"></i>
-                                        <?php } ?>
-                                    </div>
-                                <?php } ?>
-                            </div>
+                        <div class="extra floated left">
+                            <?php foreach ($allUsersPermissions[$existingUser->user_id] as $permission => $has) { ?>
+                                <?php if (!$has) continue ?>
+                                <div class="green ui label" title="<?= $permissionTitles[$permission] ?>">
+                                    <?= $permissionTitles[$permission] ?>
+                                    <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR) && $user->user_id !== $existingUser->user_id) { ?>
+                                        <span>
+                                            <i title="Remove this Permission" class="ui right remove icon attached clickable-confirm" data-confirm="Are you sure you want to remove this permission?" data-action="(e) => {let form = document.getElementById('deleteUserPermissionForm<?= $existingUserIndex ?>'); form.permissionName.value='<?= $permission ?>'; form.submit()}"></i>
+                                        </span>
+                                    <?php } ?>
+                                </div>
+                            <?php } ?>
+                        </div>
+                        <div>
+                            <?php foreach ($allUsersNonPermissions[$existingUser->user_id] as $nonPermission => $has) { ?>
+                                <?php if (!$has) continue ?>
+                                <div class="gray ui icon label" title="<?= $permissionTitles[$nonPermission] ?>">
+                                    <?= $permissionTitles[$nonPermission] ?>
+                                    <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR)) { ?>
+                                        <i title="Add this Permission" class="add icon clickable-confirm" data-confirm="Are you sure you want to add this permission?" data-action="(e) => {let form = document.getElementById('addUserPermissionForm<?= $existingUserIndex ?>'); form.permissionName.value='<?= $nonPermission ?>'; form.submit()}"></i>
+                                    <?php } ?>
+                                </div>
+                            <?php } ?>
                         </div>
 
                     </div>
