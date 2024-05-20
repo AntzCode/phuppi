@@ -61,9 +61,10 @@ foreach ($migrations as $k => $migration) {
         unset($migrations[$k]);
     }
 }
+
 $migrations = array_values($migrations);
 
-echo 'There are ' . count($migrations) . ' migrations to process:' . PHP_EOL;
+echo 'There are ' . count($migrations) . ' migrations to process..' . PHP_EOL;
 
 foreach ($migrations as $migration) {
     echo '--' . PHP_EOL;

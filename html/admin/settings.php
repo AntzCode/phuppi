@@ -27,11 +27,11 @@ if (!empty($_POST)) {
             break;
 
         case 'applyMigrations':
-            $username = $_POST['username'];
-            $password = $_POST['password'];
+            $username = $_POST['migrationUsername'];
+            $password = $_POST['migrationPassword'];
 
-            if ($authenticatingUser = User::findByUsername($_POST['username'] ?? '')) {
-                if (!empty("{$authenticatingUser->password}") && password_verify($_POST['password'], $authenticatingUser->password)) {
+            if ($authenticatingUser = User::findByUsername($username ?? '')) {
+                if (!empty("{$authenticatingUser->password}") && password_verify($password, $authenticatingUser->password)) {
                     if (!$authenticatingUser->hasPermission(UserPermission::IS_ADMINISTRATOR)) {
                         fuppi_add_error_message('User is not permitted to perform Migrations');
                         sleep(5);
@@ -46,6 +46,31 @@ if (!empty($_POST)) {
                             </div>
                         <?php
                         exit;
+                    }
+                } else {
+                    fuppi_add_error_message('Invalid password');
+                    sleep(5);
+                    // redirect();
+                }
+            } else {
+                fuppi_add_error_message('Invalid Username');
+                sleep(5);
+            }
+            break;
+
+        case 'accessDatabase':
+            $username = $_POST['dbUsername'];
+            $password = $_POST['dbPassword'];
+
+            if ($authenticatingUser = User::findByUsername($username ?? '')) {
+                if (!empty("{$authenticatingUser->password}") && password_verify($password, $authenticatingUser->password)) {
+                    if (!$authenticatingUser->hasPermission(UserPermission::IS_ADMINISTRATOR)) {
+                        fuppi_add_error_message('User is not permitted to access the database');
+                        sleep(5);
+                        // redirect();
+                    } else {
+                        // redirect to the database
+                        redirect('/' . $config->phpliteadmin_folder_name . '/phpliteadmin.php');
                     }
                 } else {
                     fuppi_add_error_message('Invalid password');
@@ -252,19 +277,19 @@ $allSettings = $config->getSetting();
 
             <div class="card">
                 <div class="content">
-                    <h3 class="header">Migrations</h3>
+                    <h3 class="header">Software Updates</h3>
                     <div class="description">
-                        <p>Apply the latest migrations</p>
-                        <div class="field <?php echo(!empty($errors['username'] ?? []) ? 'error' : ''); ?>">
-                            <label for="username">Username: </label>
-                            <input id="username" type="text" name="username"
-                                value="<?php echo $_POST['username'] ?? ''; ?>" />
+                        <p>Apply the latest software updates</p>
+                        <div class="field <?php echo(!empty($errors['migrationUsername'] ?? []) ? 'error' : ''); ?>">
+                            <label for="migrationUsername">Username: </label>
+                            <input id="migrationUsername" type="text" name="migrationUsername"
+                                value="<?php echo $_POST['migrationUsername'] ?? ''; ?>" />
                         </div>
 
-                        <div class="field <?php echo(!empty($errors['password'] ?? []) ? 'error' : ''); ?>">
-                            <label for="password">Password: </label>
-                            <input id="password" type="password" name="password"
-                                value="<?php echo $_POST['password'] ?? ''; ?>" />
+                        <div class="field <?php echo(!empty($errors['migrationPassword'] ?? []) ? 'error' : ''); ?>">
+                            <label for="migrationPassword">Password: </label>
+                            <input id="migrationPassword" type="password" name="migrationPassword"
+                                value="<?php echo $_POST['migrationPassword'] ?? ''; ?>" />
                         </div>
                     </div>
 
@@ -272,6 +297,31 @@ $allSettings = $config->getSetting();
                 <div class="extra content">
                     <button type="submit" name="_action" value="applyMigrations"
                         class="ui button green icon left labeled"><i class="cog icon"></i> Process Migrations</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="content">
+                    <h3 class="header">Access Database</h3>
+                    <div class="description">
+                        <p>Read/Write/Import/Export the SQLite3 database directly</p>
+                        <div class="field <?php echo(!empty($errors['dbUsername'] ?? []) ? 'error' : ''); ?>">
+                            <label for="dbUsername">Username: </label>
+                            <input id="dbUsername" type="text" name="dbUsername" 
+                                value="<?php echo $_POST['dbUsername'] ?? ''; ?>" />
+                        </div>
+
+                        <div class="field <?php echo(!empty($errors['dbPassword'] ?? []) ? 'error' : ''); ?>">
+                            <label for="dbPassword">Password: </label>
+                            <input id="dbPassword" type="dbPassword" name="dbPassword" 
+                                value="<?php echo $_POST['dbPassword'] ?? ''; ?>" />
+                        </div>
+                    </div>
+
+                </div>
+                <div class="extra content">
+                    <button type="submit" name="_action" value="accessDatabase"
+                        class="ui button green icon left labeled"><i class="database icon"></i> Access Database</button>
                 </div>
             </div>
 
