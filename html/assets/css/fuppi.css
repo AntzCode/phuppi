@@ -49,3 +49,7 @@ body>footer.page-footer {
     -webkit-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
     -moz-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
 }
+
+.ui.cards>.card>.content>form>.description {
+    color: rgba(0, 0, 0, .68);
+}

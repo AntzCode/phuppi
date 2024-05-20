@@ -36,6 +36,12 @@ class Config
         return self::$instances[$index];
     }
 
+    public function getDefaultSettings()
+    {
+        require(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'config.php');
+        return $fuppiConfig['settings'];
+    }
+
     public function getSetting(string $name = null)
     {
         if (is_null($this->settings)) {
@@ -64,5 +70,4 @@ class Config
             'value' => $value
         ]);
     }
-
 }

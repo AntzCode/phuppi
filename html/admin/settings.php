@@ -182,146 +182,158 @@ $allSettings = $config->getSetting();
 
 <div class="ui segment">
 
-    <h2 class="header"><i class="cog icon"></i> Settings</h2>
+    <h2 class="ui header"><i class="cog icon"></i> Settings</h2>
 
     <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
         <input type="hidden" name="_action" value="saveSettings" />
 
-        <?php foreach ($config->settings as $defaultSetting) { ?>
+        <div class="ui three cards">
 
-            <?php if ($defaultSetting['type'] === 'boolean') { ?>
+            <?php foreach ($config->getDefaultSettings() as $defaultSetting) { ?>
 
-                <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                    <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
-                    <select id="<?= $defaultSetting['name'] . 'Field' ?>" name="<?= $defaultSetting['name'] ?>">
-                        <option value="0" <?= $config->getSetting($defaultSetting['name']) > 0 ? '' : 'selected="selected"' ?>>No</option>
-                        <option value="1" <?= $config->getSetting($defaultSetting['name']) > 0 ? 'selected="selected"' : '' ?>>Yes</option>
-                    </select>
-                </div>
+                <div class="card"><div class="content">
+
+                    <?php if ($defaultSetting['type'] === 'boolean') { ?>
+
+                        <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <select id="<?= $defaultSetting['name'] . 'Field' ?>" name="<?= $defaultSetting['name'] ?>">
+                                <option value="0" <?= $config->getSetting($defaultSetting['name']) > 0 ? '' : 'selected="selected"' ?>>No</option>
+                                <option value="1" <?= $config->getSetting($defaultSetting['name']) > 0 ? 'selected="selected"' : '' ?>>Yes</option>
+                            </select>
+                        </div>
+
+                    <?php } ?>
+
+                    <?php if ($defaultSetting['type'] === 'string') { ?>
+
+                        <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="text" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
+                        </div>
+
+                    <?php } ?>
+
+                    <?php if ($defaultSetting['type'] === 'password') { ?>
+
+                        <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="password" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
+                        </div>
+
+                    <?php } ?>
+
+                </div></div>
 
             <?php } ?>
 
-            <?php if ($defaultSetting['type'] === 'string') { ?>
+        </div>
 
-                <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                    <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
-                    <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="text" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
-                </div>
-
-            <?php } ?>
-
-            <?php if ($defaultSetting['type'] === 'password') { ?>
-
-                <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                    <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
-                    <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="password" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
-                </div>
-
-            <?php } ?>
-
-        <?php } ?>
-
-        <button class="ui right labeled icon green button" type="submit"><i class="check icon left"></i> Save Settings</button>
-
+        <div class="ui segment center aligned">
+            <button class="ui right labeled icon green button" type="submit"><i class="check icon left"></i> Save Settings</button>
+        </div>
     </form>
 </div>
 
 <div class="ui segment">
 
-    <h2 class="header"><i class="oil can icon"></i> Maintenance</h2>
+    <h2 class="ui header"><i class="oil can icon"></i> Maintenance</h2>
 
-    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+        <div class="ui three stackable cards">
 
-        <div class="ui cards">
-
-            <div class="card">
-                <div class="content">
-                    <h3 class="header">Sync down from the cloud</h3>
-                    <class="description">
-                        <div>
+            <div class="card raised">
+               <div class="content">
+                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                        <h3 class="header center aligned">Sync down from the cloud</h3>
+                        <div class="description ui vertical segment">
                             <p>Files that have been uploaded to AWS will be downloaded to the server (consumes server space).</p>
                             <p>Use this feature if you have been using AWS S3 for storage but you want to copy the files onto the server.</p>
                         </div>
-                </div>
-                <div class="extra content">
-                    <button type="submit" name="_action" value="syncFromAwsS3" class="ui button green icon left labeled"><i class="down arrow icon"></i> Sync from AWS S3</button>
+                        <div class="ui vertical segment center aligned">
+                            <button type="submit" name="_action" value="syncFromAwsS3" class="ui button green icon left labeled"><i class="down arrow icon"></i> Sync from AWS S3</button>
+                        </div>
+                    </form>
+                </div> 
+            </div>
+
+            <div class="card raised">
+                <div class="content">
+                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                        <h3 class="header center aligned">Sync up to the cloud</h3>
+                        <div class="description ui vertical segment">
+                            <p>Files that have been saved onto the server will be uploaded to AWS S3 (may incur costs AWS service fees).</p>
+                            <p>Use this feature if you have been using the server for uploading files but now you want to begin hosting the files on AWS S3.</p>
+                        </div>
+                        <div class="ui vertical segment center aligned">
+                            <button type="submit" name="_action" value="syncToAwsS3" class="ui button green icon left labeled"><i class="up arrow icon"></i> Sync to AWS S3</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card raised">
                 <div class="content">
-                    <h3 class="header">Sync up to the cloud</h3>
-                    <div class="description">
-                        <p>Files that have been saved onto the server will be uploaded to AWS S3 (may incur costs AWS service fees).</p>
-                        <p>Use this feature if you have been using the server for uploading files but now you want to begin hosting the files on AWS S3.</p>
-                    </div>
-                </div>
-                <div class="extra content">
-                    <button type="submit" name="_action" value="syncToAwsS3" class="ui button green icon left labeled"><i class="up arrow icon"></i> Sync to AWS S3</button>
+                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                        <h3 class="header center aligned">Garbage Collection</h3>
+                        <div class="description ui vertical segment">
+                            <p>From time to time the database needs to be purged of old, stale data such as expired tokens.</p>
+                            <p>Do this as often as you want to keep the database optimized.</p>
+                            <p>Current database filesize: <?= human_readable_bytes(filesize($config->sqlite3_file_path)) ?></p>
+                        </div>
+                        <div class="ui vertical segment center aligned">
+                            <button type="submit" name="_action" value="garbageCollection" class="ui button green icon left labeled"><i class="database icon"></i> Clean up Database</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card raised">
                 <div class="content">
-                    <h3 class="header">Garbage Collection</h3>
-                    <div class="description">
-                        <p>From time to time the database needs to be purged of old, stale data such as expired tokens.</p>
-                        <p>Do this as often as you want to keep the database optimized.</p>
-                        <p>Current database filesize: <?= human_readable_bytes(filesize($config->sqlite3_file_path)) ?></p>
-                    </div>
-                </div>
-                <div class="extra content">
-                    <button type="submit" name="_action" value="garbageCollection" class="ui button green icon left labeled"><i class="database icon"></i> Clean up Database</button>
+                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                        <h3 class="header center aligned">Software Updates</h3>
+                        <div class="description ui vertical segment">
+                            <p>Apply the latest software updates</p>
+                            <div class="field <?php echo(!empty($errors['migrationUsername'] ?? []) ? 'error' : ''); ?>">
+                                <label for="migrationUsername">Username: </label>
+                                <input id="migrationUsername" type="text" name="migrationUsername"
+                                    value="<?php echo $_POST['migrationUsername'] ?? ''; ?>" />
+                            </div>
+                            <div class="field <?php echo(!empty($errors['migrationPassword'] ?? []) ? 'error' : ''); ?>">
+                                <label for="migrationPassword">Password: </label>
+                                <input id="migrationPassword" type="password" name="migrationPassword"
+                                    value="<?php echo $_POST['migrationPassword'] ?? ''; ?>" />
+                            </div>
+                        </div>
+                        <div class="ui vertical segment center aligned">
+                            <button type="submit" name="_action" value="applyMigrations"
+                                class="ui button green icon left labeled"><i class="cog icon"></i> Process Migrations</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card raised">
                 <div class="content">
-                    <h3 class="header">Software Updates</h3>
-                    <div class="description">
-                        <p>Apply the latest software updates</p>
-                        <div class="field <?php echo(!empty($errors['migrationUsername'] ?? []) ? 'error' : ''); ?>">
-                            <label for="migrationUsername">Username: </label>
-                            <input id="migrationUsername" type="text" name="migrationUsername"
-                                value="<?php echo $_POST['migrationUsername'] ?? ''; ?>" />
+                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                        <h3 class="header center aligned">Access Database</h3>
+                        <div class="description ui vertical segment">
+                            <p>Read/Write/Import/Export the SQLite3 database directly</p>
+                            <div class="field <?php echo(!empty($errors['dbUsername'] ?? []) ? 'error' : ''); ?>">
+                                <label for="dbUsername">Username: </label>
+                                <input id="dbUsername" type="text" name="dbUsername" 
+                                    value="<?php echo $_POST['dbUsername'] ?? ''; ?>" />
+                            </div>
+                            <div class="field <?php echo(!empty($errors['dbPassword'] ?? []) ? 'error' : ''); ?>">
+                                <label for="dbPassword">Password: </label>
+                                <input id="dbPassword" type="password" name="dbPassword" 
+                                    value="<?php echo $_POST['dbPassword'] ?? ''; ?>" />
+                            </div>
                         </div>
-
-                        <div class="field <?php echo(!empty($errors['migrationPassword'] ?? []) ? 'error' : ''); ?>">
-                            <label for="migrationPassword">Password: </label>
-                            <input id="migrationPassword" type="password" name="migrationPassword"
-                                value="<?php echo $_POST['migrationPassword'] ?? ''; ?>" />
+                        <div class="ui vertical segment center aligned">
+                            <button type="submit" name="_action" value="accessDatabase"
+                                class="ui button green icon left labeled"><i class="database icon"></i> Access Database</button>
                         </div>
-                    </div>
-
-                </div>
-                <div class="extra content">
-                    <button type="submit" name="_action" value="applyMigrations"
-                        class="ui button green icon left labeled"><i class="cog icon"></i> Process Migrations</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="content">
-                    <h3 class="header">Access Database</h3>
-                    <div class="description">
-                        <p>Read/Write/Import/Export the SQLite3 database directly</p>
-                        <div class="field <?php echo(!empty($errors['dbUsername'] ?? []) ? 'error' : ''); ?>">
-                            <label for="dbUsername">Username: </label>
-                            <input id="dbUsername" type="text" name="dbUsername" 
-                                value="<?php echo $_POST['dbUsername'] ?? ''; ?>" />
-                        </div>
-
-                        <div class="field <?php echo(!empty($errors['dbPassword'] ?? []) ? 'error' : ''); ?>">
-                            <label for="dbPassword">Password: </label>
-                            <input id="dbPassword" type="password" name="dbPassword" 
-                                value="<?php echo $_POST['dbPassword'] ?? ''; ?>" />
-                        </div>
-                    </div>
-
-                </div>
-                <div class="extra content">
-                    <button type="submit" name="_action" value="accessDatabase"
-                        class="ui button green icon left labeled"><i class="database icon"></i> Access Database</button>
+                    </form>
                 </div>
             </div>
 
