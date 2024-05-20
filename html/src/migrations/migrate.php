@@ -1,7 +1,12 @@
 <?php
 
-define('FUPPI', 1);
-define('FUPPI_CLI', 1);
+if (!defined('FUPPI')) {
+    define('FUPPI', 1);
+}
+
+if (!defined('FUPPI_CLI')) {
+    define('FUPPI_CLI', 1);
+}
 
 require(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config.php');
 
@@ -49,33 +54,29 @@ if (is_null($lastMigrationDate)) {
     echo 'All tables created successfully' . PHP_EOL;
 }
 
-$migrationDates = [];
+$migrations = list_migrations();
 
-foreach (scandir(__DIR__, SCANDIR_SORT_ASCENDING) as $filename) {
-    if (!preg_match('/^([0-9]{4,4}\-[0-9]{2,2}\-[0-9]{2,2})(_[0-9])?$/', $filename)) {
-        continue;
-    }
-    if ($migrationDate = strtotime(substr($filename, 0, 10))) {
-
-        if (!array_key_exists($filename, $existingMigrations)) {
-            $migrationDates[] = $filename;
-        } else {
-            echo '.. ' . $filename . ' was imported at ' . $existingMigrations[$filename] . PHP_EOL;
-        }
+foreach ($migrations as $k => $migration) {
+    if (array_key_exists($migration, $existingMigrations)) {
+        unset($migrations[$k]);
     }
 }
+$migrations = array_values($migrations);
 
-ksort($migrationDates);
-$migrations = array_values($migrationDates);
-
-echo 'There are ' . count($migrations) . ' migrations to process..' . PHP_EOL;
+echo 'There are ' . count($migrations) . ' migrations to process:' . PHP_EOL;
 
 foreach ($migrations as $migration) {
     echo '--' . PHP_EOL;
     echo 'Processing migration ' . $migration . PHP_EOL;
-    include(__DIR__ . DIRECTORY_SEPARATOR . $migration . DIRECTORY_SEPARATOR . 'migration.php');
-    $statement = $pdo->prepare("INSERT INTO `fuppi_migrations` (`filename`) VALUES (:filename)");
-    $statement->execute(['filename' => $migration]);
+    try {
+        include(__DIR__ . DIRECTORY_SEPARATOR . $migration . DIRECTORY_SEPARATOR . 'migration.php');
+        $statement = $pdo->prepare("INSERT INTO `fuppi_migrations` (`filename`) VALUES (:filename)");
+        $statement->execute(['filename' => $migration]);
+    } catch(Exception $error) {
+        echo '  --> Migration Failed! ... cannot proceed, please review the error messages:' . PHP_EOL;
+        echo $error->getMessage() . PHP_EOL;
+        break;
+    }
 }
 
 echo 'Finished processing all migrations' . PHP_EOL;

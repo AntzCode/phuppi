@@ -1,8 +1,8 @@
 <?php
 
 use Fuppi\UploadedFile;
+use Fuppi\User;
 use Fuppi\UserPermission;
-
 
 require('../fuppi.php');
 
@@ -13,9 +13,7 @@ if (!$user->hasPermission(UserPermission::IS_ADMINISTRATOR)) {
 }
 
 if (!empty($_POST)) {
-
     switch ($_POST['_action']) {
-
         case 'saveSettings':
             foreach ($config->settings as $defaultSetting) {
                 $config->setSetting($defaultSetting['name'], $_POST[$defaultSetting['name']]);
@@ -26,6 +24,38 @@ if (!empty($_POST)) {
         case 'garbageCollection':
             fuppi_gc();
             fuppi_add_success_message('Clean-up complete!');
+            break;
+
+        case 'applyMigrations':
+            $username = $_POST['username'];
+            $password = $_POST['password'];
+
+            if ($authenticatingUser = User::findByUsername($_POST['username'] ?? '')) {
+                if (!empty("{$authenticatingUser->password}") && password_verify($_POST['password'], $authenticatingUser->password)) {
+                    if (!$authenticatingUser->hasPermission(UserPermission::IS_ADMINISTRATOR)) {
+                        fuppi_add_error_message('User is not permitted to perform Migrations');
+                        sleep(5);
+                        // redirect();
+                    } else {
+                        // process the migrations
+                        ?>
+                            <div class="ui segment">
+                                <h2>Processing Migrations</h2>
+                                <pre class="border-solid-thin"><?php require_once(FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'migrations' . DIRECTORY_SEPARATOR . 'migrate.php'); ?></pre>
+                                <p><a class="ui left icon button primary large" href="<?= $_SERVER['REQUEST_URI'] ?>"><i class="check icon"></i> Continue</a></p>
+                            </div>
+                        <?php
+                        exit;
+                    }
+                } else {
+                    fuppi_add_error_message('Invalid password');
+                    sleep(5);
+                    // redirect();
+                }
+            } else {
+                fuppi_add_error_message('Invalid Username');
+                sleep(5);
+            }
             break;
 
         case 'syncToAwsS3':
@@ -80,7 +110,6 @@ if (!empty($_POST)) {
             $s3Client->registerStreamWrapper();
 
             foreach (UploadedFile::getAll() as $uploadedFile) {
-
                 try {
                     $meta = $s3Client->headObject([
                         'Bucket' => $config->getSetting('aws_s3_bucket'),
@@ -218,7 +247,31 @@ $allSettings = $config->getSetting();
                 </div>
                 <div class="extra content">
                     <button type="submit" name="_action" value="garbageCollection" class="ui button green icon left labeled"><i class="database icon"></i> Clean up Database</button>
+                </div>
+            </div>
 
+            <div class="card">
+                <div class="content">
+                    <h3 class="header">Migrations</h3>
+                    <div class="description">
+                        <p>Apply the latest migrations</p>
+                        <div class="field <?php echo(!empty($errors['username'] ?? []) ? 'error' : ''); ?>">
+                            <label for="username">Username: </label>
+                            <input id="username" type="text" name="username"
+                                value="<?php echo $_POST['username'] ?? ''; ?>" />
+                        </div>
+
+                        <div class="field <?php echo(!empty($errors['password'] ?? []) ? 'error' : ''); ?>">
+                            <label for="password">Password: </label>
+                            <input id="password" type="password" name="password"
+                                value="<?php echo $_POST['password'] ?? ''; ?>" />
+                        </div>
+                    </div>
+
+                </div>
+                <div class="extra content">
+                    <button type="submit" name="_action" value="applyMigrations"
+                        class="ui button green icon left labeled"><i class="cog icon"></i> Process Migrations</button>
                 </div>
             </div>
 

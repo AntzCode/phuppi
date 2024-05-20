@@ -11,10 +11,12 @@ if (!empty($_POST)) {
 
     require($sourceDir . DIRECTORY_SEPARATOR . 'migrations' . DIRECTORY_SEPARATOR . 'migrate.php');
     rename(__DIR__ . DIRECTORY_SEPARATOR . 'install.php', $sourceDir . DIRECTORY_SEPARATOR . 'install.php');
-    ob_get_contents();
+    $output = ob_get_contents();
     ob_end_clean();
     require($sourceDir . DIRECTORY_SEPARATOR . 'fuppi.php');
-    logout();
+    echo '<pre>';
+    echo $output;
+    echo '</pre>';
     redirect('/');
 }
 

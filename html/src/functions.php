@@ -25,7 +25,7 @@ function fuppi_end($template = 'layout')
 /**
  * fuppi_stop()
  * stops fuppi (enables an exit without rendering the output buffer & templates)
- *   - note: it also discards any output in the buffer, so grab that first if you still want to show it
+ *   - note: it also discards any output in the buffer, so grab that first if you still want to show it.
  */
 function fuppi_stop()
 {
@@ -139,6 +139,29 @@ function unlink_recursive($pathname)
 function fuppi_version()
 {
     return \Fuppi\App::getInstance()->getConfig()->fuppi_version;
+}
+
+/**
+ * Returns an array of available migrations. Migration folder names must follow the pattern YYYY-MM-DD_{$priorityAscending}.
+ * @param array $existingMigrations : array of migrations to exclude (eg: any already executed)
+ */
+function list_migrations()
+{
+    $migrations = [];
+
+    $installationDirectoryPath = FUPPI_APP_PATH . DIRECTORY_SEPARATOR . 'migrations';
+
+    foreach (scandir($installationDirectoryPath, SCANDIR_SORT_ASCENDING) as $filename) {
+        if (!preg_match('/^([0-9]{4,4}\-[0-9]{2,2}\-[0-9]{2,2})_?([0-9])*$/', $filename)) {
+            // does not match the expected pattern: YYYY-MM-DD_{$priorityAscending}
+            continue;
+        }
+        if ($migrationDate = strtotime(substr($filename, 0, 10))) {
+            $migrations[] = $filename;
+        }
+    }
+
+    return $migrations;
 }
 
 function logout()
