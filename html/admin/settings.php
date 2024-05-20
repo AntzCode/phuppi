@@ -27,8 +27,8 @@ if (!empty($_POST)) {
             break;
 
         case 'applyMigrations':
-            $username = $_POST['migrationUsername'];
-            $password = $_POST['migrationPassword'];
+            $username = $_POST['username'];
+            $password = $_POST['password'];
 
             if ($authenticatingUser = User::findByUsername($username ?? '')) {
                 if (!empty("{$authenticatingUser->password}") && password_verify($password, $authenticatingUser->password)) {
@@ -59,8 +59,8 @@ if (!empty($_POST)) {
             break;
 
         case 'accessDatabase':
-            $username = $_POST['dbUsername'];
-            $password = $_POST['dbPassword'];
+            $username = $_POST['username'];
+            $password = $_POST['password'];
 
             if ($authenticatingUser = User::findByUsername($username ?? '')) {
                 if (!empty("{$authenticatingUser->password}") && password_verify($password, $authenticatingUser->password)) {
@@ -230,7 +230,7 @@ $allSettings = $config->getSetting();
         </div>
 
         <div class="ui segment center aligned">
-            <button class="ui right labeled icon green button" type="submit"><i class="check icon left"></i> Save Settings</button>
+            <button class="ui right labeled icon primary button" type="submit"><i class="check icon left"></i> Save Settings</button>
         </div>
     </form>
 </div>
@@ -293,15 +293,15 @@ $allSettings = $config->getSetting();
                         <h3 class="header center aligned">Software Updates</h3>
                         <div class="description ui vertical segment">
                             <p>Apply the latest software updates</p>
-                            <div class="field <?php echo(!empty($errors['migrationUsername'] ?? []) ? 'error' : ''); ?>">
+                            <div class="field <?php echo(!empty($errors['username'] ?? []) ? 'error' : ''); ?>">
                                 <label for="migrationUsername">Username: </label>
-                                <input id="migrationUsername" type="text" name="migrationUsername"
-                                    value="<?php echo $_POST['migrationUsername'] ?? ''; ?>" />
+                                <input id="migrationUsername" type="text" name="username"
+                                    value="<?php echo $_POST['username'] ?? ''; ?>" />
                             </div>
-                            <div class="field <?php echo(!empty($errors['migrationPassword'] ?? []) ? 'error' : ''); ?>">
+                            <div class="field <?php echo(!empty($errors['password'] ?? []) ? 'error' : ''); ?>">
                                 <label for="migrationPassword">Password: </label>
-                                <input id="migrationPassword" type="password" name="migrationPassword"
-                                    value="<?php echo $_POST['migrationPassword'] ?? ''; ?>" />
+                                <input id="migrationPassword" type="password" name="password"
+                                    value="<?php echo $_POST['password'] ?? ''; ?>" />
                             </div>
                         </div>
                         <div class="ui vertical segment center aligned">
@@ -318,15 +318,15 @@ $allSettings = $config->getSetting();
                         <h3 class="header center aligned">Access Database</h3>
                         <div class="description ui vertical segment">
                             <p>Read/Write/Import/Export the SQLite3 database directly</p>
-                            <div class="field <?php echo(!empty($errors['dbUsername'] ?? []) ? 'error' : ''); ?>">
+                            <div class="field <?php echo(!empty($errors['username'] ?? []) ? 'error' : ''); ?>">
                                 <label for="dbUsername">Username: </label>
-                                <input id="dbUsername" type="text" name="dbUsername" 
-                                    value="<?php echo $_POST['dbUsername'] ?? ''; ?>" />
+                                <input id="dbUsername" type="text" name="username" 
+                                    value="<?php echo $_POST['username'] ?? ''; ?>" />
                             </div>
-                            <div class="field <?php echo(!empty($errors['dbPassword'] ?? []) ? 'error' : ''); ?>">
+                            <div class="field <?php echo(!empty($errors['password'] ?? []) ? 'error' : ''); ?>">
                                 <label for="dbPassword">Password: </label>
-                                <input id="dbPassword" type="password" name="dbPassword" 
-                                    value="<?php echo $_POST['dbPassword'] ?? ''; ?>" />
+                                <input id="dbPassword" type="password" name="password" 
+                                    value="<?php echo $_POST['password'] ?? ''; ?>" />
                             </div>
                         </div>
                         <div class="ui vertical segment center aligned">

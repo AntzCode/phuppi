@@ -36,13 +36,9 @@ if (!empty($_GET['noteId'])) {
 
 
 if (!empty($_POST)) {
-
     switch ($_POST['_method'] ?? 'post') {
-
         case 'post':
             switch ($_POST['_action'] ?? '') {
-
-
                 case 'createSharableLink':
                     $apiResponse = new ApiResponse();
                     $validFor = (int) $_POST['validFor'];
@@ -120,40 +116,51 @@ $existingNotes = $user->getNotes();
 
 <?php if ($user->hasPermission(UserPermission::NOTES_PUT)) { ?>
 
-    <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
+    <form id="createNoteForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+                
+        <input type="hidden" name="_action" value="create" />
 
-        <div class="ui top attached label">
-            <i class="pencil icon"></i>
-            <label for="files">Add a new Note</label>
+        <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
+
+            <h3 class="header">
+                <i class="pencil icon"></i> 
+                <label for="filename">Add a new Note</label>
+            </h3>
+
+            <div class="ui vertical segment">
+                <!-- <div class="field <?= (!empty($errors['filename'] ?? []) ? 'error' : '') ?>">
+                    <label for="filename">Filename: </label>
+                    <input id="filename" type="text" name="filename" 
+                    value="<?php $x = $_POST['filename'] ?? $editingNote->filename ?? '';
+    echo $x; ?>" 
+                    placeholder="Note Created at <?= date('d M Y'); ?>" />
+                </div> -->
+
+                <div class="field">
+                    <textarea name="notes"><?= $_POST['notes'] ?? $editingNote->content ?? '' ?></textarea>
+                </div>
+            </div>
+
+            <div class="ui vertical segment">
+                <div class="ui container center aligned">
+                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit"><i class="pencil icon right"></i> <?= $editingNote ? 'Save' : 'Create' ?> Note</button>
+                </div>
+            </div>
+
         </div>
 
-        <form id="createNoteForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
-            <input type="hidden" name="_action" value="create" />
-
-            <div class="field <?= (!empty($errors['filename'] ?? []) ? 'error' : '') ?>">
-                <label for="filename">Filename: </label>
-                <input id="filename" type="text" name="filename" value="<?= $_POST['filename'] ?? $editingNote?->filename ?? '' ?>" placeholder="<?= 'Note Created at ' . date('d M Y') ?>" />
-            </div>
-
-            <div class="field">
-                <textarea name="notes"><?= $_POST['notes'] ?? $editingNote?->content ?? '' ?></textarea>
-            </div>
-
-            <div class="ui container right aligned">
-                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon submit button" type="submit"><i class="pencil icon right"></i> <?= $editingNote ? 'Save' : 'Create' ?> Note</button>
-            </div>
-
-        </form>
-
-    </div>
+    </form>
 
 <?php } ?>
 
 <?php if ($user->hasPermission(UserPermission::NOTES_LIST)) { ?>
 
-    <h2 class="title"><i class="pencil icon"></i> Your Existing Notes</h2></h2>
-
     <div class="ui segment">
+
+        <h3 class="header">
+            <i class="pencil icon"></i> 
+            <label for="filename"> Your Existing Notes</label>
+        </h3>
 
         <?php if (empty($existingNotes)) { ?>
 
@@ -163,129 +170,95 @@ $existingNotes = $user->getNotes();
 
         <?php } else { ?>
 
-            <div class="ui divided items">
+            <div class="ui three stackable cards">
 
                 <?php foreach ($existingNotes as $existingNoteIndex => $existingNote) { ?>
 
-                    <div class="ui item " style="position: relative">
+                    <?php if (_can_read_note($existingNote)) {  ?>
 
-                        <?php if ($user->hasPermission(UserPermission::NOTES_DELETE)) { ?>
-                            <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this note?" data-action="(e) => document.getElementById('deleteNoteForm<?= $existingNoteIndex ?>').submit()">
-                                <i class="trash icon"></i> Delete
-                            </button>
-                        <?php } ?>
+                        <div class="ui modal share<?= $existingNoteIndex ?>">
 
-                        <?php if (_can_read_note($existingNote)) {  ?>
+                            <i class="close icon"></i>
 
-                            <div class="ui modal preview<?= $existingNoteIndex ?>">
+                            <h3 class="header">
+                                <i class="share icon"></i> 
+                                <label>Share Note</label>
+                            </h3>
 
-                                <i class="close icon"></i>
+                            <div class="content ui items">
 
-                                <div class="header">
-                                    Image Preview
-                                </div>
+                                <div class="item">
 
-                                <div class="image content">
-                                    <img class="ui centered massive image" src="file.php?id=<?= $existingNote->note_id ?>&icon">
-                                </div>
-                                <div class="actions">
-                                    <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $existingNoteIndex ?>').modal('show')">
-                                        Share
-                                        <i class="share icon"></i>
-                                    </div>
-                                </div>
+                                    <div class="content">
 
-                            </div>
+                                        <h4 class="header">
+                                            <label><?= $existingNote->filename ?></label>
+                                        </h4>
 
-                            <div class="ui modal share<?= $existingNoteIndex ?>">
-
-                                <i class="close icon"></i>
-
-                                <div class="header">
-                                    Share Note
-                                </div>
-
-                                <div class="content ui items">
-
-                                    <div class="item">
-
-                                        <div class="image">
-                                            <?php if (
-                                                in_array($existingNote->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
-                                                && _can_read_note($existingNote)
-                                            ) { ?>
-                                                <img class="tiny rounded image" src="file.php?id=<?= $existingNote->note_id ?>&icon" />
-                                            <?php } else if (empty("{$existingNote->extension}")) { ?>
-                                                <img src="/assets/images/filetype-icons/unknown.png" />
-                                            <?php } else { ?>
-                                                <img src="/assets/images/filetype-icons/<?= $existingNote->extension ?>.png" />
-                                            <?php } ?>
+                                        <div class="meta">
+                                            <?= _get_meta_content($existingNote) ?>
                                         </div>
 
-                                        <div class="content">
+                                        <div class="ui segment description">
 
-                                            <div class="header">
-                                                <?= $existingNote->filename ?>
-                                            </div>
+                                            <select name="valid_for" id="validForDropdown<?= $existingNoteIndex ?>" style="display: none">
+                                                <?php foreach ($config->token_valid_for_options as $value => $title) {
+                                                    echo '<option value="' . $value . '"' . (intval($_POST['valid_for'] ?? 0) === $value ? 'selected="selected"' : '') . '>' . $title . '</option>';
+                                                } ?>
+                                            </select>
 
-                                            <div class="meta">
-                                                <?= _get_meta_content($existingNote) ?>
-                                            </div>
+                                            <div class="ui labeled ticked slider attached" id="sharableLinkSlider<?= $existingNoteIndex ?>"></div>
+                                            
+                                            <script>
+                                                $('#sharableLinkSlider<?= $existingNoteIndex ?>')
+                                                    .slider({
+                                                        min: 0,
+                                                        max: <?= count($config->token_valid_for_options) - 1 ?>,
+                                                        start: <?= (array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[0], array_keys($config->token_valid_for_options))) ?>,
+                                                        autoAdjustLabels: true,
+                                                        fireOnInit: true,
+                                                        onChange: (v) => {
+                                                            document.getElementById('validForDropdown<?= $existingNoteIndex ?>').selectedIndex = v;
+                                                            let formData = new FormData();
+                                                            formData.append('_action', 'createSharableLink');
+                                                            formData.append('noteId', <?= $existingNote->note_id ?>);
+                                                            formData.append('validFor', document.getElementById('validForDropdown<?= $existingNoteIndex ?>').options[document.getElementById('validForDropdown<?= $existingNoteIndex ?>').selectedIndex].value);
+                                                            axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                                                                // $('#sharableLink<?= $existingNoteIndex ?>').text(response.data.url);
+                                                                $('#sharableLink<?= $existingNoteIndex ?>').val(response.data.url);
+                                                                $('#sharableLinkCopyButton<?= $existingNoteIndex ?>').data('content', response.data.url);
+                                                                $('#expiresAt<?= $existingNoteIndex ?>').text(response.data.expiresAt);
+                                                            }).catch((error) => {
+                                                                if (error.response && error.response.data && error.response.data.message) {
+                                                                    alert(error.response.data.message);
+                                                                } else {
+                                                                    console.log(error);
+                                                                }
+                                                            });
+                                                        },
+                                                        interpretLabel: function(value) {
+                                                            let _labels = JSON.parse('<?= json_encode(array_values($config->token_valid_for_options)) ?>');
+                                                            return _labels[value];
+                                                        }
+                                                    });
+                                            </script>
 
-                                            <div class="description">
+                                        </div>
 
-                                                <select name="valid_for" id="validForDropdown<?= $existingNoteIndex ?>" style="display: none">
-                                                    <?php foreach ($config->token_valid_for_options as $value => $title) {
-                                                        echo '<option value="' . $value . '"' . (intval($_POST['valid_for'] ?? 0) === $value ? 'selected="selected"' : '') . '>' . $title . '</option>';
-                                                    } ?>
-                                                </select>
+                                        <div class="extra content">
+                                            <form class="ui form segment">
+                                                <div class="field">
+                                                    <input type="text" id="sharableLink<?= $existingNoteIndex ?>" />
+                                                
+                                                    <div class="ui up pointing primary label icon">
+                                                        <div class="ui round primary icon button copy-to-clipboard" id="sharableLinkCopyButton<?= $existingNoteIndex ?>" data-content="" title="Copy to clipboard">
+                                                            <i class="clickable copy icon"></i> Copy Link
+                                                        </div>
+                                                    </div>
 
-                                                <div class="ui labeled ticked slider attached" id="sharableLinkSlider<?= $existingNoteIndex ?>"></div>
-
-                                                <script>
-                                                    $('#sharableLinkSlider<?= $existingNoteIndex ?>')
-                                                        .slider({
-                                                            min: 0,
-                                                            max: <?= count($config->token_valid_for_options) - 1 ?>,
-                                                            start: <?= (array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[0], array_keys($config->token_valid_for_options))) ?>,
-                                                            autoAdjustLabels: true,
-                                                            fireOnInit: true,
-                                                            onChange: (v) => {
-                                                                document.getElementById('validForDropdown<?= $existingNoteIndex ?>').selectedIndex = v;
-                                                                let formData = new FormData();
-                                                                formData.append('_action', 'createSharableLink');
-                                                                formData.append('noteId', <?= $existingNote->note_id ?>);
-                                                                formData.append('validFor', document.getElementById('validForDropdown<?= $existingNoteIndex ?>').options[document.getElementById('validForDropdown<?= $existingNoteIndex ?>').selectedIndex].value);
-                                                                axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
-                                                                    $('#sharableLink<?= $existingNoteIndex ?>').text(response.data.url);
-                                                                    $('#sharableLinkCopyButton<?= $existingNoteIndex ?>').data('content', response.data.url);
-                                                                    $('#expiresAt<?= $existingNoteIndex ?>').text(response.data.expiresAt);
-                                                                }).catch((error) => {
-                                                                    if (error.response && error.response.data && error.response.data.message) {
-                                                                        alert(error.response.data.message);
-                                                                    } else {
-                                                                        console.log(error);
-                                                                    }
-                                                                });
-                                                            },
-                                                            interpretLabel: function(value) {
-                                                                let _labels = JSON.parse('<?= json_encode(array_values($config->token_valid_for_options)) ?>');
-                                                                return _labels[value];
-                                                            }
-                                                        });
-                                                </script>
-
-                                            </div>
-
-                                            <div class="extra">
-                                                <div>
-                                                    <p class="ui label"><span id="sharableLink<?= $existingNoteIndex ?>"></span> <i id="sharableLinkCopyButton<?= $existingNoteIndex ?>" class="clickable copy icon copy-to-clipboard" data-content="" title="Copy to clipboard"></i></p>
+                                                    <span class="ui large text">Expires at: <span id="expiresAt<?= $existingNoteIndex ?>"></span></span>
                                                 </div>
-                                                <div>
-                                                    <p class="">Expires at: <span class="ui label" id="expiresAt<?= $existingNoteIndex ?>"></span>
-                                                </div>
-
-                                            </div>
+                                            </form>
 
                                         </div>
 
@@ -294,55 +267,57 @@ $existingNotes = $user->getNotes();
                                 </div>
 
                             </div>
-
-                        <?php } ?>
-
-                        <div class="content">
-
-                            <span class="header"><?= _get_firstline_content($existingNote) ?></span>
-
-                            <div class="meta">
-                                <?= _get_meta_content($existingNote) ?>
-                            </div>
-
-                            <?php if (_can_read_note($existingNote)) { ?>
-                                <div class="extra">
-                                    <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $existingNoteIndex ?>').modal('show')">
-                                        Share
-                                        <i class="share icon"></i>
-                                    </div>
-
-                                    <?php if (_can_write_note($existingNote)) { ?>
-                                        <div class="ui primary right labeled icon button clickable" onclick="window.location = '/notes.php?noteId=<?= $existingNote->note_id ?>'">
-                                            Edit
-                                            <i class="edit icon"></i>
-                                        </div>
-                                    <?php } ?>
-
-
-                                </div>
-                            <?php } ?>
 
                         </div>
 
-                        <div class="right ui grid middle aligned">
+                    <?php } // end if (_can_read_note($existingNote)) {?>
 
-                            <div class="one wide column">
+                    <div class="ui card" style="position: relative">
+
+                        <div class="ui header attached"><?= _get_firstline_content($existingNote) ?></div>
+
+                        <div class="ui content attached">
+                            <div class="meta">
+                                <?= _get_meta_content($existingNote) ?>
+                            </div>
+                        </div>
+
+                        <div class="extra content">
+
+                            <?php if (_can_read_note($existingNote)) { ?>
+                                <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $existingNoteIndex ?>').modal('show')">
+                                    Share
+                                    <i class="share icon"></i>
+                                </div>
+                            <?php } ?>
+                            
+                            <?php if (_can_write_note($existingNote)) { ?>
+                                <div class="ui primary right labeled icon button clickable" onclick="window.location = '/notes.php?noteId=<?= $existingNote->note_id ?>'">
+                                    Edit
+                                    <i class="edit icon"></i>
+                                </div>
+                            <?php } ?>
+
+                            <?php if (_can_delete_note($existingNote)) { ?>
+            
+                                <div class="ui red right rounded icon button clickable-confirm" data-confirm="Are you sure you want to delete this note?" data-action="(e) => document.getElementById('deleteNoteForm<?= $existingNoteIndex ?>').submit()">
+                                    <i class="trash icon"></i>
+                                </div>
 
                                 <form id="deleteNoteForm<?= $existingNoteIndex ?>" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>">
                                     <input name="_method" type="hidden" value="delete" />
                                     <input type="hidden" name="noteId" value="<?= $existingNote->note_id ?>" />
                                 </form>
 
-                            </div>
+                            <?php } ?>
 
                         </div>
 
-                    </div>
+                    </div> <!-- .card -->
 
-                <?php } ?>
+                <?php } // end foreach ($existingNotes as $existingNoteIndex => $existingNote) {?>
 
-            </div>
+            </div><!-- .three.stackable.cards -->
 
         <?php } ?>
 
@@ -356,7 +331,7 @@ function _get_firstline_content(Note $note)
 {
     $firstLine = '';
     $words = explode(' ', $note->content);
-    while (strlen($firstLine) < 50 && count($words) > 0) {
+    while (strlen($firstLine) < 40 && count($words) > 0) {
         $firstLine .= ' ' . array_shift($words);
     }
     if (count($words) > 0) {
@@ -368,15 +343,15 @@ function _get_firstline_content(Note $note)
 function _get_meta_content(Note $note)
 {
     ob_start();
-?>
-    <p><?= htmlentities($note->content) ?></p>
+    ?>
+    <p><?= htmlentities(substr($note->content, 0, 380)) ?></p>
     <p><small>Created at <?= $note->created_at ?></small></p>
     <?php if ($note->updated_at) { ?>
         <p><small>Updated at <?= $note->updated_at ?></small></p>
     <?php } ?>
 
 <?php
-    $meta = ob_get_contents();
+        $meta = ob_get_contents();
     ob_end_clean();
     return $meta;
 }
@@ -444,7 +419,7 @@ function _can_delete_note(Note $note)
             return $user->hasPermission(UserPermission::NOTES_DELETE);
         }
     }
-    
+
     // not permitted by default
     return false;
 }

@@ -227,44 +227,40 @@ foreach ($allUsers as $existingUser) {
     </div>
 </div>
 
-<h2 class="header"><i class="user icon"></i> User Management</h2>
-
 <?php if ($user->hasPermission(UserPermission::USERS_PUT)) { ?>
     <div class="ui segment">
 
-        <div class="ui top attached label"><i class="user icon"></i> <label for="username">Create a New User</label></div>
+        <h2 class="ui header"><i class="user icon"></i> Create a New User</h2>
 
         <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
 
             <input type="hidden" name="_action" value="createUser" />
 
-            <div class="field <?= (!empty($errors['username'] ?? []) ? 'error' : '') ?>">
-                <label for="username">Username: </label>
-                <input id="username" type="text" name="username" value="<?= $_POST['username'] ?? '' ?>" />
-            </div>
+                <div class="field <?= (!empty($errors['username'] ?? []) ? 'error' : '') ?>">
+                    <label for="username">Username: </label>
+                    <input id="username" type="text" name="username" value="<?= $_POST['username'] ?? '' ?>" />
+                </div>
+                <div class="field <?= (!empty($errors['password'] ?? []) ? 'error' : '') ?>">
+                    <label for="password">Password: </label>
+                    <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
+                </div>
+                <div class="field <?= (!empty($errors['permissions'] ?? []) ? 'error' : '') ?>">
+                    <label for="permissions">Permissions: </label>
+                    <select class="ui fluid dropdown" id="permissions" name="permissions[]" multiple="">
+                        <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR)) { ?>
+                            <option <?= (in_array('IS_ADMINISTRATOR', $selectedPermissions) ? 'selected="selected"' : '') ?> value="IS_ADMINISTRATOR">Administrator</option>
+                        <?php } ?>
+                        <option <?= (in_array('USERS_WRITE_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="USERS_WRITE_READ">Read & Write Users</option>
+                        <option <?= (in_array('USERS_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="USERS_READ">Read-Only Users</option>
+                        <option <?= (in_array('UPLOADEDFILES_PUT', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_PUT">Upload Files</option>
+                        <option <?= (in_array('UPLOADEDFILES_LIST', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_LIST">List Files</option>
+                        <option <?= (in_array('UPLOADEDFILES_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_READ">Download Files</option>
+                        <option <?= (in_array('UPLOADEDFILES_DELETE', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_DELETE">Delete Files</option>
+                    </select>
+                </div>
 
-            <div class="field <?= (!empty($errors['password'] ?? []) ? 'error' : '') ?>">
-                <label for="password">Password: </label>
-                <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
-            </div>
-
-            <div class="field <?= (!empty($errors['permissions'] ?? []) ? 'error' : '') ?>">
-                <label for="permissions">Permissions: </label>
-                <select class="ui fluid dropdown" id="permissions" name="permissions[]" multiple="">
-                    <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR)) { ?>
-                        <option <?= (in_array('IS_ADMINISTRATOR', $selectedPermissions) ? 'selected="selected"' : '') ?> value="IS_ADMINISTRATOR">Administrator</option>
-                    <?php } ?>
-                    <option <?= (in_array('USERS_WRITE_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="USERS_WRITE_READ">Read & Write Users</option>
-                    <option <?= (in_array('USERS_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="USERS_READ">Read-Only Users</option>
-                    <option <?= (in_array('UPLOADEDFILES_PUT', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_PUT">Upload Files</option>
-                    <option <?= (in_array('UPLOADEDFILES_LIST', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_LIST">List Files</option>
-                    <option <?= (in_array('UPLOADEDFILES_READ', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_READ">Download Files</option>
-                    <option <?= (in_array('UPLOADEDFILES_DELETE', $selectedPermissions) ? 'selected="selected"' : '') ?> value="UPLOADEDFILES_DELETE">Delete Files</option>
-                </select>
-            </div>
-
-            <div class="ui container right aligned">
-                <button class="ui green right labeled icon button" type="submit"><i class="plus icon left"></i> Create</button>
+            <div class="ui segment center aligned">
+                <button class="ui primary right labeled icon button" type="submit"><i class="plus icon left"></i> Create</button>
             </div>
 
         </form>

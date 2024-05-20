@@ -26,9 +26,7 @@ if (!empty($_GET['userId'])) {
 }
 
 if (!empty($_POST)) {
-
     switch ($_POST['_method'] ?? 'post') {
-
         case 'delete':
             if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) {
                 $fileId = $_POST['fileId'] ?? 0;
@@ -60,7 +58,6 @@ if (!empty($_POST)) {
         case 'post':
 
             switch ($_POST['_action'] ?? '') {
-
                 case 'createSharableLink':
                     $apiResponse = new ApiResponse();
                     $validFor = (int) $_POST['validFor'];
@@ -174,9 +171,7 @@ if (!empty($_POST)) {
 }
 
 if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
-
     foreach ($_FILES['files']['name'] as $k => $filename) {
-
         try {
             switch ($_FILES['files']['error'][$k]) {
                 case UPLOAD_ERR_OK:
@@ -241,93 +236,102 @@ if ($voucher = $app->getVoucher()) {
 
 <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_PUT)) { ?>
 
-    <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
+    <form id="uploadFilesForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
 
-        <div class="ui top attached label">
-            <i class="upload icon"></i>
-            <label for="files">Upload Files
-                <?php if ($config->getSetting('use_aws_s3') < 1) { ?>
-                    (max <?= ini_get('post_max_size') ?>)
-                <?php } ?>
-            </label>
-        </div>
+        <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
 
-        <form id="uploadFilesForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
+            <h3 class="header">
+                <i class="upload icon"></i> 
+                <label for="files">Upload Some Files
+                    <?php if ($config->getSetting('use_aws_s3') < 1) { ?>
+                        (max <?= ini_get('post_max_size') ?>)
+                    <?php } ?>
+                </label>
+            </h3>
 
-            <div class="field">
-                <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+            <div class="ui one cards">
+                <div class="card">
+                    <div class="content">
+                        <div class="field">
+                            <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+                        </div>
+                    </div>
+                    <div class="extra content">
+
+                        <?php if ($config->getSetting('use_aws_s3') > 0) { ?>
+                            <div class="ui container center aligned">
+                                <script>
+                                    async function processS3Uploads() {
+
+                                        if (document.getElementById('files').files.length < 1) {
+                                            $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                            return;
+                                        }
+
+                                        for (let file of document.getElementById('files').files) {
+
+                                            let formData = new FormData();
+                                            formData.append('_action', 'getS3UploadPresignedURL');
+                                            formData.append('filename', file.name);
+                                            formData.append('filetype', file.type);
+                                            formData.append('filesize', file.size);
+
+                                            await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+
+                                                const data = {
+                                                    ...response.data.formInputs,
+                                                    'Content-Type': file.type
+                                                };
+
+                                                let s3FormData = new FormData();
+                                                for (const name in data) {
+                                                    s3FormData.append(name, data[name]);
+                                                }
+                                                s3FormData.append('file', file);
+
+                                                await axios.post(response.data.formAttributes.action, s3FormData).then((response) => {
+                                                    formData.set('_action', 'saveS3UploadedFile');
+                                                    axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+                                                        let lastFilename;
+                                                        for (let _file of document.getElementById('files').files) {
+                                                            lastFilename = _file.name;
+                                                        }
+                                                        if (lastFilename === file.name) {
+                                                            window.location = window.location;
+                                                        } else {
+                                                            console.log('waiting for to finish after ' + file.name + ', lastfilename: ' + lastFilename);
+                                                        }
+                                                    });
+                                                }).catch((error) => {
+                                                    console.log(error);
+                                                });
+
+                                            }).catch((error) => {
+                                                console.log(error);
+                                            });
+
+                                        }
+
+                                    }
+                                </script>
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="button" onclick="(this.disabled='disabled', processS3Uploads())"><i class="upload icon right"></i> Upload to S3</button>
+                            </div>
+
+                        <?php } else { ?>
+
+                            <div class="ui container center aligned">
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload</button>
+                            </div>
+
+                        <?php } ?>
+
+                    </div>
+                </div>
             </div>
 
-            <?php if ($config->getSetting('use_aws_s3') > 0) { ?>
-                <div class="ui container right aligned">
-                    <script>
-                        async function processS3Uploads() {
+        </div>
 
-                            if (document.getElementById('files').files.length < 1) {
-                                $('#uploadFilesForm .submit.button').prop('disabled', false);
-                                return;
-                            }
-
-                            for (let file of document.getElementById('files').files) {
-
-                                let formData = new FormData();
-                                formData.append('_action', 'getS3UploadPresignedURL');
-                                formData.append('filename', file.name);
-                                formData.append('filetype', file.type);
-                                formData.append('filesize', file.size);
-
-                                await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
-
-                                    const data = {
-                                        ...response.data.formInputs,
-                                        'Content-Type': file.type
-                                    };
-
-                                    let s3FormData = new FormData();
-                                    for (const name in data) {
-                                        s3FormData.append(name, data[name]);
-                                    }
-                                    s3FormData.append('file', file);
-
-                                    await axios.post(response.data.formAttributes.action, s3FormData).then((response) => {
-                                        formData.set('_action', 'saveS3UploadedFile');
-                                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
-                                            let lastFilename;
-                                            for (let _file of document.getElementById('files').files) {
-                                                lastFilename = _file.name;
-                                            }
-                                            if (lastFilename === file.name) {
-                                                window.location = window.location;
-                                            } else {
-                                                console.log('waiting for to finish after ' + file.name + ', lastfilename: ' + lastFilename);
-                                            }
-                                        });
-                                    }).catch((error) => {
-                                        console.log(error);
-                                    });
-
-                                }).catch((error) => {
-                                    console.log(error);
-                                });
-
-                            }
-
-                        }
-                    </script>
-                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon submit button" type="button" onclick="(this.disabled='disabled', processS3Uploads())"><i class="upload icon right"></i> Upload to S3</button>
-                </div>
-
-            <?php } else { ?>
-
-                <div class="ui container right aligned">
-                    <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui green right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload</button>
-                </div>
-
-            <?php } ?>
-
-        </form>
-
-    </div>
+    </form>
 
 <?php } ?>
 
@@ -335,9 +339,11 @@ if ($voucher = $app->getVoucher()) {
 
     <div class="ui segment">
 
-        <div class="ui top attached label">
-            <i class="upload icon"></i> Your Uploaded Files</h2>
-        </div>
+
+        <h3 class="header">
+            <i class="list icon"></i> 
+            <label> Your Uploaded Files (<?= count($uploadedFiles) ?>)</label>
+        </h3>
 
         <?php if (empty($uploadedFiles)) { ?>
 
@@ -351,7 +357,7 @@ if ($voucher = $app->getVoucher()) {
 
                 <?php foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) { ?>
 
-                    <div class="ui item " style="position: relative">
+                    <div class="ui item" style="position: relative">
 
                         <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) { ?>
                             <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
@@ -389,9 +395,10 @@ if ($voucher = $app->getVoucher()) {
 
                                 <i class="close icon"></i>
 
-                                <div class="header">
-                                    Share File
-                                </div>
+                                <h3 class="header">
+                                    <i class="share icon"></i> 
+                                    <label>Share File</label>
+                                </h3>
 
                                 <div class="content ui items">
 
@@ -412,15 +419,15 @@ if ($voucher = $app->getVoucher()) {
 
                                         <div class="content">
 
-                                            <div class="header">
-                                                <?= $uploadedFile->filename ?>
-                                            </div>
+                                            <h4 class="header">
+                                                <label><?= $uploadedFile->filename ?></label>
+                                            </h4>
 
                                             <div class="meta">
                                                 <?= _get_meta_content($uploadedFile) ?>
                                             </div>
 
-                                            <div class="description">
+                                            <div class="ui segment description">
 
                                                 <select name="valid_for" id="validForDropdown<?= $uploadedFileIndex ?>" style="display: none">
                                                     <?php foreach ($config->token_valid_for_options as $value => $title) {
@@ -446,6 +453,7 @@ if ($voucher = $app->getVoucher()) {
                                                                 formData.append('validFor', document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').options[document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex].value);
                                                                 axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
                                                                     $('#sharableLink<?= $uploadedFileIndex ?>').text(response.data.url);
+                                                                    $('#sharableLink<?= $uploadedFileIndex ?>').val(response.data.url);
                                                                     $('#sharableLinkCopyButton<?= $uploadedFileIndex ?>').data('content', response.data.url);
                                                                     $('#expiresAt<?= $uploadedFileIndex ?>').text(response.data.expiresAt);
                                                                 }).catch((error) => {
@@ -465,12 +473,21 @@ if ($voucher = $app->getVoucher()) {
 
                                             </div>
 
-                                            <div class="extra">
-                                                <div>
-                                                    <p class="ui label"><span id="sharableLink<?= $uploadedFileIndex ?>"></span> <i id="sharableLinkCopyButton<?= $uploadedFileIndex ?>" class="clickable copy icon copy-to-clipboard" data-content="" title="Copy to clipboard"></i></p>
-                                                </div>
-                                                <div>
-                                                    <p class="">Expires at: <span class="ui label" id="expiresAt<?= $uploadedFileIndex ?>"></span>
+                                            <div class="extra content">
+                                                <div class="ui form segment">
+
+                                                    <div class="field">
+                                                        <input type="text" id="sharableLink<?= $uploadedFileIndex ?>" />
+                                                    
+                                                        <div class="ui up pointing primary label icon">
+                                                            <div class="ui round primary icon button copy-to-clipboard" id="sharableLinkCopyButton<?= $uploadedFileIndex ?>" data-content="" title="Copy to clipboard">
+                                                                <i class="clickable copy icon"></i> Copy Link
+                                                            </div>
+                                                        </div>
+
+                                                        <span class="ui large text">Expires at: <span id="expiresAt<?= $uploadedFileIndex ?>"></span></span>
+                                                    </div>
+
                                                 </div>
 
                                             </div>
@@ -517,7 +534,7 @@ if ($voucher = $app->getVoucher()) {
                             </div>
 
                             <?php if (_can_read_file($uploadedFile)) { ?>
-                                <div class="extra">
+                                <div class="ui extra">
                                     <button class="ui labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>"><i class="download icon"></i> Download</button>
                                     <div class="ui positive right labeled icon button clickable" onclick="$('.share<?= $uploadedFileIndex ?>').modal('show')">
                                         Share
@@ -558,7 +575,7 @@ if ($voucher = $app->getVoucher()) {
 function _get_meta_content(UploadedFile $uploadedFile)
 {
     ob_start();
-?>
+    ?>
     <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
     <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
     <?php if ($uploadedFile->voucher_id > 0) { ?>
