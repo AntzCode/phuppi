@@ -26,6 +26,11 @@ class User extends Model
         'notes' => ''
     ];
 
+    public static function getUsername(int $userId, $default = "")
+    {
+        return self::getOne($userId)?->username ?? $default;
+    }
+
     public function canUpload(): bool
     {
         return $this->user_id > 0;
@@ -83,14 +88,20 @@ class User extends Model
         }
     }
 
+    public function getNotes()
+    {
+        return Note::getAllByUser($this);
+    }
+
     public function getUploadedFiles()
     {
         return UploadedFile::getAllByUser($this);
     }
 
-    public function getSumUploadedFilesSize(){
+    public function getSumUploadedFilesSize()
+    {
         $sum = 0;
-        foreach($this->getUploadedFiles() as $uploadedFile){
+        foreach ($this->getUploadedFiles() as $uploadedFile) {
             $sum += (int) $uploadedFile->filesize;
         }
         return $sum;

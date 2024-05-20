@@ -34,6 +34,11 @@ class Voucher extends Model
         'notes' => ''
     ];
 
+    public static function getVoucherCode(int $voucherId, $default = '')
+    {
+        return self::getOne($voucherId)?->voucher_code ?? $default;
+    }
+
     public static function getOne(int $id): self
     {
         return parent::getOne($id);

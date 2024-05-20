@@ -313,7 +313,7 @@ $allSettings = $config->getSetting();
 
                         <div class="field <?php echo(!empty($errors['dbPassword'] ?? []) ? 'error' : ''); ?>">
                             <label for="dbPassword">Password: </label>
-                            <input id="dbPassword" type="dbPassword" name="dbPassword" 
+                            <input id="dbPassword" type="password" name="dbPassword" 
                                 value="<?php echo $_POST['dbPassword'] ?? ''; ?>" />
                         </div>
                     </div>

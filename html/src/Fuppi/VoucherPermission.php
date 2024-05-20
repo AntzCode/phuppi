@@ -17,6 +17,11 @@ class VoucherPermission extends Model
     const USERS_DELETE = 'USERS_DELETE';
     const USERS_LIST = 'USERS_LIST';
     const USERS_READ = 'USERS_READ';
+    const NOTES_PUT = 'NOTES_PUT';
+    const NOTES_DELETE = 'NOTES_DELETE';
+    const NOTES_LIST = 'NOTES_LIST';
+    const NOTES_LIST_ALL = 'NOTES_LIST_ALL';
+    const NOTES_READ = 'NOTES_READ';
 
     protected string $_tablename = 'fuppi_voucher_permissions';
     protected string $_primaryKeyColumnName = 'voucher_permission_id';

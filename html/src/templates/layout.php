@@ -20,14 +20,20 @@
             <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg" width="280" height="122" />
         </div>
         <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
+            <?php if ($user->hasPermission(\Fuppi\VoucherPermission::NOTES_LIST)) { ?>
+                <a class="item ui button primary" href="/notes.php"><i class="flag icon"></i> Notes</a>
+            <?php } ?>
+            <?php if ($user->hasPermission(\Fuppi\VoucherPermission::NOTES_LIST)) { ?>
+                <a class="item ui button primary" href="/index.php"><i class="file icon"></i> Files</a>
+            <?php } ?>
+            <?php if ($user->hasPermission(\Fuppi\UserPermission::USERS_PUT)) { ?>
+                <a class="item ui button primary" href="/admin/vouchers.php"><i class="ticket icon"></i> Vouchers</a>
+            <?php } ?>
             <?php if ($user->hasPermission(\Fuppi\UserPermission::IS_ADMINISTRATOR)) { ?>
                 <a class="item ui button" href="/admin/settings.php"><i class="cog icon"></i> Settings</a>
             <?php } ?>
-            <?php if ($user->hasPermission(\Fuppi\UserPermission::USERS_PUT)) { ?>
-                <a class="item ui button" href="/admin/vouchers.php"><i class="ticket icon"></i> Voucher Management</a>
-            <?php } ?>
             <?php if ($user->hasPermission(\Fuppi\UserPermission::USERS_LIST)) { ?>
-                <a class="item ui button" href="/admin/users.php"><i class="user icon"></i> User Management</a>
+                <a class="item ui button" href="/admin/users.php"><i class="user icon"></i> Users</a>
             <?php } ?>
             <?php if ($user->user_id) { ?>
                 <a class="item ui button" href="/logout.php"><i class="icon user"></i>Log Out</a>
