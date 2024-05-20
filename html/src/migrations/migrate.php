@@ -26,7 +26,7 @@ HTACCESS;
 
 require_once(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'fuppi.php');
 
-$installDirectory = __DIR__ . DIRECTORY_SEPARATOR . 'install';
+$dbSchemaDirectory = __DIR__ . DIRECTORY_SEPARATOR . 'databaseSchema';
 
 $existingMigrations = [];
 $lastMigrationDate = null;
@@ -34,6 +34,9 @@ $lastMigrationDate = null;
 $pdo = $app->getDb()->getPdo();
 
 try {
+
+    $statement = $pdo->query("UPDATE `fuppi_migrations` SET `filename` = '2024-03-20_01' WHERE `filename` = 'install'");
+
     $statement = $pdo->query("SELECT `filename`, `date` FROM `fuppi_migrations` ORDER BY `date` DESC");
 
     foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $migrationRecord) {
@@ -47,17 +50,24 @@ try {
 if (is_null($lastMigrationDate)) {
     echo 'Database contains no tables, I will run the install script...' . PHP_EOL;
 
-    include($installDirectory . DIRECTORY_SEPARATOR . 'install.php');
+    include(__DIR__ . DIRECTORY_SEPARATOR . '2024-03-20_01' . DIRECTORY_SEPARATOR . 'migration.php');
 
-    $pdo->query("INSERT INTO `fuppi_migrations` (`filename`) VALUES ('install')");
+    $pdo->query("INSERT INTO `fuppi_migrations` (`filename`) VALUES ('2024-03-20_01')");
 
     echo 'All tables created successfully' . PHP_EOL;
+
+    $lastMigrationDate = '2024-03-20 00:00:00';
 }
 
 $migrations = list_migrations();
 
 foreach ($migrations as $k => $migration) {
     if (array_key_exists($migration, $existingMigrations)) {
+        // ignore migrations that have been explicitly imported
+        unset($migrations[$k]);
+    }
+    if (strtotime(substr($migration, 0, 10)) <= strtotime(substr($lastMigrationDate, 0, 10))) {
+        // ignore migrations that have been created before the last migration date
         unset($migrations[$k]);
     }
 }

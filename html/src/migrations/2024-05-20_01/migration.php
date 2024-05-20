@@ -20,4 +20,4 @@ if (is_null($password)) {
     unset($password);
 }
 
-require_once __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'install' . DIRECTORY_SEPARATOR . 'phpLiteAdmin.php';
+require(__DIR__ . DIRECTORY_SEPARATOR . 'phpLiteAdmin.php');

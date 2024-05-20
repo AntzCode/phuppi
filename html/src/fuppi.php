@@ -29,7 +29,7 @@ if (!defined('FUPPI')) {
     if (file_exists(FUPPI_PUBLIC_PATH . DIRECTORY_SEPARATOR . 'install.php')) {
         $installUrl = '/install.php';
         header('Location: '.$installUrl);
-        exit('<script type="text/javascript">window.location="' . $url . '";</script><a href="' . $url . '">Continue</a>');
+        exit('<script type="text/javascript">window.location="' . $installUrl . '";</script><a href="' . $url . '">Continue</a>');
     }
 
     require_once('functions.php');
