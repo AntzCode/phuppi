@@ -34,9 +34,11 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN a2enmod rewrite
 
-RUN apt-get update && apt-get install unzip
+RUN apt-get update && apt-get install zip unzip
 RUN curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
 RUN php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+RUN apt-get install -y libzip-dev \
+     && docker-php-ext-install zip
 
 COPY ./phpinfo/* /var/www/html/
 

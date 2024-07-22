@@ -50,7 +50,7 @@ You will need to create an account with [Amazon Web Services](https://aws.amazon
 > [!Tip]
 > AWS has a free-tier plan which means you can use a fixed amount of cloud storage for free in the first year! 
 
-1. Create a new IAM policy:
+1. In the [Amazon Web Services Console](https://console.aws.amazon.com), create a new IAM policy:
 
 ```
 {
@@ -65,7 +65,10 @@ You will need to create an account with [Amazon Web Services](https://aws.amazon
                 "s3:PutObject"
             ],
             "Effect": "Allow",
-            "Resource": "arn:aws:s3:::bucketname"
+            "Resource": [
+                "arn:aws:s3:::bucketname",
+                "arn:aws:s3:::bucketname/*"
+            ]
         }
     ]
 }
@@ -111,11 +114,15 @@ You will need to create an account with [Amazon Web Services](https://aws.amazon
                 "AWS": "arn:aws:iam::iam_userid:user/iam_username"
             },
             "Action": [
+                "s3:ListBucket",
                 "s3:DeleteObject",
                 "s3:PutObject",
                 "s3:GetObject"
             ],
-            "Resource": "arn:aws:s3:::bucketname/*"
+            "Resource": [
+                "arn:aws:s3:::bucketname",
+                "arn:aws:s3:::bucketname/*"
+            ]
         }
     ]
 }
@@ -127,3 +134,16 @@ You will need to create an account with [Amazon Web Services](https://aws.amazon
 
 ![Screenshot of S3 Settings](/assets/screenshots/aws-s3-settings.png)
 
+# How to Configure AWS Lambda for Multiple File Downloads
+
+![Screenshot of Multiple Files Downloader](/assets/screenshots/v1.0.7/multipe-file-download-selector-cropped.png)
+
+1. In the [Amazon Web Services Console](https://console.aws.amazon.com), create a new IAM role (Services > IAM > Roles > Create Role). The "Trusted Entity Type" shall be "AWS Service" and "Use Case" shall be "Lambda".
+2. Add the "AmazonS3FullAccess" selection under "Permissions Policy" and in the "Permissions Boundary" settings, search for the S3 IAM policy that you created when you configured AWS Bucket Storage (step #1 above). [Example Screenshot (IAM Role)](./assets/screenshots/v1.0.7/aws-lambda-role-policy.png).
+3. In the [Amazon Web Services Console](https://console.aws.amazon.com), create a new Lambda Function (Services > Lambda > Create Function > Author from Scratch). Give it a descriptive name (eg: Phuppi_s3CreateZipArchive) and choose Node.js 20.x runtime and x86_64 architecture.
+4. Under "Change default execution role", select "Use an existing role" and search for the role you created at steps #1 and #2. Leave other settings as default.
+5. In the newly-created Lambda Function, go to the "configuration" tab and select "General Configuration" so that you can set the timeout and memory limit to their maximum values. [Example Screenshot](./assets//screenshots/v1.0.7/aws-lambda-function-configuration.png).
+6. Under the "Code" tab, select "Upload From > .zip file" and browse to the location of the [Lambda Function source code](./Lambda/zipMultiple/Lambda_Function_s3CreateZipArchive.zip).
+7. Copy the Lambda Function's ARN into the "Resources" list of the IAM User Permissions (Services > IAM > Users > (username) > Permissions > Edit) and add the action "lambda:InvokeFunction". [Example Screenshot (IAM User Permission)](./assets/screenshots/v1.0.7/aws-user-permission-policy.png).
+7. In your Phuppi installation settings page, save the name of the function you created at step #3 under the setting "aws_lambda_multiple_zip_function_name".
+![Screenshot of Lambda Settings](/assets/screenshots/v1.0.7/settings-lambda-zip-multiple.png)

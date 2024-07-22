@@ -168,6 +168,10 @@ if (!empty($_POST)) {
 
 $allSettings = $config->getSetting();
 
+if (!class_exists('ZipArchive')) {
+    fuppi_add_error_message('ZipArchive is not available on this server, so you will not be able to download multiple files unless you configure AWS S3.');
+}
+
 ?>
 
 <div class="ui segment">

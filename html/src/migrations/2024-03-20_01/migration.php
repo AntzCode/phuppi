@@ -15,6 +15,7 @@ $tablenames = [
     // 'notes.sql',
     // 'note_tokens.sql',
     'settings.sql',
+    'temporary_files.sql',
     'uploaded_files.sql',
     'uploaded_files_aws_auth.sql',
     'uploaded_file_tokens.sql',

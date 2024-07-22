@@ -4,6 +4,8 @@ html/src/install.php
 # do not allow any data into the repository
 html/data
 
+Lambda/zipMultiple/node_modules
+
 # Prevent accidentally committing the delete of html/install.php  
 # git update-index --skip-worktree html/install.php
 

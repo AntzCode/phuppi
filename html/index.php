@@ -353,6 +353,23 @@ if ($voucher = $app->getVoucher()) {
 
         <?php } else { ?>
 
+            <?php if (_can_multiple_select()) { ?>
+
+                <div class="ui checkbox" style="display: flex; gap: 3em">
+                    <input type="checkbox" value="" class="multiple-select-all" />
+                    <label>Select/Deselect All</label>
+                    <select class="ui dropdown" name="multiple-select-action">
+                        <option value="">
+                            -- With selected:
+                        </option>
+                        <option value="download">
+                            Download
+                        </option>
+                    </select>
+                </div>
+
+            <?php } ?>
+
             <div class="ui divided items">
 
                 <?php foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) { ?>
@@ -502,6 +519,14 @@ if ($voucher = $app->getVoucher()) {
 
                         <?php } ?>
 
+                        <?php if (_can_multiple_select()) { ?>
+                            <div class="ui image" style="padding: 1em; align-self: center;" >
+                                <div class="vertical aligned middle">
+                                    <input type="checkbox" value="<?= $uploadedFile->uploaded_file_id ?>" class="multiple-select" />
+                                </div>
+                            </div>
+                        <?php } ?>
+
                         <?php if (
                             in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
                             && _can_read_file($uploadedFile)
@@ -597,6 +622,33 @@ function _can_read_file(UploadedFile $uploadedFile)
             return true;
         }
         if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
+            return true;
+        }
+    } else {
+        return $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
+    }
+
+    return false;
+}
+
+function _can_multiple_select()
+{
+    $app = \Fuppi\App::getInstance();
+    $user = $app->getUser();
+    $config = $app->getConfig();
+
+    if (!$config->getSetting('use_aws_s3')) {
+        if (!class_exists('ZipArchive')) {
+            return false;
+        }
+    } else {
+        if (empty($config->getSetting('aws_lambda_multiple_zip_function_name'))) {
+            return false;
+        }
+    }
+
+    if ($voucher = $app->getVoucher()) {
+        if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_READ)) {
             return true;
         }
     } else {

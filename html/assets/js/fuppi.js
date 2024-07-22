@@ -25,4 +25,24 @@ $(() => {
         }
     });
     $('.tabular.menu .item').tab();
+    $('input[type=checkbox].multiple-select-all').change((event) => {
+        let checkbox = event.currentTarget;
+        if(checkbox.checked){
+            $('input[type=checkbox].multiple-select').prop('checked', true);
+        }else{
+            $('input[type=checkbox].multiple-select').prop('checked', false);
+        }
+    });
+    $('select[name=multiple-select-action]').on('change', (event) => {
+        let select = event.currentTarget;
+        switch($(select).val()){
+            case 'download':
+                let downloadIds = $('input[type=checkbox].multiple-select:checked').get().map((chk) => $(chk).val());
+                $(select).val('').change();
+                setTimeout(() => {
+                    window.location = 'file.php?id='+JSON.stringify(downloadIds);
+                }, 300);
+            break;
+        }
+    });
 });

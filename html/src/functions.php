@@ -1,5 +1,7 @@
 <?php
 
+use \Fuppi\User;
+
 function fuppi_start()
 {
     ob_start();
@@ -193,6 +195,7 @@ function base_url()
 
 function fuppi_gc()
 {
+    $config=\Fuppi\App::getInstance()->getConfig();
     $db = \Fuppi\App::getInstance()->getDb();
 
     // purge expired file tokens
@@ -202,6 +205,43 @@ function fuppi_gc()
     // purge expired aws presigned urls
     $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_aws_auth` WHERE `expires_at` < :expires_at_floor');
     $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
+
+    // delete expired temporary files
+    $statement = $db->getPdo()->query('SELECT * FROM `fuppi_temporary_files` WHERE `expires_at` < :expires_at_floor');
+    $results = $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
+
+    if ($results) {
+        $sdk = new Aws\Sdk([
+            'region' => $config->getSetting('aws_s3_region'),
+            'credentials' =>  [
+                'key'    => $config->getSetting('aws_s3_access_key'),
+                'secret' => $config->getSetting('aws_s3_secret')
+            ]
+        ]);
+
+        $s3Client = $sdk->createS3();
+
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+            try {
+                $s3Client->deleteObject([
+                    'Bucket' => $config->getSetting('aws_s3_bucket'),
+                    'Key' => $config->s3_uploaded_files_prefix . '/' . User::getOne($data['user_id'])->username . '/' . $data['filename']
+                ]);
+            } catch(\Exception $e) {
+            }
+            try {
+                $localFilepath = $config->uploaded_files_path . DIRECTORY_SEPARATOR . User::getOne($data['user_id'])->username . DIRECTORY_SEPARATOR . $data['filename'];
+
+                if (file_exists($localFilepath)) {
+                    unlink($localFilepath);
+                }
+            } catch(\Exception $e) {
+            }
+
+            $statement2 = $db->getPdo()->query('DELETE  FROM `fuppi_temporary_files` WHERE `temporary_file_id` = :file_id');
+            $statement2->execute(['file_id' => $data['temporary_file_id']]);
+        }
+    }
 
     // vacuum the database file
     $statement = $db->getPdo()->query('VACUUM');
