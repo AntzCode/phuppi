@@ -2,7 +2,7 @@
 
 namespace Fuppi;
 
-class SearchCondition
+class SearchQuery
 {
     protected $tableName = '';
     protected $columns = [];
@@ -68,7 +68,7 @@ class SearchCondition
         return $this;
     }
 
-    public function chain(SearchCondition $condition)
+    public function chain(SearchQuery $condition)
     {
         $this->conditions[] = $condition;
         return $this;
@@ -134,7 +134,7 @@ class SearchCondition
         $bindings = [];
 
         foreach ($this->conditions as $condition) {
-            if ($condition instanceof SearchCondition) {
+            if ($condition instanceof SearchQuery) {
                 list($_conditions, $_bindings) = $condition->prepare($bindingPrefix . 'cond_');
                 $iteration = count($outputs);
                 $outputs[$iteration] = $_conditions;

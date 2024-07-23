@@ -2,6 +2,7 @@
 
 use Fuppi\ApiResponse;
 use Fuppi\Note;
+use Fuppi\SearchQuery;
 use Fuppi\User;
 use Fuppi\UserPermission;
 use Fuppi\Voucher;
@@ -108,7 +109,34 @@ if (!empty($_POST)) {
     }
 }
 
-$existingNotes = $user->getNotes();
+
+// fetch the search results
+$pageNum = $_GET['page'] ?? 1;
+$pageSize = 12;
+$orderBy = ['created_at', 'DESC'];
+
+$searchQuery = (new SearchQuery())
+->where('user_id', $profileUser->user_id)
+->orderBy($orderBy[0], $orderBy[1])
+->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
+
+if ($voucher = $app->getVoucher()) {
+    if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
+        // only select the files that have been uploaded by this voucher
+        $searchQuery->where('voucher_id', $voucher->voucher_id);
+    }
+}
+
+$searchResult = Note::search($searchQuery);
+
+$existingNotes = $searchResult['rows'];
+
+$resultSetStart = (($pageNum-1) * $pageSize) + 1;
+$resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
+
+
+
+// $existingNotes = $user->getNotes();
 
 ?>
 
@@ -159,7 +187,7 @@ $existingNotes = $user->getNotes();
 
         <h3 class="header">
             <i class="pencil icon"></i> 
-            <label for="filename"> Your Existing Notes</label>
+            <label for="filename"> Your Existing Notes (<?= $resultSetStart ?> - <?= $resultSetEnd ?> of <?= $searchResult['count'] ?>)</label>
         </h3>
 
         <?php if (empty($existingNotes)) { ?>
@@ -323,6 +351,16 @@ $existingNotes = $user->getNotes();
 
     </div>
 
+    <div style="overflow-x: scroll">
+        <div class="ui pagination menu">
+            <?php for ($i = 0; $i<$searchResult['count']/$pageSize; $i++) { ?>
+                <a href="?page=<?= $i+1 ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
+                    <?= $i+1 ?>
+                </a>
+            <?php } ?>
+        </div>
+    </div>
+    
 <?php } ?>
 
 <?php

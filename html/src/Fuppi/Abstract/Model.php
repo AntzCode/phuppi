@@ -2,6 +2,8 @@
 
 namespace Fuppi\Abstract;
 
+use Fuppi\SearchQuery;
+
 use PDO;
 
 abstract class Model
@@ -78,6 +80,47 @@ abstract class Model
             }
         }
         return $userPermissions;
+    }
+
+    public static function search(SearchQuery $condition=null){
+        $className = get_called_class();
+
+        $instance = new $className();
+        $db = \Fuppi\App::getInstance()->getDb();
+        
+        $rows = [];
+
+        $condition->setTablename($instance->_tablename)->setColumnNames(array_keys($instance->getData()));
+        
+        list($rowsQuery, $rowsBindings) = $condition->getQuery();
+        list($countQuery, $countBindings) = $condition->getQuery('COUNT(*) AS totalCount', 0, 0);
+
+        $rowsStatement = $db->getPdo()->query($rowsQuery);
+        $rowsResults = $rowsStatement->execute($rowsBindings);
+
+        if ($rowsResults) {
+            foreach ($rowsStatement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $rowInstance = new $className();
+                $rowInstance->setData($rowInstance->fromDb($row));
+                $rows[] = $rowInstance;
+            }
+        }
+
+        $countStatement = $db->getPdo()->query($countQuery);
+        $countResults = $countStatement->execute($countBindings);
+        $totalCount = 0;
+
+        if ($countResults){
+            foreach ($countStatement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+                $totalCount = $data['totalCount'];
+            }
+        }
+
+        return [
+            'count' => $totalCount,
+            'rows' => $rows
+        ];
+
     }
 
     public static function deleteOne(int $id)

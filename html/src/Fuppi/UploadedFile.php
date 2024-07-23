@@ -4,7 +4,7 @@ namespace Fuppi;
 
 use \Fuppi\Abstract\HasUser;
 use \Fuppi\Abstract\Model;
-use \Fuppi\SearchCondition;
+use \Fuppi\SearchQuery;
 use PDO;
 
 class UploadedFile extends Model
@@ -33,45 +33,6 @@ class UploadedFile extends Model
     public static function getOne(int $id) : ?UploadedFile
     {
         return parent::getOne($id);
-    }
-
-    public static function search(SearchCondition $condition=null){
-        $instance = new self();
-        $db = \Fuppi\App::getInstance()->getDb();
-        
-        $uploadedFiles = [];
-
-        $condition->setTablename($instance->_tablename)->setColumnNames(array_keys($instance->getData()));
-        
-        list($uploadedFilesQuery, $uploadedFilesBindings) = $condition->getQuery();
-        list($countQuery, $countBindings) = $condition->getQuery('COUNT(*) AS totalCount', 0, 0);
-
-        $uploadedFilesStatement = $db->getPdo()->query($uploadedFilesQuery);
-        $uploadedFilesResults = $uploadedFilesStatement->execute($uploadedFilesBindings);
-
-        if ($uploadedFilesResults) {
-            foreach ($uploadedFilesStatement->fetchAll(PDO::FETCH_ASSOC) as $data) {
-                $uploadedFile = new self();
-                $uploadedFile->setData($uploadedFile->fromDb($data));
-                $uploadedFiles[] = $uploadedFile;
-            }
-        }
-
-        $countStatement = $db->getPdo()->query($countQuery);
-        $countResults = $countStatement->execute($countBindings);
-        $totalCount = 0;
-
-        if ($countResults){
-            foreach ($countStatement->fetchAll(PDO::FETCH_ASSOC) as $data) {
-                $totalCount = $data['totalCount'];
-            }
-        }
-
-        return [
-            'count' => $totalCount,
-            'files' => $uploadedFiles
-        ];
-
     }
 
     public static function getAllByUser(User $user)

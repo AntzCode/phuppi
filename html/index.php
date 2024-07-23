@@ -3,7 +3,7 @@
 use Aws\S3\PostObjectV4;
 
 use Fuppi\ApiResponse;
-use Fuppi\SearchCondition;
+use Fuppi\SearchQuery;
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
@@ -256,7 +256,7 @@ $pageNum = $_GET['page'] ?? 1;
 $pageSize = 10;
 $orderBy = ['display_filename', 'COLLATE NOCASE ASC'];
 
-$searchCondition = (new SearchCondition())
+$searchQuery = (new SearchQuery())
 ->where('user_id', $profileUser->user_id)
 ->orderBy($orderBy[0], $orderBy[1])
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
@@ -264,13 +264,13 @@ $searchCondition = (new SearchCondition())
 if ($voucher = $app->getVoucher()) {
     if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
         // only select the files that have been uploaded by this voucher
-        $searchCondition->where('voucher_id', $voucher->voucher_id);
+        $searchQuery->where('voucher_id', $voucher->voucher_id);
     }
 }
 
-$searchResult = UploadedFile::search($searchCondition);
+$searchResult = UploadedFile::search($searchQuery);
 
-$uploadedFiles = $searchResult['files'];
+$uploadedFiles = $searchResult['rows'];
 
 $resultSetStart = (($pageNum-1) * $pageSize) + 1;
 $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
