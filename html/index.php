@@ -3,6 +3,7 @@
 use Aws\S3\PostObjectV4;
 
 use Fuppi\ApiResponse;
+use Fuppi\SearchCondition;
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
@@ -250,18 +251,29 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
     redirect($_SERVER['REQUEST_URI']);
 }
 
-$uploadedFiles = $profileUser->getUploadedFiles();
+// fetch the search results
+$pageNum = $_GET['page'] ?? 1;
+$pageSize = 10;
+$orderBy = ['display_filename', 'COLLATE NOCASE ASC'];
+
+$searchCondition = (new SearchCondition())
+->where('user_id', $profileUser->user_id)
+->orderBy($orderBy[0], $orderBy[1])
+->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
 
 if ($voucher = $app->getVoucher()) {
     if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
-        foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) {
-            if ($uploadedFile->voucher_id !== $voucher->voucher_id) {
-                unset($uploadedFiles[$uploadedFileIndex]);
-            }
-        }
-        $uploadedFiles = array_values($uploadedFiles);
+        // only select the files that have been uploaded by this voucher
+        $searchCondition->where('voucher_id', $voucher->voucher_id);
     }
 }
+
+$searchResult = UploadedFile::search($searchCondition);
+
+$uploadedFiles = $searchResult['files'];
+
+$resultSetStart = (($pageNum-1) * $pageSize) + 1;
+$resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
 ?>
 
@@ -375,7 +387,7 @@ if ($voucher = $app->getVoucher()) {
 
         <h3 class="header">
             <i class="list icon"></i> 
-            <label> Your Uploaded Files (<?= count($uploadedFiles) ?>)</label>
+            <label> Your Uploaded Files (<?= $resultSetStart ?> - <?= $resultSetEnd ?> of <?= $searchResult['count'] ?>)</label>
         </h3>
 
         <?php if (empty($uploadedFiles)) { ?>
@@ -707,6 +719,16 @@ if ($voucher = $app->getVoucher()) {
 
     </div>
 
+    <div style="overflow-x: scroll">
+        <div class="ui pagination menu">
+            <?php for ($i = 0; $i<$searchResult['count']/$pageSize; $i++) { ?>
+                <a href="?page=<?= $i+1 ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
+                    <?= $i+1 ?>
+                </a>
+            <?php } ?>
+        </div>
+    </div>
+    
 <?php } ?>
 
 <?php

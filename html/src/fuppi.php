@@ -12,6 +12,7 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Ap
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Config.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Db.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Note.php');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'SearchCondition.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'UploadedFile.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'User.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'UserPermission.php');
@@ -20,7 +21,6 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Vo
 
 
 if (!defined('FUPPI')) {
-
     define('FUPPI', true);
     define('FUPPI_APP_PATH', __DIR__);
     define('FUPPI_PUBLIC_PATH', pathinfo($_SERVER['SCRIPT_FILENAME'], PATHINFO_DIRNAME));
@@ -28,7 +28,7 @@ if (!defined('FUPPI')) {
 
     if (file_exists(FUPPI_PUBLIC_PATH . DIRECTORY_SEPARATOR . 'install.php')) {
         $installUrl = '/install.php';
-        header('Location: '.$installUrl);
+        header('Location: ' . $installUrl);
         exit('<script type="text/javascript">window.location="' . $installUrl . '";</script><a href="' . $url . '">Continue</a>');
     }
 
@@ -56,9 +56,7 @@ if (!defined('FUPPI')) {
         }
     }
 } else {
-
     if (defined('FUPPI_CLI')) {
-
         define('FUPPI_APP_PATH', __DIR__);
         define('FUPPI_DATA_PATH', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data');
 

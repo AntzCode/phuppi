@@ -2,8 +2,9 @@
 
 namespace Fuppi;
 
-use Fuppi\Abstract\HasUser;
-use Fuppi\Abstract\Model;
+use \Fuppi\Abstract\HasUser;
+use \Fuppi\Abstract\Model;
+use \Fuppi\SearchCondition;
 use PDO;
 
 class UploadedFile extends Model
@@ -29,9 +30,48 @@ class UploadedFile extends Model
 
     protected User $user;
 
-    public static function getOne(int $id): ?UploadedFile
+    public static function getOne(int $id) : ?UploadedFile
     {
         return parent::getOne($id);
+    }
+
+    public static function search(SearchCondition $condition=null){
+        $instance = new self();
+        $db = \Fuppi\App::getInstance()->getDb();
+        
+        $uploadedFiles = [];
+
+        $condition->setTablename($instance->_tablename)->setColumnNames(array_keys($instance->getData()));
+        
+        list($uploadedFilesQuery, $uploadedFilesBindings) = $condition->getQuery();
+        list($countQuery, $countBindings) = $condition->getQuery('COUNT(*) AS totalCount', 0, 0);
+
+        $uploadedFilesStatement = $db->getPdo()->query($uploadedFilesQuery);
+        $uploadedFilesResults = $uploadedFilesStatement->execute($uploadedFilesBindings);
+
+        if ($uploadedFilesResults) {
+            foreach ($uploadedFilesStatement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+                $uploadedFile = new self();
+                $uploadedFile->setData($uploadedFile->fromDb($data));
+                $uploadedFiles[] = $uploadedFile;
+            }
+        }
+
+        $countStatement = $db->getPdo()->query($countQuery);
+        $countResults = $countStatement->execute($countBindings);
+        $totalCount = 0;
+
+        if ($countResults){
+            foreach ($countStatement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+                $totalCount = $data['totalCount'];
+            }
+        }
+
+        return [
+            'count' => $totalCount,
+            'files' => $uploadedFiles
+        ];
+
     }
 
     public static function getAllByUser(User $user)
@@ -55,7 +95,6 @@ class UploadedFile extends Model
 
     public static function generateUniqueFilename(string $filename)
     {
-
         $db = \Fuppi\App::getInstance()->getDb();
 
         $strippedFilename = preg_replace('/[^a-zA-Z0-9\.\-_(),]/', '', str_replace(' ', '_', $filename));
@@ -156,7 +195,8 @@ class UploadedFile extends Model
         }
     }
 
-    public function dropAwsPresignedUrl(){
+    public function dropAwsPresignedUrl()
+    {
         $db = \Fuppi\App::getInstance()->getDb();
         $query = "DELETE FROM `fuppi_uploaded_files_aws_auth` WHERE `uploaded_file_id` = :uploaded_file_id";
         $bindings = [
