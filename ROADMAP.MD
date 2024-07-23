@@ -1,6 +1,5 @@
 # Phuppi Development Roadmap
 
-1. Add notes to files / rename files
-2. Sorting/filtering/pagination
-3. Implement PHP framework
-4. P2P File Transfer without upload
+1. Sorting/filtering/pagination
+2. Implement PHP framework
+3. P2P File Transfer without upload

@@ -70,7 +70,16 @@ if (is_array($fileIds) && count($fileIds) > 0) {
         $lambdaConfig->zipFileName = $archiveFilePath;
         foreach ($fileIds as $fileId) {
             $uploadedFile = UploadedFile::getOne((int) $fileId);
-            $lambdaConfig->filenames[] = $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename;
+
+            $lambdaFilename = $uploadedFile->display_filename === $uploadedFile->filename
+                ? $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
+                : json_decode(json_encode([
+                    'filename' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
+                    'displayFilename' => $uploadedFile->display_filename
+                ]))
+            ;
+
+            $lambdaConfig->filenames[] = $lambdaFilename;
         }
 
         $client = LambdaClient::factory(
@@ -145,7 +154,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
         }
         foreach ($fileIds as $fileId) {
             $uploadedFile = UploadedFile::getOne((int) $fileId);
-            $zip->addFile($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename, $uploadedFile->filename);
+            $zip->addFile($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename, $uploadedFile->display_filename);
         }
         // close and save archive
 
@@ -216,7 +225,8 @@ if (is_array($fileIds) && count($fileIds) > 0) {
 
                     if ($stream = fopen('s3://' . $config->getSetting('aws_s3_bucket') . '/' . $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, 'r')) {
                         header('Content-Type: ' . $uploadedFile->mimetype);
-                        header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
+                        header('Content-Disposition: attachment; filename="' . $uploadedFile->display_filename . '"');
+
                         fuppi_stop();
                         while (!feof($stream)) {
                             echo fread($stream, 1024);
@@ -236,7 +246,8 @@ if (is_array($fileIds) && count($fileIds) > 0) {
                 $expiresAt = time() + 20 * 60;
                 $cmd = $s3Client->getCommand('GetObject', [
                     'Bucket' => $config->getSetting('aws_s3_bucket'),
-                    'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
+                    'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
+                    'ResponseContentDisposition' => 'attachment; filename ="' . $uploadedFile->display_filename . '"'
                 ]);
                 $request = $s3Client->createPresignedRequest($cmd, '+20 minutes');
                 $presignedUrl = (string)$request->getUri();
@@ -245,7 +256,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
             redirect($presignedUrl);
         } else {
             header('Content-Type: ' . $uploadedFile->mimetype);
-            header('Content-Disposition: attachment; filename="' . $uploadedFile->filename . '"');
+            header('Content-Disposition: attachment; filename="' . $uploadedFile->display_filename . '"');
             fuppi_stop();
             readfile($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
             exit;

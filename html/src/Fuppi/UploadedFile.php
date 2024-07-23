@@ -19,10 +19,12 @@ class UploadedFile extends Model
         'user_id' => 0,
         'voucher_id' => 0,
         'filename' => '',
+        'display_filename' => '',
         'filesize' => 0,
         'mimetype' => '',
         'extension' => '',
-        'uploaded_at' => ''
+        'uploaded_at' => '',
+        'notes' => ''
     ];
 
     protected User $user;
@@ -145,6 +147,20 @@ class UploadedFile extends Model
             'action' => $action,
             'url' => $url,
             'expires_at' => date('Y-m-d H:i:s', $expiresAt),
+        ];
+        $statement = $db->getPdo()->prepare($query);
+        if ($statement->execute($bindings)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public function dropAwsPresignedUrl(){
+        $db = \Fuppi\App::getInstance()->getDb();
+        $query = "DELETE FROM `fuppi_uploaded_files_aws_auth` WHERE `uploaded_file_id` = :uploaded_file_id";
+        $bindings = [
+            'uploaded_file_id' => $this->uploaded_file_id
         ];
         $statement = $db->getPdo()->prepare($query);
         if ($statement->execute($bindings)) {

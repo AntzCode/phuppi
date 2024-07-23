@@ -58,6 +58,35 @@ if (!empty($_POST)) {
         case 'post':
 
             switch ($_POST['_action'] ?? '') {
+                case 'writeFileMeta':
+                    $apiResponse = new ApiResponse();
+                    $uploadedFileId = (int) $_POST['fileId'];
+                    if ($uploadedFile = UploadedFile::getOne($uploadedFileId)) {
+                        if (!_can_write_file_meta($uploadedFile)) {
+                            $apiResponse->throwException('Not permitted');
+                        } else {
+                            $sanitizedFilename = substr(trim($_POST['filename']), 0, 255);
+                            $sanitizedNotes = substr(trim($_POST['notes']), 0, 1000000000-1024*32);
+
+                            $statement = $pdo->prepare("UPDATE `fuppi_uploaded_files` SET `display_filename` = :display_filename, `notes` = :notes WHERE `uploaded_file_id` = :uploaded_file_id");
+
+                            $statement->execute([
+                                'uploaded_file_id' => $uploadedFileId,
+                                'display_filename' => $sanitizedFilename,
+                                'notes' => $sanitizedNotes
+                            ]);
+
+                            $uploadedFile = UploadedFile::getOne($uploadedFileId);
+                            // $uploadedFile->dropAwsPresignedUrl();
+
+                            $apiResponse->data = $uploadedFile->getData();
+
+                            $apiResponse->sendResponse();
+                        }
+                    } else {
+                        $apiResponse->throwException('Invalid file id "' . $uploadedFileId . '"');
+                    }
+                    break;
                 case 'createSharableLink':
                     $apiResponse = new ApiResponse();
                     $validFor = (int) $_POST['validFor'];
@@ -146,15 +175,17 @@ if (!empty($_POST)) {
                             'Key' => $config->s3_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename
                         ]);
 
-                        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension)");
+                        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `display_filename`, `filesize`, `mimetype`, `extension`, `notes`) VALUES (:user_id, :voucher_id, :filename, :display_filename, :filesize, :mimetype, :extension, :notes)");
 
                         $statement->execute([
                             'user_id' => $user->user_id,
                             'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
                             'filename' => $sanitizedFilename,
+                            'display_filename' => $_POST['filename'],
                             'filesize' => $meta['ContentLength'],
                             'mimetype' => $meta['ContentType'],
-                            'extension' => pathinfo($sanitizedFilename, PATHINFO_EXTENSION)
+                            'extension' => pathinfo($sanitizedFilename, PATHINFO_EXTENSION),
+                            'notes' => ''
                         ]);
 
                         $apiResponse = new ApiResponse();
@@ -198,15 +229,17 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
         $storedFilepath = $config->uploaded_files_path . DIRECTORY_SEPARATOR . $user->username . DIRECTORY_SEPARATOR . $sanitizedFilename;
         move_uploaded_file($_FILES['files']['tmp_name'][$k], $storedFilepath);
 
-        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension)");
+        $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `display_filename`, `filesize`, `mimetype`, `extension`, `notes`) VALUES (:user_id, :voucher_id, :filename, :display_filename, :filesize, :mimetype, :extension, :notes)");
 
         $statement->execute([
             'user_id' => $user->user_id,
             'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
             'filename' => $sanitizedFilename,
+            'display_filename' => $filename,
             'filesize' => filesize($storedFilepath),
             'mimetype' => mime_content_type($storedFilepath),
-            'extension' => pathinfo($filename, PATHINFO_EXTENSION)
+            'extension' => pathinfo($filename, PATHINFO_EXTENSION),
+            'notes' => ''
         ]);
     }
 
@@ -519,6 +552,48 @@ if ($voucher = $app->getVoucher()) {
 
                         <?php } ?>
 
+                        <?php if (_can_write_file_meta($uploadedFile)) { ?>
+                        
+                            <div class="ui modal meta<?= $uploadedFile->uploaded_file_id ?>">
+
+                                <i class="close icon"></i>
+
+                                <div class="header">
+                                    File Info
+                                </div>
+
+                                <div class="content">
+                                    
+                                    <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
+
+                                        <div class="field">
+                                            <label for="meta_filename<?= $uploadedFile->uploaded_file_id ?>">File Name: </label>
+                                            <div class="ui icon input">
+                                                <input id="meta_filename<?= $uploadedFile->uploaded_file_id ?>" type="text" name="filename" value="<?= $uploadedFile->display_filename ?>" />
+                                                <i class="inverted circular refresh link icon"
+                                                    title="Use system filename"
+                                                    onClick="(()=>{$('#meta_filename<?= $uploadedFile->uploaded_file_id ?>').val('<?= $uploadedFile->filename ?>')})()"></i>
+                                            </div>
+                                        </div>
+
+                                        <div class="field <?= (!empty($errors['notes' . $uploadedFile->uploaded_file_id] ?? []) ? 'error' : '') ?>">
+                                            <label for="meta_notes<?= $uploadedFile->uploaded_file_id ?>">Notes: </label>
+                                            <textarea id="meta_notes<?= $uploadedFile->uploaded_file_id ?>" name="notes"><?= $uploadedFile->notes ?></textarea>
+                                        </div>
+
+                                    </form>
+
+                                </div>
+
+                                <div class="actions">
+                                    <div class="ui cancel button">Cancel</div>
+                                    <div class="ui positive approve button">Save</div>
+                                </div>
+
+                            </div>
+
+                        <?php } ?>
+
                         <?php if (_can_multiple_select()) { ?>
                             <div class="ui image" style="padding: 1em; align-self: center;" >
                                 <div class="vertical aligned middle">
@@ -552,7 +627,46 @@ if ($voucher = $app->getVoucher()) {
 
                         <div class="content">
 
-                            <span class="header"><?= $uploadedFile->filename ?></span>
+                            <div class="header">
+                                <span id="uploadedFileDisplayFilename<?= $uploadedFile->uploaded_file_id ?>"><?= $uploadedFile->display_filename ?></span>
+                                <?php if (_can_write_file_meta($uploadedFile)) { ?>
+                                    <script type="text/javascript">
+                                        $('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('setting', {
+                                            onApprove: () => {
+                                                let uploadedFileId = <?= $uploadedFile->uploaded_file_id ?>;
+                                                
+                                                let formData = new FormData();
+                                                formData.append('_method', 'post');
+                                                formData.append('_action', 'writeFileMeta');
+                                                formData.append('fileId', uploadedFileId);
+                                                formData.append('filename', $('#meta_filename'+uploadedFileId).val());
+                                                formData.append('notes', $('#meta_notes'+uploadedFileId).val());
+                                                    
+                                                axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                                                    $('#uploadedFileDisplayFilename'+response.data.uploaded_file_id).text(response.data.display_filename);
+                                                    $('.uploadedFileNotes'+response.data.uploaded_file_id).text(response.data.notes);
+                                                    $('#meta_filename'+uploadedFileId).val(response.data.display_filename);
+                                                    $('#meta_notes'+uploadedFileId).val(response.data.notes);
+                                                    $('.modal'+response.data.uploaded_file_id).modal('hide');
+                                                }).catch((error) => {
+                                                    if (error.response && error.response.data && error.response.data.message) {
+                                                        alert(error.response.data.message);
+                                                    } else {
+                                                        console.log(error);
+                                                    }
+                                                });
+                                            },
+                                            onDeny: () => {
+                                                $('#meta_filename<?= $uploadedFile->uploaded_file_id ?>').val($('#uploadedFileDisplayFilename<?= $uploadedFile->uploaded_file_id ?>').text());
+                                            }
+                                        });
+                                    </script>
+                                    <div class="ui right button circular icon clickable" onclick="$('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('show')">
+                                        <i class="edit icon" title="Edit File Info"></i>
+                                        <input type="hidden" name="_action" value="userLogin" />
+                                    </div>
+                                <?php } ?>
+                            </div>
 
                             <div class="meta">
                                 <?= _get_meta_content($uploadedFile) ?>
@@ -601,6 +715,7 @@ function _get_meta_content(UploadedFile $uploadedFile)
 {
     ob_start();
     ?>
+    <p class="uploadedFileNotes<?= $uploadedFile->uploaded_file_id ?>"><?= $uploadedFile->notes ?></p>
     <span><?= human_readable_bytes($uploadedFile->filesize) ?> <?= $uploadedFile->mimetype ?></span>
     <span>Uploaded at <?= $uploadedFile->uploaded_at ?></span>
     <?php if ($uploadedFile->voucher_id > 0) { ?>
@@ -630,6 +745,26 @@ function _can_read_file(UploadedFile $uploadedFile)
 
     return false;
 }
+
+function _can_write_file_meta(UploadedFile $uploadedFile)
+{
+    $app = \Fuppi\App::getInstance();
+    $user = $app->getUser();
+
+    if ($voucher = $app->getVoucher()) {
+        if ($uploadedFile->voucher_id === $voucher->voucher_id) {
+            return true;
+        }
+        if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_PUT)) {
+            return true;
+        }
+    } else {
+        return $user->hasPermission(UserPermission::UPLOADEDFILES_PUT);
+    }
+
+    return false;
+}
+
 
 function _can_multiple_select()
 {

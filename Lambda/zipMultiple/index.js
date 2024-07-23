@@ -20,12 +20,23 @@ const downloadAndZipFiles = async (bucket, filenames, zipFileName) => {
     const uploadPromise = S3.upload(uploadParams).promise();
 
     for (const filename of filenames) {
-        try {
-            const response = await S3.getObject({ Bucket: bucket, Key: filename }).createReadStream();
-            archive.append(response, { name: filename.split('/').pop() });
-        } catch (error) {
-            console.error(`Error streaming file ${filename}: ${JSON.stringify(error)}`);
-            throw error;
+
+        if(typeof filename === 'object'){
+            try {
+                const response = await S3.getObject({ Bucket: bucket, Key: filename.filename }).createReadStream();
+                archive.append(response, { name: filename.displayFilename });
+            } catch (error) {
+                console.error(`Error streaming file ${filename}: ${JSON.stringify(error)}`);
+                throw error;
+            }
+        }else if(typeof filename === 'string'){
+            try {
+                const response = await S3.getObject({ Bucket: bucket, Key: filename }).createReadStream();
+                archive.append(response, { name: filename.split('/').pop() });
+            } catch (error) {
+                console.error(`Error streaming file ${filename}: ${JSON.stringify(error)}`);
+                throw error;
+            }
         }
     }
 
