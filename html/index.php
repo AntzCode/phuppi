@@ -398,22 +398,24 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
         <?php } else { ?>
 
-            <?php if (_can_multiple_select()) { ?>
-
-                <div class="ui checkbox" style="display: flex; gap: 3em">
-                    <input type="checkbox" value="" class="multiple-select-all" />
-                    <label>Select/Deselect All</label>
-                    <select class="ui dropdown" name="multiple-select-action">
-                        <option value="">
-                            -- With selected:
-                        </option>
-                        <option value="download">
-                            Download
-                        </option>
-                    </select>
-                </div>
-
-            <?php } ?>
+            <div class="ui secondary menu">
+                <?php if (_can_multiple_select()) { ?>
+                    <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
+                        <i class="square outline large primary icon"></i>
+                        <label>Select All / Deselect All</label>
+                    </div>
+                    <div class="ui dropdown item">
+                        <label>With Selected</label>
+                        <i class="dropdown icon"></i>
+                        <div class="menu">
+                            <div class="item multi-select-action" data-multi-select-action="download">
+                                <i class="download icon"></i>        
+                                <label>Zip &amp; Download</label>
+                            </div>
+                        </div>
+                    </div>
+                <?php } ?>
+            </div>
 
             <div class="ui divided items">
 
@@ -607,10 +609,9 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } ?>
 
                         <?php if (_can_multiple_select()) { ?>
-                            <div class="ui image" style="padding: 1em; align-self: center;" >
-                                <div class="vertical aligned middle">
-                                    <input type="checkbox" value="<?= $uploadedFile->uploaded_file_id ?>" class="multiple-select" />
-                                </div>
+                            <div class="ui image multi-select-item uploaded-file" data-multi-select-item-id="<?= $uploadedFile->uploaded_file_id ?>" style="padding: 1em; align-self: center;" >
+                                <i class="clickable large primary square outline icon"></i>
+
                             </div>
                         <?php } ?>
 
