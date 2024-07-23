@@ -6,11 +6,16 @@ class SearchQuery
 {
     protected $tableName = '';
     protected $columns = [];
-    protected $operator = 'AND';
+    protected $concatenator = 'AND';
     protected $conditions = [];
     protected $orderBy = [];
     protected $limit = 20;
     protected $offset = 0;
+
+    const EQ = 'eq';
+    const LIKE = 'like';
+    const AND = 'and';
+    const OR = 'or';
 
     public function __construct($tableName=null, $columns=[])
     {
@@ -21,7 +26,8 @@ class SearchQuery
     public function where(string $what, mixed $where, string $operator="eq")
     {
         switch($operator) {
-            case 'eq':
+            case self::EQ:
+            case self::LIKE:
                 $this->conditions[] = [
                     'what' => $what,
                     'op' => $operator,
@@ -50,9 +56,9 @@ class SearchQuery
         return $this;
     }
 
-    public function setOperator($operator)
+    public function setConcatenator($concatenator)
     {
-        $this->operator = $operator;
+        $this->concatenator = $concatenator;
         return $this;
     }
 
@@ -68,7 +74,7 @@ class SearchQuery
         return $this;
     }
 
-    public function chain(SearchQuery $condition)
+    public function append(SearchQuery $condition)
     {
         $this->conditions[] = $condition;
         return $this;
@@ -77,7 +83,7 @@ class SearchQuery
     public function getQuery($what=null, $limit=null, $offset=null)
     {
         if (is_null($this->tableName)) {
-            throw new Exception('Attempt to call getQuery before setTableName()');
+            throw new \Exception('Attempt to call getQuery before setTableName()');
         }
 
         $query = '';
@@ -125,9 +131,6 @@ class SearchQuery
         return [$query, $bindings];
     }
 
-    /**
-     * @param string "AND" | "OR"
-     */
     public function prepare($bindingPrefix='cond_')
     {
         $outputs = [];
@@ -137,20 +140,25 @@ class SearchQuery
             if ($condition instanceof SearchQuery) {
                 list($_conditions, $_bindings) = $condition->prepare($bindingPrefix . 'cond_');
                 $iteration = count($outputs);
-                $outputs[$iteration] = $_conditions;
+                $outputs[$iteration] = ' ( ' . $_conditions . ' ) ';
                 $bindings = array_merge($bindings, $_bindings);
             } else {
                 switch($condition['op']) {
-                    case 'eq':
+                    case self::EQ:
                         $iteration = count($outputs);
                         $outputs[$iteration] = '`' . $condition['what'] . '`' . ' = :' . $bindingPrefix . $iteration;
+                        $bindings[$bindingPrefix . $iteration] = $condition['where'];
+                        break;
+                    case self::LIKE:
+                        $iteration = count($outputs);
+                        $outputs[$iteration] = '`' . $condition['what'] . '`' . ' LIKE :' . $bindingPrefix . $iteration;
                         $bindings[$bindingPrefix . $iteration] = $condition['where'];
                         break;
                 }
             }
         }
         return [
-            implode(' ' . $this->operator . ' ', $outputs),
+            implode(' ' . $this->concatenator . ' ', $outputs),
             $bindings
         ];
     }

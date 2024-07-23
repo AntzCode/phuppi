@@ -293,10 +293,21 @@ $pageNum = $_GET['page'] ?? 1;
 $pageSize = 10;
 $orderBy = ['display_filename', 'COLLATE NOCASE ASC'];
 
+$searchTerm = $_GET['searchTerm'] ?? '';
+
 $searchQuery = (new SearchQuery())
 ->where('user_id', $profileUser->user_id)
 ->orderBy($orderBy[0], $orderBy[1])
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
+
+if (strlen($searchTerm) > 0) {
+    $searchTermQuery = new SearchQuery();
+    $searchTermQuery->where('filename', '%' . $searchTerm . '%', SearchQuery::LIKE);
+    $searchTermQuery->where('display_filename', '%' . $searchTerm . '%', SearchQuery::LIKE);
+    $searchTermQuery->where('notes', '%' . $searchTerm . '%', SearchQuery::LIKE);
+    $searchTermQuery->setConcatenator(SearchQuery::OR);
+    $searchQuery->append($searchTermQuery);
+}
 
 if ($voucher = $app->getVoucher()) {
     if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
@@ -425,19 +436,15 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
         <h3 class="header">
             <i class="list icon"></i> 
-            <label> Your Uploaded Files (<?= $resultSetStart ?> - <?= $resultSetEnd ?> of <?= $searchResult['count'] ?>)</label>
+            <label> Your Uploaded Files 
+                <?php if ($searchResult['count'] > 0) { ?>    
+                    (<?= $resultSetStart ?> - <?= $resultSetEnd ?> of <?= $searchResult['count'] ?>)
+                <?php } ?>
+            </label>
         </h3>
 
-        <?php if (empty($uploadedFiles)) { ?>
-
-            <div class="ui content">
-                <p>- Empty -</p>
-            </div>
-
-        <?php } else { ?>
-
-            <div class="ui secondary menu">
-                <?php if (_can_multiple_select()) { ?>
+        <div class="ui secondary menu">
+            <?php if (_can_multiple_select()) { ?>
                     <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
                         <i class="square outline large primary icon"></i>
                         <label>Select All / Deselect All</label>
@@ -460,8 +467,31 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             
                         </div>
                     </div>
-                <?php } ?>
+                <div class="right item">
+                    <div class="ui icon input">
+                        <script type="text/javascript">
+                            function performSearch(){
+                                window.location="<?= basename(__FILE__) ?>?searchTerm=" + $('input[name=searchTerm]').val();
+                            }
+                        </script>
+                        <input type="text" name="searchTerm" placeholder="Search..." 
+                            onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
+                            value="<?= $_GET['searchTerm'] ?? '' ?>" />
+                        <i class="search link icon" onClick="performSearch()"></i>
+                    </div>
+                </div>
+            <?php } ?>
+        </div>
+
+        <div class="ui divider"></div>
+
+        <?php if (empty($uploadedFiles)) { ?>
+
+            <div class="ui content">
+                <p>- Empty -</p>
             </div>
+
+        <?php } else { ?>
 
             <div class="ui divided items">
 
