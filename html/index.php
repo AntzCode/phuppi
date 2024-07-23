@@ -29,31 +29,68 @@ if (!empty($_GET['userId'])) {
 if (!empty($_POST)) {
     switch ($_POST['_method'] ?? 'post') {
         case 'delete':
-            if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) {
-                $fileId = $_POST['fileId'] ?? 0;
-                $uploadedFile = UploadedFile::getOne($fileId);
-                $fileUser = $uploadedFile->getUser();
-                UploadedFile::deleteOne($fileId);
-                if (file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
-                    unlink($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
-                }
-                $sdk = new Aws\Sdk([
-                    'region' => $config->getSetting('aws_s3_region'),
-                    'credentials' =>  [
-                        'key'    => $config->getSetting('aws_s3_access_key'),
-                        'secret' => $config->getSetting('aws_s3_secret')
-                    ]
-                ]);
-                $s3Client = $sdk->createS3();
-                try {
-                    $s3Client->deleteObject([
-                        'Bucket' => $config->getSetting('aws_s3_bucket'),
-                        'Key' => $config->s3_uploaded_files_prefix . '/' . $fileUser->username . '/' . $uploadedFile->filename
+            if (_can_delete_files()) {
+                $apiResponse = new ApiResponse();
+                foreach ((json_decode($_POST['fileIds']) ?? [($_POST['fileId'] ?? 0)]) as $fileId) {
+                    $uploadedFile = UploadedFile::getOne($fileId);
+                    $fileUser = $uploadedFile->getUser();
+                    if ($uploadedFile->user_id !== $profileUser->user_id) {
+                        if ($_POST['ajax']) {
+                            $apiResponse->throwException($uploadedFile->uploaded_file_id . ' does not belong to this user');
+                        }
+                        throw new Exception($uploadedFile->uploaded_file_id . ' does not belong to this user');
+                    } else {
+                        if ($app->getVoucher()) {
+                            if ($app->getVoucher()->voucher_id !== $uploadedFile->voucher_id) {
+                                if ($app->getVoucher()->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)
+                                && $app->getVoucher()->hasPermission(VoucherPermission::UPLOADEDFILES_DELETE)) {
+                                    // permitted to delete all files of the user
+                                } else {
+                                    // not permitted to delete the file that was not uploaded by the voucher
+                                    if ($_POST['ajax']) {
+                                        $apiResponse->throwException($uploadedFile->uploaded_file_id . ' does not belong to this voucher');
+                                    }
+                                    throw new Exception($uploadedFile->uploaded_file_id . ' does not belong to this voucher');
+                                }
+                            }
+                        }
+                    }
+                    UploadedFile::deleteOne($fileId);
+
+                    if (file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
+                        unlink($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
+                    }
+
+                    $sdk = new Aws\Sdk([
+                        'region' => $config->getSetting('aws_s3_region'),
+                        'credentials' =>  [
+                            'key'    => $config->getSetting('aws_s3_access_key'),
+                            'secret' => $config->getSetting('aws_s3_secret')
+                        ]
                     ]);
-                } catch (\Exception $e) {
+
+                    $s3Client = $sdk->createS3();
+
+                    try {
+                        $s3Client->deleteObject([
+                            'Bucket' => $config->getSetting('aws_s3_bucket'),
+                            'Key' => $config->s3_uploaded_files_prefix . '/' . $fileUser->username . '/' . $uploadedFile->filename
+                        ]);
+                    } catch (\Exception $e) {
+                        if ($_POST['ajax']) {
+                            $apiResponse->throwException($e->getMessage());
+                        }
+                    }
                 }
             }
-            redirect($_SERVER['REQUEST_URI']);
+
+            if ($_POST['ajax']) {
+                $apiResponse->data =$_POST['fileIds'];
+                $apiResponse->sendResponse();
+            } else {
+                redirect($_SERVER['REQUEST_URI']);
+            }
+
             break;
 
         case 'post':
@@ -277,6 +314,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
 ?>
 
+
 <h2>Welcome back, <?= $profileUser->username ?>!</h2>
 
 <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_PUT)) { ?>
@@ -408,10 +446,18 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <label>With Selected</label>
                         <i class="dropdown icon"></i>
                         <div class="menu">
-                            <div class="item multi-select-action" data-multi-select-action="download">
+                        <div class="item multi-select-action" data-multi-select-action="download">
                                 <i class="download icon"></i>        
                                 <label>Zip &amp; Download</label>
                             </div>
+                            <div class="item multi-select-action"
+                                data-multi-select-action-url="<?= $_SERVER['REQUEST_URI'] ?>"
+                                data-multi-select-action-callback="refresh"
+                                data-multi-select-action="delete">
+                                <i class="trash icon"></i>        
+                                <label>Delete Selected</label>
+                            </div>
+                            
                         </div>
                     </div>
                 <?php } ?>
@@ -423,7 +469,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                     <div class="ui item" style="position: relative">
 
-                        <?php if ($user->hasPermission(UserPermission::UPLOADEDFILES_DELETE)) { ?>
+                        <?php if (_can_delete_files()) { ?>
                             <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
                                 <i class="trash icon"></i> Delete
                             </button>
@@ -700,12 +746,12 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <div class="right ui grid middle aligned">
 
                             <div class="one wide column">
-
-                                <form id="deleteUploadedFileForm<?= $uploadedFileIndex ?>" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>">
-                                    <input name="_method" type="hidden" value="delete" />
-                                    <input type="hidden" name="fileId" value="<?= $uploadedFile->uploaded_file_id ?>" />
-                                </form>
-
+                                <?php if (_can_delete_files()) { ?>
+                                    <form id="deleteUploadedFileForm<?= $uploadedFileIndex ?>" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>">
+                                        <input name="_method" type="hidden" value="delete" />
+                                        <input type="hidden" name="fileId" value="<?= $uploadedFile->uploaded_file_id ?>" />
+                                    </form>
+                                <?php } ?>
                             </div>
 
                         </div>
@@ -748,6 +794,22 @@ function _get_meta_content(UploadedFile $uploadedFile)
     $meta = ob_get_contents();
     ob_end_clean();
     return $meta;
+}
+
+function _can_delete_files()
+{
+    $app = \Fuppi\App::getInstance();
+    $user = $app->getUser();
+
+    if ($voucher = $app->getVoucher()) {
+        if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_DELETE)) {
+            return true;
+        }
+    } else {
+        return $user->hasPermission(UserPermission::UPLOADEDFILES_DELETE);
+    }
+
+    return false;
 }
 
 function _can_read_file(UploadedFile $uploadedFile)

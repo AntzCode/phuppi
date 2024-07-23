@@ -58,6 +58,15 @@
             <span class="column right aligned">v<?= fuppi_version() ?></span>
         </div>
     </footer>
+    <div class="ui segment">
+        <div class="ui page dimmer inverted">
+            <div class="content">
+                <h2 class="ui inverted icon header">
+                    <img class="ui image icon" style="width: 30%; height: 30%;" src="/assets/images/logo/phuppi/phuppi-logo.svg" />
+                </h2>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
