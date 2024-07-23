@@ -134,12 +134,12 @@ if (is_array($fileIds) && count($fileIds) > 0) {
         ]);
 
 
-        $expiresAt = time() + 20 * 60;
+        $expiresAt = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
         $cmd = $s3Client->getCommand('GetObject', [
             'Bucket' => $config->getSetting('aws_s3_bucket'),
             'Key' => $archiveFilePath
         ]);
-        $request = $s3Client->createPresignedRequest($cmd, '+20 minutes');
+        $request = $s3Client->createPresignedRequest($cmd, time() + (int) $config->getSetting('aws_token_lifetime_seconds'));
         $presignedUrl = (string) $request->getUri();
 
         redirect($presignedUrl);
@@ -224,40 +224,17 @@ if (is_array($fileIds) && count($fileIds) > 0) {
 
             $s3Client = $sdk->createS3();
 
-            if (!isset($_GET['icon'])) {
-                // we do not wrap a stream for icons, for performance reasons
-
-                try {
-                    $s3Client->registerStreamWrapper();
-
-                    if ($stream = fopen('s3://' . $config->getSetting('aws_s3_bucket') . '/' . $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, 'r')) {
-                        header('Content-Type: ' . $uploadedFile->mimetype);
-                        header('Content-Disposition: attachment; filename="' . $uploadedFile->display_filename . '"');
-
-                        fuppi_stop();
-                        while (!feof($stream)) {
-                            echo fread($stream, 1024);
-                            ob_flush();
-                        }
-                        fclose($stream);
-                        exit;
-                    }
-                } catch (\Exception $e) {
-                }
-                // falls back to redirect if the stream failed
-            }
-
             $voucherId = ($app->getVoucher() ? $app->getVoucher()->voucher_id : null);
 
             if (!($presignedUrl = $uploadedFile->getAwsPresignedUrl('GetObject', $voucherId))) {
-                $expiresAt = time() + 20 * 60;
+                $expiresAt = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
                 $cmd = $s3Client->getCommand('GetObject', [
                     'Bucket' => $config->getSetting('aws_s3_bucket'),
                     'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
                     'ResponseContentDisposition' => 'attachment; filename ="' . $uploadedFile->display_filename . '"'
                 ]);
-                $request = $s3Client->createPresignedRequest($cmd, '+20 minutes');
-                $presignedUrl = (string)$request->getUri();
+                $request = $s3Client->createPresignedRequest($cmd, time() + (int) $config->getSetting('aws_token_lifetime_seconds'));
+                $presignedUrl = (string) $request->getUri();
                 $uploadedFile->setAwsPresignedUrl($presignedUrl, 'GetObject', $expiresAt, $voucherId);
             }
             redirect($presignedUrl);

@@ -77,7 +77,7 @@ if (!empty($_POST)) {
                             ]);
 
                             $uploadedFile = UploadedFile::getOne($uploadedFileId);
-                            // $uploadedFile->dropAwsPresignedUrl();
+                            $uploadedFile->dropAwsPresignedUrl();
 
                             $apiResponse->data = $uploadedFile->getData();
 
@@ -136,7 +136,7 @@ if (!empty($_POST)) {
                     ];
 
                     $formInputs = ['key' => $requestKey];
-                    $expires = '+1 hour';
+                    $expires = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
 
                     $postObject = new PostObjectV4(
                         $s3Client,
@@ -426,7 +426,7 @@ if ($voucher = $app->getVoucher()) {
                                 </div>
 
                                 <div class="image content">
-                                    <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon">
+                                    <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
                                 </div>
                                 <div class="actions">
                                     <div class="ui positive right labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
@@ -459,7 +459,7 @@ if ($voucher = $app->getVoucher()) {
                                                 in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
                                                 && _can_read_file($uploadedFile)
                                             ) { ?>
-                                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon" />
+                                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
                                             <?php } else if (empty("{$uploadedFile->extension}")) { ?>
                                                 <img src="/assets/images/filetype-icons/unknown.png" />
                                             <?php } else { ?>
@@ -608,7 +608,7 @@ if ($voucher = $app->getVoucher()) {
                         ) { ?>
 
                             <div class="ui tiny rounded image clickable raised" onclick="$('.preview<?= $uploadedFileIndex ?>').modal('show')">
-                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>&icon" />
+                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
                             </div>
 
                         <?php } else if (empty("{$uploadedFile->extension}")) { ?>
