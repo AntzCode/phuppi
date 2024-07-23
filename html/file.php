@@ -26,6 +26,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
             $isValidToken = true;
         } else {
             fuppi_add_error_message('Invalid token');
+            exit;
         }
     }
 
@@ -40,17 +41,23 @@ if (is_array($fileIds) && count($fileIds) > 0) {
                 if ($uploadedFile->voucher_id !== $voucher->voucher_id) {
                     if (!$voucher->hasPermission(VoucherPermission::UPLOADEDFILES_LIST_ALL)) {
                         // not allowed to read a file that was not uploaded with the voucher they are using
-                        $isMyFile = false;
-                        break;
+                        fuppi_add_error_message('Not permitted to download that file! (' . $fileId . ')');
+                        exit;
                     }
                 }
             }
 
             if ($isValidToken || (($isMyFile || $canReadUsers) && $canReadFiles)) {
             }
+
+
+            if (!$isMyFile) {
+                fuppi_add_error_message('That is not your file: ' . $fileId);
+                exit;
+            }
         } else {
-            fuppi_add_error_message('Invalid file id: '+$fileId);
-            break;
+            fuppi_add_error_message('Invalid file id: ' . $fileId);
+            exit;
         }
     }
 
