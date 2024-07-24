@@ -14,6 +14,7 @@ class User extends Model
 
     protected string $_tablename = 'fuppi_users';
     protected string $_primaryKeyColumnName = 'user_id';
+    protected $settings = [];
 
     protected $data = [
         'user_id' => 0,
@@ -137,4 +138,25 @@ class User extends Model
             }
         }
     }
+
+    public function setSetting($name, $value){
+        $this->settings[$name] = $value;
+    }
+
+    public function getSetting($name){
+        if(array_key_exists($name, $this->settings)){
+            return $this->settings[$name];
+        }
+    }
+
+    public function setSettings($settings){
+        foreach($settings as $k => $v){
+            $this->setSetting($k, $v);
+        }
+    }
+
+    public function getSettings(){
+        return $this->settings;
+    }
+
 }

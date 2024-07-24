@@ -4,7 +4,6 @@ namespace Fuppi;
 
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'User.php');
 
-use Fuppi\User;
 
 class App
 {
@@ -24,6 +23,7 @@ class App
         $this->db = new Db();
         $this->user = new User();
         $this->user->setData($_SESSION['\Fuppi\App.user'] ?? []);
+        $this->user->setSettings($_SESSION['\Fuppi\App.userSettings'] ?? []);
         if (isset($_SESSION['\Fuppi\App.voucher'])) {
             try {
                 $voucher = Voucher::getOne($_SESSION['\Fuppi\App.voucher']['voucher_id']);
@@ -44,6 +44,7 @@ class App
     {
         if (($this->user ?? null) instanceof User) {
             $_SESSION['\Fuppi\App.user'] = $this->user->getData();
+            $_SESSION['\Fuppi\App.userSettings'] = $this->user->getSettings();
         }
         if (($this->voucher ?? null) instanceof Voucher) {
             $_SESSION['\Fuppi\App.voucher'] = $this->voucher->getData();
@@ -64,7 +65,7 @@ class App
         return $this->user;
     }
 
-    public function getVoucher(): ?Voucher
+    public function getVoucher() : ?Voucher
     {
         if (isset($this->voucher)) {
             return $this->voucher;
@@ -86,7 +87,7 @@ class App
         return $this->config;
     }
 
-    public function getDb(): Db
+    public function getDb() : Db
     {
         return $this->db;
     }

@@ -20,6 +20,8 @@ $errors = [];
 
 $profileUser = $user;
 
+$pageSizes = [10, 25, 50, 100, 250, 500, 1000];
+
 if (!empty($_GET['userId'])) {
     if ($user->hasPermission(UserPermission::USERS_READ)) {
         $profileUser = User::getOne($_GET['userId']) ?? $user;
@@ -96,6 +98,15 @@ if (!empty($_POST)) {
         case 'post':
 
             switch ($_POST['_action'] ?? '') {
+                case 'setPageSize':
+                    $apiResponse = new ApiResponse();
+                    if (in_array($_POST['pageSize'], $pageSizes)) {
+                        $profileUser->setSetting('pageSize', $_POST['pageSize']);
+                        $apiResponse->sendResponse();
+                    } else {
+                        $apiResponse->throwException('Invalid page size');
+                    }
+                    break;
                 case 'writeFileMeta':
                     $apiResponse = new ApiResponse();
                     $uploadedFileId = (int) $_POST['fileId'];
@@ -290,7 +301,7 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
 
 // fetch the search results
 $pageNum = $_GET['page'] ?? 1;
-$pageSize = 10;
+$pageSize = $profileUser->getSetting('pageSize') ?? 10;
 $orderBy = ['display_filename', 'COLLATE NOCASE ASC'];
 
 $searchTerm = $_GET['searchTerm'] ?? '';
@@ -443,7 +454,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             </label>
         </h3>
 
-        <div class="ui secondary menu">
+        <div class="ui menu">
             <?php if (_can_multiple_select()) { ?>
                     <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
                         <i class="square outline large primary icon"></i>
@@ -453,7 +464,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <label>With Selected</label>
                         <i class="dropdown icon"></i>
                         <div class="menu">
-                        <div class="item multi-select-action" data-multi-select-action="download">
+                            <div class="item multi-select-action" data-multi-select-action="download">
                                 <i class="download icon"></i>        
                                 <label>Zip &amp; Download</label>
                             </div>
@@ -467,17 +478,41 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             
                         </div>
                     </div>
-                <div class="right item">
-                    <div class="ui icon input">
-                        <script type="text/javascript">
-                            function performSearch(){
-                                window.location="<?= basename(__FILE__) ?>?searchTerm=" + $('input[name=searchTerm]').val();
-                            }
-                        </script>
-                        <input type="text" name="searchTerm" placeholder="Search..." 
-                            onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
-                            value="<?= $_GET['searchTerm'] ?? '' ?>" />
-                        <i class="search link icon" onClick="performSearch()"></i>
+                <div class="right menu">
+                    <div class="item">
+                        <div class="ui icon input">
+                            <script type="text/javascript">
+                                function performSearch(){
+                                    window.location="<?= basename(__FILE__) ?>?searchTerm=" + $('input[name=searchTerm]').val();
+                                }
+                            </script>
+                            <input type="text" name="searchTerm" placeholder="Search..." 
+                                onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
+                                value="<?= $_GET['searchTerm'] ?? '' ?>" />
+                            <i class="search link icon" onClick="performSearch()"></i>
+                        </div>
+                    </div>
+                    <div class="ui dropdown item">
+                        <label><?= $pageSize ?></label>
+                        <i class="dropdown icon"></i>
+                        <div class="ui stackable menu">
+                            <script type="text/javascript">
+                                async function setPageSize(newPageSize){
+                                    let formData = new FormData();
+                                    formData.append('_action', 'setPageSize');
+                                    formData.append('pageSize', newPageSize);
+
+                                    await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
+                                        window.location=window.location;
+                                    }).catch((error) => {
+                                        console.log(error);
+                                    });
+                                }
+                            </script>
+                            <?php foreach ($pageSizes as $_pageSize) { ?>
+                                <div class="item" onClick="setPageSize(<?= $_pageSize ?>)"><?= $_pageSize ?></div>
+                            <?php } ?>
+                        </div>
                     </div>
                 </div>
             <?php } ?>
