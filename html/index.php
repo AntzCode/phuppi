@@ -21,6 +21,17 @@ $errors = [];
 $profileUser = $user;
 
 $pageSizes = [10, 25, 50, 100, 250, 500, 1000];
+$defaultPageSize = 10;
+
+$orderBys = [
+    '`filesize` ASC' => 'Size (smallest)',
+    '`filesize` DESC' => 'Size (largest)',
+    '`uploaded_at` ASC' => 'Date (oldest) ',
+    '`uploaded_at` DESC' => 'Date (newest) ',
+    '`display_filename` COLLATE NOCASE ASC' => 'Filename (up)',
+    '`display_filename` COLLATE NOCASE DESC' => 'Filename (down)'
+];
+$defaultOrderBy = array_keys($orderBys)[4];
 
 if (!empty($_GET['userId'])) {
     if ($user->hasPermission(UserPermission::USERS_READ)) {
@@ -105,6 +116,15 @@ if (!empty($_POST)) {
                         $apiResponse->sendResponse();
                     } else {
                         $apiResponse->throwException('Invalid page size');
+                    }
+                    break;
+                case 'setOrderBy':
+                    $apiResponse = new ApiResponse();
+                    if (array_key_exists($_POST['orderBy'], $orderBys)) {
+                        $profileUser->setSetting('orderBy', $_POST['orderBy']);
+                        $apiResponse->sendResponse();
+                    } else {
+                        $apiResponse->throwException('Invalid sort order');
                     }
                     break;
                 case 'writeFileMeta':
@@ -301,14 +321,14 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
 
 // fetch the search results
 $pageNum = $_GET['page'] ?? 1;
-$pageSize = $profileUser->getSetting('pageSize') ?? 10;
-$orderBy = ['display_filename', 'COLLATE NOCASE ASC'];
+$pageSize = $profileUser->getSetting('pageSize') ?? $defaultPageSize;
+$orderBy = $profileUser->getSetting('orderBy') ?? $defaultOrderBy;
 
 $searchTerm = $_GET['searchTerm'] ?? '';
 
 $searchQuery = (new SearchQuery())
 ->where('user_id', $profileUser->user_id)
-->orderBy($orderBy[0], $orderBy[1])
+->orderBy($orderBy)
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
 
 if (strlen($searchTerm) > 0) {
@@ -489,10 +509,33 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             <input type="text" name="searchTerm" placeholder="Search..." 
                                 onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
                                 value="<?= $_GET['searchTerm'] ?? '' ?>" />
-                            <i class="search link icon" onClick="performSearch()"></i>
+                            <i class="search link icon" onClick="performSearch()" title="Perform search"></i>
                         </div>
                     </div>
-                    <div class="ui dropdown item">
+                    <div class="ui dropdown item clickable" title="Sorting order">
+                        <label><?= $orderBys[$orderBy] ?></label>
+                        <i class="dropdown icon"></i>
+                        <div class="ui labeled icon menu">
+                            <script type="text/javascript">
+                                async function setOrderBy(newOrderBy){
+                                    let formData = new FormData();
+                                    formData.append('_action', 'setOrderBy');
+                                    formData.append('orderBy', newOrderBy);
+                                    await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
+                                        window.location=window.location;
+                                    }).catch((error) => {
+                                        console.log(error);
+                                    });
+                                }
+                            </script>
+                            <?php foreach (array_keys($orderBys) as $_orderBy) { ?>
+                                <div class="item" onClick="setOrderBy('<?= $_orderBy ?>')">
+                                    <?= $orderBys[$_orderBy] ?>
+                                </div>
+                            <?php } ?>
+                        </div>
+                    </div>
+                    <div class="ui dropdown item clickable" title="Rows per page">
                         <label><?= $pageSize ?></label>
                         <i class="dropdown icon"></i>
                         <div class="ui stackable menu">
@@ -501,7 +544,6 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                     let formData = new FormData();
                                     formData.append('_action', 'setPageSize');
                                     formData.append('pageSize', newPageSize);
-
                                     await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
                                         window.location=window.location;
                                     }).catch((error) => {

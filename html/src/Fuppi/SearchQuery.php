@@ -8,7 +8,7 @@ class SearchQuery
     protected $columns = [];
     protected $concatenator = 'AND';
     protected $conditions = [];
-    protected $orderBy = [];
+    protected $orderBy = '';
     protected $limit = 20;
     protected $offset = 0;
 
@@ -38,9 +38,9 @@ class SearchQuery
         return $this;
     }
 
-    public function orderBy(string $column, $direction="ASC")
+    public function orderBy(string $orderBy)
     {
-        $this->orderBy = [$column, $direction];
+        $this->orderBy = $orderBy;
         return $this;
     }
 
@@ -104,8 +104,8 @@ class SearchQuery
             $query .= ' WHERE ' . $conditions;
         }
 
-        if (count($this->orderBy) > 0) {
-            $query .= ' ORDER BY `' . $this->orderBy[0] . '` ' . $this->orderBy[1];
+        if (strlen($this->orderBy) > 0) {
+            $query .= ' ORDER BY ' . $this->orderBy;
         }
 
         if (!is_null($limit)) {
