@@ -31,7 +31,7 @@ $orderBys = [
     '`display_filename` COLLATE NOCASE ASC' => 'Filename (up)',
     '`display_filename` COLLATE NOCASE DESC' => 'Filename (down)'
 ];
-$defaultOrderBy = array_keys($orderBys)[3];
+$defaultOrderBy = array_keys($orderBys)[4];
 
 if (!empty($_GET['userId'])) {
     if ($user->hasPermission(UserPermission::USERS_READ)) {
@@ -582,7 +582,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             </button>
                         <?php } ?>
 
-                        <?php if (_can_read_file($uploadedFile)) {  ?>
+                        <?php if (in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/gif']) && _can_read_file($uploadedFile)) {  ?>
 
                             <div class="ui modal preview<?= $uploadedFileIndex ?>">
 
@@ -623,7 +623,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                                         <div class="image">
                                             <?php if (
-                                                in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
+                                                in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/gif'])
                                                 && _can_read_file($uploadedFile)
                                             ) { ?>
                                                 <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
@@ -769,7 +769,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } ?>
 
                         <?php if (
-                            in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
+                            in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/gif'])
                             && _can_read_file($uploadedFile)
                         ) { ?>
 
