@@ -206,7 +206,7 @@ foreach ($allVouchers as $voucher) {
             </p>
         </div>
 
-        <div class="ui horizontal equal width basic segments">
+        <div class="ui horizontal equal width basic segments stackable">
             
             <div class="ui segment">
                 <div class="content">
@@ -341,13 +341,26 @@ foreach ($allVouchers as $voucher) {
                         <input type="hidden" name="permissionName" value="" />
                     </form>
 
-                    <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this voucher?" data-action="(e) => document.getElementById('deleteVoucherForm<?= $voucherIndex ?>').submit()">
-                        <i class="trash icon"></i> Delete Voucher
-                    </button>
-
                     <div class="content">
 
-                        <h2 class="header ui label"><?= $voucher->voucher_code ?> <i class="clickable copy icon copy-to-clipboard" data-content="<?= $voucher->voucher_code ?>"></i></h2>
+                        <h2 class="header ui label"  style="width: 100%;">
+                            <span style="width: 100%; display: flex; flex-direction: row;">
+                                <span style="flex: 0">
+                                    <i class="clickable copy icon copy-to-clipboard"
+                                        data-content="<?= $voucher->voucher_code ?>"></i>
+                                </span>    
+                                
+                                <span style="flex: 1; word-break: break-all;"><?= $voucher->voucher_code ?></span> 
+                                
+                                <span style="flex: 0">
+                                    <i class="clickable red round trash icon clickable-confirm" 
+                                        title="Delete Voucher"
+                                        data-confirm="Are you sure you want to delete this voucher?" 
+                                        data-action="(e) => document.getElementById('deleteVoucherForm<?= $voucherIndex ?>').submit()">
+                                    </i>
+                                </span>
+                            </span>
+                        </h2>
 
                         <div class="description">
                             <?= empty($voucher->notes) ? '' : '<p>' . $voucher->notes . '</p>' ?>

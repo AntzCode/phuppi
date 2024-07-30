@@ -474,14 +474,14 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             </label>
         </h3>
 
-        <div class="ui menu">
+        <div class="ui stackable menu">
             <?php if (_can_multiple_select()) { ?>
                     <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
                         <i class="square outline large primary icon"></i>
                         <label>Select All / Deselect All</label>
                     </div>
-                    <div class="ui dropdown item">
-                        <label>With Selected</label>
+                    <div class="ui dropdown item clickable">
+                        <label>With <span class="multi-select-count"></span> Selected (<span class="multi-select-size">0B</span>)</label>
                         <i class="dropdown icon"></i>
                         <div class="menu">
                             <div class="item multi-select-action" data-multi-select-action="download">
@@ -495,7 +495,6 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                 <i class="trash icon"></i>        
                                 <label>Delete Selected</label>
                             </div>
-                            
                         </div>
                     </div>
                 <div class="right menu">
@@ -536,7 +535,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         </div>
                     </div>
                     <div class="ui dropdown item clickable" title="Rows per page">
-                        <label><?= $pageSize ?></label>
+                        <label><?= $pageSize ?> per page</label>
                         <i class="dropdown icon"></i>
                         <div class="ui stackable menu">
                             <script type="text/javascript">
@@ -652,40 +651,79 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                     } ?>
                                                 </select>
 
-                                                <div class="ui labeled ticked slider attached" id="sharableLinkSlider<?= $uploadedFileIndex ?>"></div>
+                                                <div class="ui grid">
+                                                    <div class="sixteen wide column ui labeled ticked slider attached computer tablet only" id="sharableLinkSlider<?= $uploadedFileIndex ?>"></div>
+                                                    <div class="sixteen wide column mobile only">
+                                                        <div class="ui dropdown" id="sharableLinkDropdown<?= $uploadedFileIndex ?>">
+                                                            <input type="hidden" name="sharableLinkDropdown<?= $uploadedFileIndex ?>" value="<?= $_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[3], array_keys($config->token_valid_for_options) ?>" />
+                                                            <label><?= array_values($config->token_valid_for_options)[(array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[3], array_keys($config->token_valid_for_options)))] ?></label>
+                                                            <i class="dropdown icon"></i>
+                                                            <div class="menu">
+                                                                <?php foreach ($config->token_valid_for_options as $k => $v) { ?>
+                                                                    <div class="item" data-value="<?= $k ?>">
+                                                                        <?= $v ?>
+                                                                    </div>
+                                                                <?php } ?> 
+                                                            </div>
+                                                        </div>
+                                                    </div> 
 
-                                                <script>
-                                                    $('#sharableLinkSlider<?= $uploadedFileIndex ?>')
-                                                        .slider({
-                                                            min: 0,
-                                                            max: <?= count($config->token_valid_for_options) - 1 ?>,
-                                                            start: <?= (array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[0], array_keys($config->token_valid_for_options))) ?>,
-                                                            autoAdjustLabels: true,
-                                                            fireOnInit: true,
-                                                            onChange: (v) => {
-                                                                document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex = v;
-                                                                let formData = new FormData();
-                                                                formData.append('_action', 'createSharableLink');
-                                                                formData.append('fileId', <?= $uploadedFile->uploaded_file_id ?>);
-                                                                formData.append('validFor', document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').options[document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex].value);
-                                                                axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
-                                                                    $('#sharableLink<?= $uploadedFileIndex ?>').text(response.data.url);
-                                                                    $('#sharableLink<?= $uploadedFileIndex ?>').val(response.data.url);
-                                                                    $('#sharableLinkCopyButton<?= $uploadedFileIndex ?>').data('content', response.data.url);
-                                                                    $('#expiresAt<?= $uploadedFileIndex ?>').text(response.data.expiresAt);
-                                                                }).catch((error) => {
-                                                                    if (error.response && error.response.data && error.response.data.message) {
-                                                                        alert(error.response.data.message);
-                                                                    } else {
-                                                                        console.log(error);
-                                                                    }
-                                                                });
-                                                            },
-                                                            interpretLabel: function(value) {
-                                                                let _labels = JSON.parse('<?= json_encode(array_values($config->token_valid_for_options)) ?>');
-                                                                return _labels[value];
+                                                </div>
+                                                
+                                                <script type="text/javascript">
+                                                    var tokenValidForOptions = JSON.parse('<?= json_encode($config->token_valid_for_options) ?>');
+                                                    $('#sharableLinkDropdown<?= $uploadedFileIndex ?>').dropdown({
+                                                        allowAdditions: true,
+                                                        allowReselection: true
+                                                    }).on('change', function (e) {
+                                                        $('#sharableLinkDropdown<?= $uploadedFileIndex ?> label').text(tokenValidForOptions[e.target.value]);
+                                                        let formData = new FormData();
+                                                        formData.append('_action', 'createSharableLink');
+                                                        formData.append('fileId', <?= $uploadedFile->uploaded_file_id ?>);
+                                                        formData.append('validFor', e.target.value);
+                                                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                                                            $('#sharableLink<?= $uploadedFileIndex ?>').text(response.data.url);
+                                                            $('#sharableLink<?= $uploadedFileIndex ?>').val(response.data.url);
+                                                            $('#sharableLinkCopyButton<?= $uploadedFileIndex ?>').data('content', response.data.url);
+                                                            $('#expiresAt<?= $uploadedFileIndex ?>').text(response.data.expiresAt);
+                                                        }).catch((error) => {
+                                                            if (error.response && error.response.data && error.response.data.message) {
+                                                                alert(error.response.data.message);
+                                                            } else {
+                                                                console.log(error);
                                                             }
                                                         });
+                                                    });
+                                                    $('#sharableLinkSlider<?= $uploadedFileIndex ?>').slider({
+                                                        min: 0,
+                                                        max: <?= count($config->token_valid_for_options) - 1 ?>,
+                                                        start: <?= (array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[3], array_keys($config->token_valid_for_options))) ?>,
+                                                        autoAdjustLabels: true,
+                                                        fireOnInit: true,
+                                                        onChange: (v) => {
+                                                            document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex = v;
+                                                            let formData = new FormData();
+                                                            formData.append('_action', 'createSharableLink');
+                                                            formData.append('fileId', <?= $uploadedFile->uploaded_file_id ?>);
+                                                            formData.append('validFor', document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').options[document.getElementById('validForDropdown<?= $uploadedFileIndex ?>').selectedIndex].value);
+                                                            axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                                                                $('#sharableLink<?= $uploadedFileIndex ?>').text(response.data.url);
+                                                                $('#sharableLink<?= $uploadedFileIndex ?>').val(response.data.url);
+                                                                $('#sharableLinkCopyButton<?= $uploadedFileIndex ?>').data('content', response.data.url);
+                                                                $('#expiresAt<?= $uploadedFileIndex ?>').text(response.data.expiresAt);
+                                                            }).catch((error) => {
+                                                                if (error.response && error.response.data && error.response.data.message) {
+                                                                    alert(error.response.data.message);
+                                                                } else {
+                                                                    console.log(error);
+                                                                }
+                                                            });
+                                                        },
+                                                        interpretLabel: function(value) {
+                                                            let _labels = JSON.parse('<?= json_encode(array_values($config->token_valid_for_options)) ?>');
+                                                            return _labels[value];
+                                                        }
+                                                    });
                                                 </script>
 
                                             </div>
@@ -702,7 +740,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                             </div>
                                                         </div>
 
-                                                        <span class="ui large text">Expires at: <span id="expiresAt<?= $uploadedFileIndex ?>"></span></span>
+                                                        <div class="ui large text">Expires at: <span id="expiresAt<?= $uploadedFileIndex ?>"></span></div>
                                                     </div>
 
                                                 </div>
@@ -762,7 +800,9 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } ?>
 
                         <?php if (_can_multiple_select()) { ?>
-                            <div class="ui image multi-select-item uploaded-file" data-multi-select-item-id="<?= $uploadedFile->uploaded_file_id ?>" style="padding: 1em; align-self: center;" >
+                            <div class="ui image multi-select-item uploaded-file" style="padding: 1em; align-self: center;"
+                            data-multi-select-item-id="<?= $uploadedFile->uploaded_file_id ?>" 
+                            data-multi-select-item-size="<?= $uploadedFile->filesize ?>">
                                 <i class="clickable large primary square outline icon"></i>
 
                             </div>
@@ -793,11 +833,12 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                         <div class="content">
 
-                            <div class="header">
-                                <span id="uploadedFileDisplayFilename<?= $uploadedFile->uploaded_file_id ?>"><?= $uploadedFile->display_filename ?></span>
+                            <div class="header" style="">
+                                <span id="uploadedFileDisplayFilename<?= $uploadedFile->uploaded_file_id ?>" style="word-break: break-all;"><?= $uploadedFile->display_filename ?></span>
                                 <?php if (_can_write_file_meta($uploadedFile)) { ?>
                                     <script type="text/javascript">
                                         $('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('setting', {
+                                            maxWidth: '80%',
                                             onApprove: () => {
                                                 let uploadedFileId = <?= $uploadedFile->uploaded_file_id ?>;
                                                 

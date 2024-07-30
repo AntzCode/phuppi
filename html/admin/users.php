@@ -33,7 +33,6 @@ $selectedPermissions = [
 ];
 
 if (!empty($_POST)) {
-
     switch ($_POST['_action']) {
         case 'deleteUser':
             if ($user->hasPermission(UserPermission::USERS_DELETE)) {
@@ -94,7 +93,6 @@ if (!empty($_POST)) {
         case 'createUser':
 
             if ($user->hasPermission(UserPermission::USERS_PUT)) {
-
                 $username = $_POST['username'] ?? '';
                 $password = $_POST['password'] ?? '';
 
@@ -184,13 +182,10 @@ $allUsersPermissions = [];
 $allUsersNonPermissions = [];
 
 foreach ($allUsers as $existingUser) {
-
     if ($existingUser->hasPermission(UserPermission::IS_ADMINISTRATOR)) {
-
         $allUsersPermissions[$existingUser->user_id] = [UserPermission::IS_ADMINISTRATOR => true];
         $allUsersNonPermissions[$existingUser->user_id] = [];
     } else {
-
         $allUsersPermissions[$existingUser->user_id] = [
             UserPermission::UPLOADEDFILES_DELETE => $existingUser->hasPermission(UserPermission::UPLOADEDFILES_DELETE),
             UserPermission::UPLOADEDFILES_PUT => $existingUser->hasPermission(UserPermission::UPLOADEDFILES_PUT),
@@ -310,9 +305,6 @@ foreach ($allUsers as $existingUser) {
                             </form>
                         <?php } ?>
 
-                        <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this user?" data-action="(e) => document.getElementById('deleteUserForm<?= $existingUserIndex ?>').submit()">
-                            <i class="trash icon"></i> Delete User
-                        </button>
                     <?php } ?>
 
                     <div class="ui tiny image raised">
@@ -321,7 +313,20 @@ foreach ($allUsers as $existingUser) {
 
                     <div class="content">
 
-                        <h2 class="header"><?= $existingUser->username ?></h2>
+                        <h2 class="header ui label" style="width: 100%">
+                            <span style="display: flex; width: 100%; flex-direction: row;">
+                                <span style="flex: 1; word-break: break-all;">
+                                    <?= $existingUser->username ?>
+                                </span>
+                                <?php if ($user->hasPermission(UserPermission::USERS_DELETE) && $existingUser->user_id !== $user->user_id) { ?>
+                                    <span style="flex: 0">
+                                        <i class="red trash icon clickable-confirm"
+                                            title="Delete User"
+                                            data-confirm="Are you sure you want to delete this user?" data-action="(e) => document.getElementById('deleteUserForm<?= $existingUserIndex ?>').submit()"></i>
+                                    </span>
+                                <?php } ?>
+
+                        </h2>
 
                         <div class="description">
                             <div class="ui grid container">
@@ -342,7 +347,9 @@ foreach ($allUsers as $existingUser) {
 
                         <div class="extra floated left">
                             <?php foreach ($allUsersPermissions[$existingUser->user_id] as $permission => $has) { ?>
-                                <?php if (!$has) continue ?>
+                                <?php if (!$has) {
+                                    continue;
+                                } ?>
                                 <div class="green ui label" title="<?= $permissionTitles[$permission] ?>">
                                     <?= $permissionTitles[$permission] ?>
                                     <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR) && $user->user_id !== $existingUser->user_id) { ?>
@@ -355,7 +362,9 @@ foreach ($allUsers as $existingUser) {
                         </div>
                         <div>
                             <?php foreach ($allUsersNonPermissions[$existingUser->user_id] as $nonPermission => $has) { ?>
-                                <?php if (!$has) continue ?>
+                                <?php if (!$has) {
+                                    continue;
+                                } ?>
                                 <div class="gray ui icon label" title="<?= $permissionTitles[$nonPermission] ?>">
                                     <?= $permissionTitles[$nonPermission] ?>
                                     <?php if ($user->hasPermission(UserPermission::IS_ADMINISTRATOR)) { ?>

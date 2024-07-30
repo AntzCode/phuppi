@@ -15,7 +15,7 @@
 </head>
 
 <body>
-    <header class="ui grid padded page-header middle aligned">
+    <header class="ui grid padded page-header middle aligned stackable">
         <div class="three wide column left aligned clickable" data-url="/">
             <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg" width="280" height="122" />
         </div>

@@ -191,7 +191,7 @@ if (!class_exists('ZipArchive')) {
     <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
         <input type="hidden" name="_action" value="saveSettings" />
 
-        <div class="ui three cards">
+        <div class="ui three stackable cards">
 
             <?php foreach ($config->getDefaultSettings() as $defaultSetting) { ?>
 
