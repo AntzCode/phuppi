@@ -581,18 +581,28 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             </button>
                         <?php } ?>
 
-                        <?php if (_can_read_file($uploadedFile)) {  ?>
+                        <?php if (_can_read_file($uploadedFile) && _can_preview_file($uploadedFile)) {  ?>
 
                             <div class="ui modal preview<?= $uploadedFileIndex ?>">
 
                                 <i class="close icon"></i>
 
                                 <div class="header">
-                                    Image Preview
+                                    Preview
                                 </div>
 
                                 <div class="image content">
-                                    <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
+                                    <?php if (in_array($uploadedFile->mimetype, $config->image_mime_types)) { ?>
+                                        <img class="ui centered massive image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
+                                    <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
+                                        <video class="ui centered massive image" 
+                                            id="preview-video-<?= $uploadedFile->uploaded_file_id ?>"
+                                            poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
+                                            controls preload="none"
+                                        >
+                                            <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" type="<?= $uploadedFile->mimetype ?>" />
+                                        </video>
+                                    <?php } ?>
                                 </div>
                                 <div class="actions">
                                     <div class="ui positive right labeled icon button clickable" data-url="file.php?id=<?= $uploadedFile->uploaded_file_id ?>">
@@ -621,11 +631,18 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                     <div class="item">
 
                                         <div class="image">
-                                            <?php if (
-                                                in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
-                                                && _can_read_file($uploadedFile)
-                                            ) { ?>
-                                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
+                                            <?php if (_can_read_file($uploadedFile) && _can_preview_file($uploadedFile)) { ?>
+                                                <?php if (in_array($uploadedFile->mimetype, $config->image_mime_types)) { ?>
+                                                    <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
+                                                <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
+                                                    <video class="ui centered massive image" 
+                                                        id="share-video-<?= $uploadedFile->uploaded_file_id ?>"
+                                                        poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
+                                                        preload="none"
+                                                    >
+                                                        <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>#t=0.1" type="<?= $uploadedFile->mimetype ?>" />
+                                                    </video>
+                                                <?php } ?>
                                             <?php } else if (empty("{$uploadedFile->extension}")) { ?>
                                                 <img src="/assets/images/filetype-icons/unknown.png" />
                                             <?php } else { ?>
@@ -808,13 +825,15 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             </div>
                         <?php } ?>
 
-                        <?php if (
-                            in_array($uploadedFile->mimetype, ['image/jpeg', 'image/png', 'image/giff'])
-                            && _can_read_file($uploadedFile)
-                        ) { ?>
+                        <?php if (_can_read_file($uploadedFile) && _can_preview_file($uploadedFile)) { ?>
+                            <div class="ui tiny rounded image clickable raised" onclick="$('.preview<?= $uploadedFileIndex ?>').modal({onHide: () => {$('#preview-video-<?= $uploadedFile->uploaded_file_id ?>').trigger('pause')}}).modal('show')">
+                                
+                                <?php if (in_array($uploadedFile->mimetype, $config->image_mime_types)) { ?>
+                                    <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
+                                <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
+                                    <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                                <?php } ?>
 
-                            <div class="ui tiny rounded image clickable raised" onclick="$('.preview<?= $uploadedFileIndex ?>').modal('show')">
-                                <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
                             </div>
 
                         <?php } else if (empty("{$uploadedFile->extension}")) { ?>
@@ -977,6 +996,16 @@ function _can_read_file(UploadedFile $uploadedFile)
     }
 
     return false;
+}
+
+function _can_preview_file(UploadedFile $uploadedFile)
+{
+    $app = \Fuppi\App::getInstance();
+    $config = $app->getConfig();
+    return in_array($uploadedFile->mimetype, array_merge(
+        $config->image_mime_types,
+        $config->video_mime_types
+    ));
 }
 
 function _can_write_file_meta(UploadedFile $uploadedFile)

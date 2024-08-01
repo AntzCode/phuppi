@@ -1,7 +1,7 @@
 <?php
 
 $fuppiConfig = [
-    'fuppi_version' => '1.0.14',
+    'fuppi_version' => '1.0.15',
     'phpliteadmin_folder_name' => 'phpliteadmin',
     'sqlite3_file_path' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'FUPPI_DB.sqlite3',
     'uploaded_files_path' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'uploadedFiles',
@@ -20,5 +20,13 @@ $fuppiConfig = [
         ["name" => "aws_s3_secret", "value" => "", "type" => "password"],
         ["name" => "aws_token_lifetime_seconds", "value" => "86400", "type" => "string"],
         ["name" => "aws_lambda_multiple_zip_function_name", "value" => "", "type" => "string"],
+    ],
+    'image_mime_types' => [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+    ],
+    'video_mime_types' => [
+        'video/mp4'
     ]
 ];
