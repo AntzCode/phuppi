@@ -112,7 +112,7 @@ if (!empty($_POST)) {
                 case 'setPageSize':
                     $apiResponse = new ApiResponse();
                     if (in_array($_POST['pageSize'], $pageSizes)) {
-                        $profileUser->setSetting('pageSize', $_POST['pageSize']);
+                        $profileUser->setSetting('filesPageSize', $_POST['pageSize']);
                         $apiResponse->sendResponse();
                     } else {
                         $apiResponse->throwException('Invalid page size');
@@ -121,7 +121,7 @@ if (!empty($_POST)) {
                 case 'setOrderBy':
                     $apiResponse = new ApiResponse();
                     if (array_key_exists($_POST['orderBy'], $orderBys)) {
-                        $profileUser->setSetting('orderBy', $_POST['orderBy']);
+                        $profileUser->setSetting('filesOrderBy', $_POST['orderBy']);
                         $apiResponse->sendResponse();
                     } else {
                         $apiResponse->throwException('Invalid sort order');
@@ -321,8 +321,8 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
 
 // fetch the search results
 $pageNum = $_GET['page'] ?? 1;
-$pageSize = $profileUser->getSetting('pageSize') ?? $defaultPageSize;
-$orderBy = $profileUser->getSetting('orderBy') ?? $defaultOrderBy;
+$pageSize = $profileUser->getSetting('filesPageSize') ?? $defaultPageSize;
+$orderBy = $profileUser->getSetting('filesOrderBy') ?? $defaultOrderBy;
 
 $searchTerm = $_GET['searchTerm'] ?? '';
 
@@ -476,87 +476,87 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
         <div class="ui stackable menu">
             <?php if (_can_multiple_select()) { ?>
-                    <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
-                        <i class="square outline large primary icon"></i>
-                        <label>Select All / Deselect All</label>
-                    </div>
-                    <div class="ui dropdown item clickable">
-                        <label>With <span class="multi-select-count"></span> Selected (<span class="multi-select-size">0B</span>)</label>
-                        <i class="dropdown icon"></i>
-                        <div class="menu">
-                            <div class="item multi-select-action" data-multi-select-action="download">
-                                <i class="download icon"></i>        
-                                <label>Zip &amp; Download</label>
-                            </div>
-                            <div class="item multi-select-action"
-                                data-multi-select-action-url="<?= $_SERVER['REQUEST_URI'] ?>"
-                                data-multi-select-action-callback="refresh"
-                                data-multi-select-action="delete">
-                                <i class="trash icon"></i>        
-                                <label>Delete Selected</label>
-                            </div>
+                <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
+                    <i class="square outline large primary icon"></i>
+                    <label>Select All / Deselect All</label>
+                </div>
+                <div class="ui dropdown item clickable">
+                    <label>With <span class="multi-select-count"></span> Selected (<span class="multi-select-size">0B</span>)</label>
+                    <i class="dropdown icon"></i>
+                    <div class="menu">
+                        <div class="item multi-select-action" data-multi-select-action="download">
+                            <i class="download icon"></i>        
+                            <label>Zip &amp; Download</label>
                         </div>
-                    </div>
-                <div class="right menu">
-                    <div class="item">
-                        <div class="ui icon input">
-                            <script type="text/javascript">
-                                function performSearch(){
-                                    window.location="<?= basename(__FILE__) ?>?searchTerm=" + $('input[name=searchTerm]').val();
-                                }
-                            </script>
-                            <input type="text" name="searchTerm" placeholder="Search..." 
-                                onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
-                                value="<?= $_GET['searchTerm'] ?? '' ?>" />
-                            <i class="search link icon" onClick="performSearch()" title="Perform search"></i>
-                        </div>
-                    </div>
-                    <div class="ui dropdown item clickable" title="Sorting order">
-                        <label><?= $orderBys[$orderBy] ?></label>
-                        <i class="dropdown icon"></i>
-                        <div class="ui labeled icon menu">
-                            <script type="text/javascript">
-                                async function setOrderBy(newOrderBy){
-                                    let formData = new FormData();
-                                    formData.append('_action', 'setOrderBy');
-                                    formData.append('orderBy', newOrderBy);
-                                    await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
-                                        window.location=window.location;
-                                    }).catch((error) => {
-                                        console.log(error);
-                                    });
-                                }
-                            </script>
-                            <?php foreach (array_keys($orderBys) as $_orderBy) { ?>
-                                <div class="item" onClick="setOrderBy('<?= $_orderBy ?>')">
-                                    <?= $orderBys[$_orderBy] ?>
-                                </div>
-                            <?php } ?>
-                        </div>
-                    </div>
-                    <div class="ui dropdown item clickable" title="Rows per page">
-                        <label><?= $pageSize ?> per page</label>
-                        <i class="dropdown icon"></i>
-                        <div class="ui stackable menu">
-                            <script type="text/javascript">
-                                async function setPageSize(newPageSize){
-                                    let formData = new FormData();
-                                    formData.append('_action', 'setPageSize');
-                                    formData.append('pageSize', newPageSize);
-                                    await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
-                                        window.location=window.location;
-                                    }).catch((error) => {
-                                        console.log(error);
-                                    });
-                                }
-                            </script>
-                            <?php foreach ($pageSizes as $_pageSize) { ?>
-                                <div class="item" onClick="setPageSize(<?= $_pageSize ?>)"><?= $_pageSize ?></div>
-                            <?php } ?>
+                        <div class="item multi-select-action"
+                            data-multi-select-action-url="<?= $_SERVER['REQUEST_URI'] ?>"
+                            data-multi-select-action-callback="refresh"
+                            data-multi-select-action="delete">
+                            <i class="trash icon"></i>        
+                            <label>Delete Selected</label>
                         </div>
                     </div>
                 </div>
             <?php } ?>
+            <div class="right menu">
+                <div class="item">
+                    <div class="ui icon input">
+                        <script type="text/javascript">
+                            function performSearch(){
+                                window.location="<?= basename(__FILE__) ?>?searchTerm=" + $('input[name=searchTerm]').val();
+                            }
+                        </script>
+                        <input type="text" name="searchTerm" placeholder="Search..." 
+                            onkeydown="(() => {if(event.key==='Enter'){performSearch();}})()"
+                            value="<?= $_GET['searchTerm'] ?? '' ?>" />
+                        <i class="search link icon" onClick="performSearch()" title="Perform search"></i>
+                    </div>
+                </div>
+                <div class="ui dropdown item clickable" title="Sorting order">
+                    <label><?= $orderBys[$orderBy] ?></label>
+                    <i class="dropdown icon"></i>
+                    <div class="ui labeled icon menu">
+                        <script type="text/javascript">
+                            async function setOrderBy(newOrderBy){
+                                let formData = new FormData();
+                                formData.append('_action', 'setOrderBy');
+                                formData.append('orderBy', newOrderBy);
+                                await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
+                                    window.location=window.location;
+                                }).catch((error) => {
+                                    console.log(error);
+                                });
+                            }
+                        </script>
+                        <?php foreach (array_keys($orderBys) as $_orderBy) { ?>
+                            <div class="item" onClick="setOrderBy('<?= $_orderBy ?>')">
+                                <?= $orderBys[$_orderBy] ?>
+                            </div>
+                        <?php } ?>
+                    </div>
+                </div>
+                <div class="ui dropdown item clickable" title="Rows per page">
+                    <label><?= $pageSize ?> per page</label>
+                    <i class="dropdown icon"></i>
+                    <div class="ui stackable menu">
+                        <script type="text/javascript">
+                            async function setPageSize(newPageSize){
+                                let formData = new FormData();
+                                formData.append('_action', 'setPageSize');
+                                formData.append('pageSize', newPageSize);
+                                await axios.post('<?= basename(__FILE__) ?>', formData).then((response) => {
+                                    window.location=window.location;
+                                }).catch((error) => {
+                                    console.log(error);
+                                });
+                            }
+                        </script>
+                        <?php foreach ($pageSizes as $_pageSize) { ?>
+                            <div class="item" onClick="setPageSize(<?= $_pageSize ?>)"><?= $_pageSize ?></div>
+                        <?php } ?>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="ui divider"></div>
@@ -598,9 +598,9 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                         <video class="ui centered massive image" 
                                             id="preview-video-<?= $uploadedFile->uploaded_file_id ?>"
                                             poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
-                                            controls preload="none"
+                                            controls preload="metadata"
                                         >
-                                            <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" type="<?= $uploadedFile->mimetype ?>" />
+                                            <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>#t=0.5" type="<?= $uploadedFile->mimetype ?>" />
                                         </video>
                                     <?php } ?>
                                 </div>
