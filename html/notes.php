@@ -105,7 +105,7 @@ if (!empty($_POST)) {
                                 $note = new Note();
                                 $note->content = $notes;
                                 if (empty($_POST['filename'])) {
-                                    $note->filename = 'Note Created at ' . date('d M Y, H:i:s');
+                                    $note->filename = $note->generateUniqueFilename(_get_firstline_content($note));
                                 } else {
                                     $note->filename = $note->generateUniqueFilename($_POST['filename']);
                                 }
@@ -174,10 +174,6 @@ $existingNotes = $searchResult['rows'];
 $resultSetStart = (($pageNum-1) * $pageSize) + 1;
 $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
 
-
-
-// $existingNotes = $user->getNotes();
-
 ?>
 
 <h2>Welcome back, <?= $profileUser->username ?>!</h2>
@@ -196,13 +192,12 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
             </h3>
 
             <div class="ui vertical segment">
-                <!-- <div class="field <?= (!empty($errors['filename'] ?? []) ? 'error' : '') ?>">
-                    <label for="filename">Filename: </label>
+                <div class="field <?= (!empty($errors['filename'] ?? []) ? 'error' : '') ?>">
+                    <label for="filename">Note Name: </label>
                     <input id="filename" type="text" name="filename" 
-                    value="<?php $x = $_POST['filename'] ?? $editingNote->filename ?? '';
-    echo $x; ?>" 
-                    placeholder="Note Created at <?= date('d M Y'); ?>" />
-                </div> -->
+                    value="<?= (array_key_exists('filename', $_POST) ? $_POST['filename'] : ($editingNote->filename ?? '')) ?>" 
+                    placeholder="<?= (array_key_exists('filename', $_POST) ? $_POST['filename'] : ($editingNote->filename ?? '')) ?>" />
+                </div>
 
                 <div class="field">
                     <textarea name="notes"><?= $_POST['notes'] ?? $editingNote->content ?? '' ?></textarea>
@@ -427,7 +422,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
 
                     <div class="ui card" style="position: relative">
 
-                        <div class="ui header attached"><?= _get_firstline_content($existingNote) ?></div>
+                        <div class="ui header attached"><?= $existingNote->filename ?></div>
 
                         <div class="ui content attached">
                             <div class="meta">
@@ -493,7 +488,8 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
 function _get_firstline_content(Note $note)
 {
     $firstLine = '';
-    $words = explode(' ', $note->content);
+    $lines = explode("\n", $note->content);
+    $words = explode(' ', strip_tags($lines[0]));
     while (strlen($firstLine) < 40 && count($words) > 0) {
         $firstLine .= ' ' . array_shift($words);
     }
