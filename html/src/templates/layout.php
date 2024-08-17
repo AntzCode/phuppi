@@ -17,7 +17,7 @@
 <body>
     <header class="ui grid padded page-header middle aligned stackable">
         <div class="three wide column left aligned clickable" data-url="/">
-            <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg" width="280" height="122" />
+            <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg?<?= fuppi_version() ?>" width="280" height="122" />
         </div>
         <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
             <?php if ($user->hasPermission(\Fuppi\VoucherPermission::NOTES_LIST)) { ?>
@@ -54,7 +54,7 @@
     <div class="ui container content page-content"><?= $content ?></div>
     <footer class="page-footer">
         <div class="ui container two column grid">
-            <span class="column">&copy; <?= date('Y') ?> <a href="http://www.phuppi.com">Phuppi</a>, a "File-Uppie" thing.</span>
+            <span class="column">&copy; <?= date('Y') ?> <a href="http://www.phuppi.com">Phuppi</a>, a "File-Uppie" thingy..</span>
             <span class="column right aligned">v<?= fuppi_version() ?></span>
         </div>
     </footer>
@@ -62,7 +62,7 @@
         <div class="ui page dimmer inverted">
             <div class="content">
                 <h2 class="ui inverted icon header">
-                    <img class="ui image icon" style="width: 30%; height: 30%;" src="/assets/images/logo/phuppi/phuppi-logo.svg" />
+                    <img class="ui image icon" style="width: 30%; height: 30%;" src="/assets/images/logo/phuppi/phuppi-logo.svg?<?= fuppi_version() ?>" />
                 </h2>
             </div>
         </div>

@@ -2,6 +2,13 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    version="1.1"
    id="svg2"
    xml:space="preserve"
@@ -9,14 +16,13 @@
    height="700"
    viewBox="0 0 1600 699.99999"
    sodipodi:docname="phuppi-logo-horizontal.inkscape.svg"
-   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)"
    inkscape:export-filename="phuppi-logo-horizontal-slogan-1600x700.png"
    inkscape:export-xdpi="96"
-   inkscape:export-ydpi="96"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"><defs
+   inkscape:export-ydpi="96"><metadata
+     id="metadata39"><rdf:RDF><cc:Work
+         rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" /></cc:Work></rdf:RDF></metadata><defs
      id="defs6"><rect
        x="779.62714"
        y="257.92474"
@@ -32,10 +38,10 @@
      inkscape:pagecheckerboard="0"
      showgrid="false"
      inkscape:zoom="0.29958334"
-     inkscape:cx="106.81502"
+     inkscape:cx="861.19609"
      inkscape:cy="307.09318"
-     inkscape:window-width="1920"
-     inkscape:window-height="977"
+     inkscape:window-width="1366"
+     inkscape:window-height="665"
      inkscape:window-x="0"
      inkscape:window-y="24"
      inkscape:window-maximized="1"
@@ -129,9 +135,9 @@
      inkscape:groupmode="layer"
      id="layer7"
      inkscape:label="Slogan"
-     sodipodi:insensitive="true"><text
+     style="display:inline"><text
        xml:space="preserve"
-       style="font-size:120.753px;line-height:1.25;font-family:sans-serif;letter-spacing:-7.05276px;word-spacing:-18.2926px;fill:#000000;fill-opacity:0.476211;stroke-width:1.67558"
+       style="font-size:120.75299835px;line-height:1.25;font-family:sans-serif;letter-spacing:-7.05276012px;word-spacing:-18.29260063px;fill:#000000;fill-opacity:0.47621101;stroke-width:1.67558002"
        x="806.17719"
        y="540.92542"
        id="text33099"
@@ -139,10 +145,11 @@
          sodipodi:role="line"
          x="806.17719"
          y="540.92542"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:120.753px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.476211;stroke-width:1.67558"
-         id="tspan77925">file-uppie</tspan></text><text
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:120.75299835px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.47621101;stroke-width:1.67558002"
+         id="tspan77925">file-uppie</tspan></text>
+<text
        xml:space="preserve"
-       style="font-size:77.0695px;line-height:1.25;font-family:sans-serif;letter-spacing:-2.12682px;word-spacing:-10.4933px;fill:#000000;fill-opacity:0.442159;stroke-width:1.37105"
+       style="font-size:77.06950378px;line-height:1.25;font-family:sans-serif;letter-spacing:-2.12682009px;word-spacing:-10.49330044px;fill:#000000;fill-opacity:0.44215902;stroke-width:1.37105"
        x="780.04987"
        y="529.06122"
        id="text33099-3"
@@ -150,10 +157,11 @@
          sodipodi:role="line"
          x="780.04987"
          y="529.06122"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:77.0695px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.442159;stroke-width:1.37105"
-         id="tspan77925-6">.. </tspan></text><text
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:77.06950378px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.44215902;stroke-width:1.37105"
+         id="tspan77925-6">.. </tspan></text>
+<text
        xml:space="preserve"
-       style="font-size:75.1568px;line-height:1.25;font-family:sans-serif;letter-spacing:-2.07404px;word-spacing:-10.2329px;fill:#000000;fill-opacity:0.417663;stroke-width:1.33702"
+       style="font-size:75.15679932px;line-height:1.25;font-family:sans-serif;letter-spacing:-2.07403994px;word-spacing:-10.23289967px;fill:#000000;fill-opacity:0.41766304;stroke-width:1.33702004"
        x="1269.1959"
        y="543.47479"
        id="text33099-3-3"
@@ -161,8 +169,9 @@
          sodipodi:role="line"
          x="1269.1959"
          y="543.47479"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:75.1568px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.417663;stroke-width:1.33702"
-         id="tspan77925-6-5">thing. </tspan></text></g><g
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:75.15679932px;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;fill:#000000;fill-opacity:0.41766304;stroke-width:1.33702004"
+         id="tspan77925-6-5">thingy ..</tspan></text>
+</g><g
      inkscape:groupmode="layer"
      id="layer4"
      inkscape:label="Name"
@@ -175,4 +184,5 @@
          y="697.06169"
          id="tspan174606"><tspan
            style="font-family:NettiesHand;-inkscape-font-specification:NettiesHand"
-           id="tspan174604">phuppi</tspan></tspan></text></g></svg>
+           id="tspan174604">phuppi</tspan></tspan></text>
+</g></svg>
