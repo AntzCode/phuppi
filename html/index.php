@@ -936,7 +936,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
     <div style="overflow-x: scroll">
         <div class="ui pagination menu">
             <?php for ($i = 0; $i<$searchResult['count']/$pageSize; $i++) { ?>
-                <a href="?page=<?= $i+1 ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
+                <a href="?page=<?= $i+1 ?>&searchTerm=<?= $searchTerm ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
                     <?= $i+1 ?>
                 </a>
             <?php } ?>

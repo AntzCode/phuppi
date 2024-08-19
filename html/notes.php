@@ -115,6 +115,7 @@ if (!empty($_POST)) {
                                 $note->save();
                             } else {
                                 // edit an existing note
+                                $editingNote->filename = $_POST['filename'] ?? $editingNote->filename;
                                 $editingNote->content = $notes;
                                 $editingNote->updated_at = date('Y-m-d H:i:s');
                                 $editingNote->voucher_id = $app->getVoucher()->voucher_id ?? 0;
@@ -437,6 +438,10 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
                                     Share
                                     <i class="share icon"></i>
                                 </div>
+                                <div class="ui positive right labeled icon button clickable" onclick="window.location = '/note.php?id=<?= $existingNote->note_id ?>'">
+                                    View
+                                    <i class="glasses icon"></i>
+                                </div>
                             <?php } ?>
                             
                             <?php if (_can_write_note($existingNote)) { ?>
@@ -474,7 +479,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($existingNotes));
     <div style="overflow-x: scroll">
         <div class="ui pagination menu">
             <?php for ($i = 0; $i<$searchResult['count']/$pageSize; $i++) { ?>
-                <a href="?page=<?= $i+1 ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
+                <a href="?page=<?= $i+1 ?>&searchTerm=<?= $searchTerm ?>" class="item <?= ($i+1 === (int) $pageNum ? 'active' : '') ?>">
                     <?= $i+1 ?>
                 </a>
             <?php } ?>

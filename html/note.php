@@ -11,8 +11,8 @@ require('fuppi.php');
 $errors = [];
 
 if ($sharedNote = Note::getOne((int) $_GET['id'] ?? 0)) {
-
     $isValidToken = false;
+    $token = '';
 
     if (isset($_GET['token'])) {
         $token = $_GET['token'];
@@ -38,8 +38,7 @@ if ($sharedNote = Note::getOne((int) $_GET['id'] ?? 0)) {
     $canReadNotes = $user->hasPermission(UserPermission::NOTES_READ);
 
     if ($isValidToken || (($isMyFile || $canReadUsers) && $canReadNotes)) {
-
-?>
+        ?>
         <div class="content">
             <div class="ui">
                 <h2><?= $sharedNote->filename ?></h2>
@@ -56,12 +55,14 @@ if ($sharedNote = Note::getOne((int) $_GET['id'] ?? 0)) {
                     <?php } else { ?>
                         <small><i class="clock icon"></i>Created at: <?= $sharedNote->created_at ?></small>
                     <?php } ?>
-                    <br />
-                    <small><i class="clock icon"></i>Expires at: <?= $sharedNote->getTokenExpiresAt($token) ?> (<?= human_readable_time_remaining(strtotime($sharedNote->getTokenExpiresAt($token))) ?>)</small>
+                    <?php if ($isValidToken) { ?>
+                        <br />
+                        <small><i class="clock icon"></i>Expires at: <?= $sharedNote->getTokenExpiresAt($token) ?> (<?= human_readable_time_remaining(strtotime($sharedNote->getTokenExpiresAt($token))) ?>)</small>
+                    <?php } ?>
                 </p>
             </div>
             <div class="ui segment">
-                <?= $sharedNote->content ?>
+                <?= nl2br($sharedNote->content) ?>
             </div>
         </div>
 <?php
