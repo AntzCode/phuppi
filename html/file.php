@@ -12,7 +12,7 @@ $errors = [];
 
 try {
     $fileIds = json_decode($_GET['id']);
-} catch(\Exception $e) {
+} catch (\Exception $e) {
 }
 
 if (is_array($fileIds) && count($fileIds) > 0) {
@@ -231,7 +231,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
                 $cmd = $s3Client->getCommand('GetObject', [
                     'Bucket' => $config->getSetting('aws_s3_bucket'),
                     'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
-                    'ResponseContentDisposition' => 'attachment; filename ="' . $uploadedFile->display_filename . '"'
+                    'ResponseContentDisposition' => 'attachment; filename ="' . mb_convert_encoding($uploadedFile->filename, 'US-ASCII', 'UTF-8') . '"'
                 ]);
                 $request = $s3Client->createPresignedRequest($cmd, time() + (int) $config->getSetting('aws_token_lifetime_seconds'));
                 $presignedUrl = (string) $request->getUri();
