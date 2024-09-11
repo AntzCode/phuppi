@@ -7,14 +7,31 @@ require('fuppi.php');
 
 $errors = [];
 
+if (!empty($_GET['voucher']) && empty($_POST)) {
+    ?>
+        <form id="voucherLoginForm" method="post" action="<?= $_SERVER['REQUEST_URI'] ?>" >
+            <input type="hidden" name="_action" value="voucherLogin" />
+            <input type="hidden" name="voucher" value="<?= $_GET['voucher'] ?>" />
+            <input type="submit" value="Click to log in" />
+            <p id="message">Logging in...</p>
+        </form>
+        <script type="text/javascript">
+            document.querySelector('#voucherLoginForm input[type=submit]').style.display = 'none';
+            setTimeout(() => {
+                document.querySelector('#message').style.display = 'none';
+                document.querySelector('#voucherLoginForm input[type=submit]').style.display = 'inline';
+            }, 6000);
+            setTimeout(() => document.getElementById('voucherLoginForm').submit(), 1500);
+        </script>
+    <?php
+    return;
+}
+
 if (!empty($_POST)) {
-
     switch ($_POST['_action']) {
-
         case 'userLogin':
 
             if ($authenticatingUser = User::findByUsername($_POST['username'] ?? '')) {
-
                 if (!empty("{$authenticatingUser->password}") && password_verify($_POST['password'], $authenticatingUser->password)) {
                     if (!is_null($authenticatingUser->disabled_at)) {
                         fuppi_add_error_message('Your account has been disabled.');
@@ -52,7 +69,7 @@ if (!empty($_POST)) {
                         }
                         $user->setData($voucher->getUser()->getData());
                         if (!is_null($voucher->getData()['expires_at'])) {
-                            $user->session_expires_at = ''.$voucher->expires_at;
+                            $user->session_expires_at = '' . $voucher->expires_at;
                             $user->save();
                         }
                         $app->setVoucher($voucher);
@@ -100,8 +117,8 @@ if (!empty($_POST)) {
 
         <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
             <input type="hidden" name="_action" value="voucherLogin" />
-            <div class="field <?= (!empty($errors['username'] ?? []) ? 'error' : '') ?>">
-                <label for="username">Voucher: </label>
+            <div class="field <?= (!empty($errors['voucher'] ?? []) ? 'error' : '') ?>">
+                <label for="voucher">Voucher: </label>
                 <input id="voucher" type="text" name="voucher" value="<?= $_POST['voucher'] ?? '' ?>" />
             </div>
 

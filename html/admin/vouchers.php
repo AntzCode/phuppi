@@ -363,6 +363,13 @@ foreach ($allVouchers as $voucher) {
                         </h2>
 
                         <div class="description">
+                            <p class="ui header">
+                                <span style="flex: 0">
+                                    <i class="clickable copy icon copy-to-clipboard"
+                                        data-content="<?= $config->base_url ?>/login.php?voucher=<?= $voucher->voucher_code ?>"></i>
+                                </span>
+                                <a href="//<?= $config->base_url ?>/login.php?voucher=<?= $voucher->voucher_code ?>"><?= $config->base_url ?>/login.php?voucher=<?= $voucher->voucher_code ?></a>
+                            </p>
                             <?= empty($voucher->notes) ? '' : '<p>' . $voucher->notes . '</p>' ?>
                             <p>User: <?= $voucher->getUser()->username ?></p>
                             <p>Created at <?= $voucher->created_at ?></p>
