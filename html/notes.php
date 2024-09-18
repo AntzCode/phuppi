@@ -594,7 +594,7 @@ function _can_multiple_select()
     $user = $app->getUser();
     $config = $app->getConfig();
 
-    if (!$config->getSetting('use_aws_s3')) {
+    if (!FileSystem::isRemote()) {
         if (!class_exists('ZipArchive')) {
             return false;
         }

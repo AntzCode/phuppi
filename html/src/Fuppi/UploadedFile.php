@@ -111,11 +111,11 @@ class UploadedFile extends Model
         return false;
     }
 
-    public function getAwsPresignedUrl(string $action, $voucherId = null, int $minLifetime = 30)
+    public function getRemotePresignedUrl(string $action, $voucherId = null, int $minLifetime = 30)
     {
         if (in_array($action, ['GetObject'])) {
             $db = \Fuppi\App::getInstance()->getDb();
-            $query = 'SELECT `url` FROM `fuppi_uploaded_files_aws_auth` WHERE `action` = :action AND `uploaded_file_id` = :uploaded_file_id AND `expires_at` >= :expires_at';
+            $query = 'SELECT `url` FROM `fuppi_uploaded_files_remote_auth` WHERE `action` = :action AND `uploaded_file_id` = :uploaded_file_id AND `expires_at` >= :expires_at';
             $bindings = [
                 'action' => $action,
                 'uploaded_file_id' => $this->uploaded_file_id,
@@ -137,10 +137,10 @@ class UploadedFile extends Model
         }
     }
 
-    public function setAwsPresignedUrl(string $url, string $action, int $expiresAt, $voucherId = null)
+    public function setRemotePresignedUrl(string $url, string $action, int $expiresAt, $voucherId = null)
     {
         $db = \Fuppi\App::getInstance()->getDb();
-        $query = "INSERT INTO `fuppi_uploaded_files_aws_auth` (`uploaded_file_id`, `voucher_id`, `action`, `url`, `expires_at`) VALUES (:uploaded_file_id, :voucher_id, :action, :url, :expires_at)";
+        $query = "INSERT INTO `fuppi_uploaded_files_remote_auth` (`uploaded_file_id`, `voucher_id`, `action`, `url`, `expires_at`) VALUES (:uploaded_file_id, :voucher_id, :action, :url, :expires_at)";
         $bindings = [
             'uploaded_file_id' => $this->uploaded_file_id,
             'voucher_id' => $voucherId,
@@ -159,7 +159,7 @@ class UploadedFile extends Model
     public function dropAwsPresignedUrl()
     {
         $db = \Fuppi\App::getInstance()->getDb();
-        $query = "DELETE FROM `fuppi_uploaded_files_aws_auth` WHERE `uploaded_file_id` = :uploaded_file_id";
+        $query = "DELETE FROM `fuppi_uploaded_files_remote_auth` WHERE `uploaded_file_id` = :uploaded_file_id";
         $bindings = [
             'uploaded_file_id' => $this->uploaded_file_id
         ];

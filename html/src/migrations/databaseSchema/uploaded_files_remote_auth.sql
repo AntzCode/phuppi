@@ -1,5 +1,5 @@
-CREATE TABLE `fuppi_uploaded_files_aws_auth` (
-    `fuppi_uploaded_files_aws_auth_id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE `fuppi_uploaded_files_remote_auth` (
+    `fuppi_uploaded_files_remote_auth_id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     `uploaded_file_id` INTEGER NOT NULL,
     `voucher_id` INTEGER NULL,
     `action` VARCHAR(10) NOT NULL,

@@ -11,6 +11,7 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Ap
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'ApiResponse.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Config.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Db.php');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'FileSystem.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Note.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'SearchQuery.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'UploadedFile.php');
@@ -45,6 +46,7 @@ if (!defined('FUPPI')) {
     $app = Fuppi\App::getInstance();
     $pdo = $app->getDb()->getPdo();
     $user = $app->getUser();
+    $fileSystem = $app->getFilesystem();
 
     if (!is_null($user->session_expires_at)) {
         if (strtotime($user->session_expires_at) < time()) {

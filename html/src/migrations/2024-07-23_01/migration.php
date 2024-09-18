@@ -40,6 +40,6 @@ echo 'delete temporary backup table `fuppi_uploaded_files_bup`' . PHP_EOL;
 $query = "DROP TABLE `fuppi_uploaded_files_bup`";
 $pdo->query($query);
 
-if ($config->getSetting('aws_token_lifetime_seconds') === null) {
-    $config->setSetting('aws_token_lifetime_seconds', 86400);
+if ($config->getSetting('remote_files_token_lifetime_seconds') === null) {
+    $config->setSetting('remote_files_token_lifetime_seconds', 86400);
 }

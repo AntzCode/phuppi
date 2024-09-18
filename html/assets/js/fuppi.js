@@ -88,7 +88,7 @@ $(() => {
 
                         let formData = new FormData();
                         formData.append('_method', 'delete');
-                        formData.append('_ajax', 1);
+                        formData.append('ajax', 1);
                         formData.append('fileIds', JSON.stringify(selectedIds));
 
                         await axios.post($(action).data('multi-select-action-url'), formData)
@@ -101,7 +101,7 @@ $(() => {
                                 }
                             }).catch((error) => {
                                 $('.ui.page.dimmer').dimmer('hide');
-                                alert(error);
+                                alert(error.response?.data?.message || error.message);
                             });
                     }
                     break;

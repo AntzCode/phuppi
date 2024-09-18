@@ -2,6 +2,7 @@
 
 use Aws\Lambda\LambdaClient;
 
+use Fuppi\FileSystem;
 use Fuppi\UploadedFile;
 use Fuppi\UserPermission;
 use Fuppi\VoucherPermission;
@@ -62,26 +63,32 @@ if (is_array($fileIds) && count($fileIds) > 0) {
     }
 
     //only gets here if they have permission for all the requested file ids
-    if ($config->getSetting('use_aws_s3')) {
-        // use Lambda function to combine files on aws s3
-
+    if (FileSystem::isRemote()) {
+        // use Lambda function to combine files on AWS S3
+        if (!FileSystem::isRemote(FileSystem::AWS_S3)) {
+            return fuppi_add_error_message('Multiple File Download is not supported with the current file storage type');
+        }
+        if (!FileSystem::isValidRemoteEndpoint()) {
+            return fuppi_add_error_message('Configuration error: AWS endpoint must end with amazonaws.com');
+        }
         $archiveFilename = 'archive-' . count($fileIds) . '-files_' . date('Ymd_His') . '.zip';
 
         $sanitizedArchiveFilename = UploadedFile::generateUniqueFilename($archiveFilename);
 
-        $archiveFilePath = $config->s3_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedArchiveFilename;
+        $archiveFilePath = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedArchiveFilename;
 
         $lambdaConfig = new stdClass();
         $lambdaConfig->filenames = [];
-        $lambdaConfig->bucket = $config->getSetting('aws_s3_bucket');
+        $lambdaConfig->bucket = $config->getSetting('remote_files_container');
         $lambdaConfig->zipFileName = $archiveFilePath;
+
         foreach ($fileIds as $fileId) {
             $uploadedFile = UploadedFile::getOne((int) $fileId);
 
             $lambdaFilename = $uploadedFile->display_filename === $uploadedFile->filename
-                ? $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
+                ? $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
                 : json_decode(json_encode([
-                    'filename' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
+                    'filename' => $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
                     'displayFilename' => $uploadedFile->display_filename
                 ]))
             ;
@@ -92,11 +99,11 @@ if (is_array($fileIds) && count($fileIds) > 0) {
         $client = LambdaClient::factory(
             [
                 'credentials' => [
-                    'key' => $config->getSetting('aws_s3_access_key'),
-                    'secret' => $config->getSetting('aws_s3_secret')
+                    'key' => $config->getSetting('remote_files_access_key'),
+                    'secret' => $config->getSetting('remote_files_secret')
                 ],
                 'version' => 'latest',
-                'region'  => $config->getSetting('aws_s3_region')
+                'region'  => $config->getSetting('remote_files_region')
             ]
         );
 
@@ -106,20 +113,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
             'Payload' => json_encode($lambdaConfig)
         ]);
 
-        $sdk = new Aws\Sdk([
-            'region' => $config->getSetting('aws_s3_region'),
-            'credentials' =>  [
-                'key'    => $config->getSetting('aws_s3_access_key'),
-                'secret' => $config->getSetting('aws_s3_secret')
-            ]
-        ]);
-
-        $s3Client = $sdk->createS3();
-
-        $meta = $s3Client->headObject([
-            'Bucket' => $config->getSetting('aws_s3_bucket'),
-            'Key' => $archiveFilePath
-        ]);
+        $meta = $fileSystem->getObjectMetaData($archiveFilePath);
 
         $statement = $pdo->prepare("INSERT INTO `fuppi_temporary_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`, `expires_at`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension, :expires_at)");
 
@@ -130,18 +124,13 @@ if (is_array($fileIds) && count($fileIds) > 0) {
             'filesize' => $meta['ContentLength'],
             'mimetype' => $meta['ContentType'],
             'extension' => 'zip',
-            'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('aws_token_lifetime_seconds'))
+            'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('remote_files_token_lifetime_seconds'))
         ]);
 
+        $expiresAt = time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
 
-        $expiresAt = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
-        $cmd = $s3Client->getCommand('GetObject', [
-            'Bucket' => $config->getSetting('aws_s3_bucket'),
-            'Key' => $archiveFilePath
-        ]);
-        $request = $s3Client->createPresignedRequest($cmd, time() + (int) $config->getSetting('aws_token_lifetime_seconds'));
+        $request = $fileSystem->createPresignedRequest($archiveFilePath);
         $presignedUrl = (string) $request->getUri();
-
         redirect($presignedUrl);
     } else {
         // zip the files locally and provide a download link
@@ -176,7 +165,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
             'filesize' => filesize($archiveFilePath),
             'mimetype' => mime_content_type($archiveFilePath),
             'extension' => pathinfo($archiveFilePath, PATHINFO_EXTENSION),
-            'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('aws_token_lifetime_seconds'))
+            'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('remote_files_token_lifetime_seconds'))
         ]);
 
         header('Content-Type: ' . mime_content_type($archiveFilePath));
@@ -213,32 +202,21 @@ if (is_array($fileIds) && count($fileIds) > 0) {
     $canReadFiles = $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
 
     if ($isValidToken || (($isMyFile || $canReadUsers) && $canReadFiles)) {
-        if ($config->getSetting('use_aws_s3')) {
-            $sdk = new Aws\Sdk([
-                'region' => $config->getSetting('aws_s3_region'),
-                'credentials' =>  [
-                    'key'    => $config->getSetting('aws_s3_access_key'),
-                    'secret' => $config->getSetting('aws_s3_secret')
-                ]
-            ]);
-
-            $s3Client = $sdk->createS3();
-
+        if (FileSystem::isRemote()) {
+            // redirect to a presigned url for download from cloud server
             $voucherId = ($app->getVoucher() ? $app->getVoucher()->voucher_id : null);
 
-            if (!($presignedUrl = $uploadedFile->getAwsPresignedUrl('GetObject', $voucherId))) {
-                $expiresAt = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
-                $cmd = $s3Client->getCommand('GetObject', [
-                    'Bucket' => $config->getSetting('aws_s3_bucket'),
-                    'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
+            if (!($presignedUrl = $uploadedFile->getRemotePresignedUrl('GetObject', $voucherId))) {
+                $expiresAt =  time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
+                $request = $fileSystem->createPresignedRequest($config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, [
                     'ResponseContentDisposition' => 'attachment; filename ="' . mb_convert_encoding($uploadedFile->filename, 'US-ASCII', 'UTF-8') . '"'
-                ]);
-                $request = $s3Client->createPresignedRequest($cmd, time() + (int) $config->getSetting('aws_token_lifetime_seconds'));
+                ], $expiresAt);
                 $presignedUrl = (string) $request->getUri();
-                $uploadedFile->setAwsPresignedUrl($presignedUrl, 'GetObject', $expiresAt, $voucherId);
+                $uploadedFile->setRemotePresignedUrl($presignedUrl, 'GetObject', $expiresAt, $voucherId);
             }
             redirect($presignedUrl);
         } else {
+            // send file directly from the server
             header('Content-Type: ' . $uploadedFile->mimetype);
             header('Content-Disposition: attachment; filename="' . $uploadedFile->display_filename . '"');
             fuppi_stop();

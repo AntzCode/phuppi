@@ -11,6 +11,7 @@ class App
     protected \Fuppi\User $user;
     protected \Fuppi\Config $config;
     protected \Fuppi\Db $db;
+    protected \Fuppi\FileSystem $fileSystem;
 
     protected static array $instances = [];
     protected function __construct()
@@ -21,6 +22,7 @@ class App
     {
         $this->config = Config::getInstance();
         $this->db = new Db();
+        $this->fileSystem = FileSystem::getInstance();
         $this->user = new User();
         $this->user->setData($_SESSION['\Fuppi\App.user'] ?? []);
         $this->user->setSettings($_SESSION['\Fuppi\App.userSettings'] ?? []);
@@ -63,6 +65,11 @@ class App
     public function getUser()
     {
         return $this->user;
+    }
+
+    public function getFilesystem() : \Fuppi\FileSystem
+    {
+        return $this->fileSystem;
     }
 
     public function getVoucher() : ?Voucher

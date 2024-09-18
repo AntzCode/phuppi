@@ -1,5 +1,6 @@
 <?php
 
+use \Fuppi\FileSystem;
 use \Fuppi\User;
 
 function fuppi_start()
@@ -197,13 +198,20 @@ function fuppi_gc()
 {
     $config=\Fuppi\App::getInstance()->getConfig();
     $db = \Fuppi\App::getInstance()->getDb();
+    $fileSystem = \Fuppi\App::getInstance()->getFileSystem();
+
+    if (!FileSystem::isRemote()) {
+        // purge all aws presigned urls
+        $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_remote_auth` WHERE 1');
+        $statement->execute();
+    }
 
     // purge expired file tokens
     $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_file_tokens` WHERE `expires_at` < :expires_at_floor');
     $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
 
     // purge expired aws presigned urls
-    $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_aws_auth` WHERE `expires_at` < :expires_at_floor');
+    $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_remote_auth` WHERE `expires_at` < :expires_at_floor');
     $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
 
     // delete expired temporary files
@@ -211,23 +219,10 @@ function fuppi_gc()
     $results = $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
 
     if ($results) {
-        $sdk = new Aws\Sdk([
-            'region' => $config->getSetting('aws_s3_region'),
-            'credentials' =>  [
-                'key'    => $config->getSetting('aws_s3_access_key'),
-                'secret' => $config->getSetting('aws_s3_secret')
-            ]
-        ]);
-
-        $s3Client = $sdk->createS3();
-
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $data) {
             try {
-                $s3Client->deleteObject([
-                    'Bucket' => $config->getSetting('aws_s3_bucket'),
-                    'Key' => $config->s3_uploaded_files_prefix . '/' . User::getOne($data['user_id'])->username . '/' . $data['filename']
-                ]);
-            } catch(\Exception $e) {
+                $fileSystem->deleteObject($config->remote_uploaded_files_prefix . '/' . User::getOne($data['user_id'])->username . '/' . $data['filename']);
+            } catch (\Exception $e) {
             }
             try {
                 $localFilepath = $config->uploaded_files_path . DIRECTORY_SEPARATOR . User::getOne($data['user_id'])->username . DIRECTORY_SEPARATOR . $data['filename'];
@@ -235,7 +230,7 @@ function fuppi_gc()
                 if (file_exists($localFilepath)) {
                     unlink($localFilepath);
                 }
-            } catch(\Exception $e) {
+            } catch (\Exception $e) {
             }
 
             $statement2 = $db->getPdo()->query('DELETE  FROM `fuppi_temporary_files` WHERE `temporary_file_id` = :file_id');

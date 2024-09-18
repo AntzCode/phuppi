@@ -11,6 +11,6 @@ echo 'create database table `temporary_files` (' . $filename . ')' . PHP_EOL;
 $query = file_get_contents($filename);
 $pdo->query($query);
 
-if ($config->getSetting('aws_token_lifetime_seconds') === null) {
-    $config->setSetting('aws_token_lifetime_seconds', 86400);
+if ($config->getSetting('remote_files_token_lifetime_seconds') === null) {
+    $config->setSetting('remote_files_token_lifetime_seconds', 86400);
 }

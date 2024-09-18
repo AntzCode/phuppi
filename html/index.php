@@ -3,6 +3,7 @@
 use Aws\S3\PostObjectV4;
 
 use Fuppi\ApiResponse;
+use Fuppi\FileSystem;
 use Fuppi\SearchQuery;
 use Fuppi\UploadedFile;
 use Fuppi\User;
@@ -68,31 +69,22 @@ if (!empty($_POST)) {
                             }
                         }
                     }
-                    UploadedFile::deleteOne($fileId);
 
-                    if (file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
-                        unlink($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
-                    }
+                    if (FileSystem::isRemote()) {
+                        try {
+                            $fileSystem->deleteObject($config->remote_uploaded_files_prefix . '/' . $fileUser->username . '/' . $uploadedFile->filename);
 
-                    $sdk = new Aws\Sdk([
-                        'region' => $config->getSetting('aws_s3_region'),
-                        'credentials' =>  [
-                            'key'    => $config->getSetting('aws_s3_access_key'),
-                            'secret' => $config->getSetting('aws_s3_secret')
-                        ]
-                    ]);
-
-                    $s3Client = $sdk->createS3();
-
-                    try {
-                        $s3Client->deleteObject([
-                            'Bucket' => $config->getSetting('aws_s3_bucket'),
-                            'Key' => $config->s3_uploaded_files_prefix . '/' . $fileUser->username . '/' . $uploadedFile->filename
-                        ]);
-                    } catch (\Exception $e) {
-                        if ($_POST['ajax']) {
-                            $apiResponse->throwException($e->getMessage());
+                            UploadedFile::deleteOne($fileId);
+                        } catch (\Exception $e) {
+                            if ($_POST['ajax']) {
+                                $apiResponse->throwException($e->getMessage());
+                            }
                         }
+                    } else {
+                        if (file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
+                            unlink($config->uploaded_files_path . DIRECTORY_SEPARATOR . $fileUser->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
+                        }
+                        UploadedFile::deleteOne($fileId);
                     }
                 }
             }
@@ -181,46 +173,45 @@ if (!empty($_POST)) {
                     break;
 
                 case 'getS3UploadPresignedURL':
-                    $filename = $_POST['filename'];
-                    $filesize = $_POST['filesize'];
-                    $filetype = $_POST['filetype'];
 
-                    $sanitizedFilename = UploadedFile::generateUniqueFilename($filename);
-                    $requestKey = $config->s3_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename;
-                    $storedFilepath = $config->s3_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename;
+                    try {
+                        $filename = $_POST['filename'];
+                        $filesize = $_POST['filesize'];
+                        $filetype = $_POST['filetype'];
 
-                    $sdk = new Aws\Sdk([
-                        'region' => $config->getSetting('aws_s3_region'),
-                        'credentials' =>  [
-                            'key'    => $config->getSetting('aws_s3_access_key'),
-                            'secret' => $config->getSetting('aws_s3_secret')
-                        ]
-                    ]);
+                        $remoteClient = $fileSystem->getClient();
 
-                    $s3Client = $sdk->createS3();
-                    $options = [
-                        ['bucket' => $config->getSetting('aws_s3_bucket')],
-                        ['key' => $requestKey],
-                        ['content-type' => $filetype]
-                    ];
+                        $sanitizedFilename = UploadedFile::generateUniqueFilename($filename);
+                        $requestKey = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename;
+                        $storedFilepath = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename;
 
-                    $formInputs = ['key' => $requestKey];
-                    $expires = time() + (int) $config->getSetting('aws_token_lifetime_seconds');
+                        $options = [
+                            ['bucket' => $config->getSetting('remote_files_container')],
+                            ['key' => $requestKey],
+                            ['content-type' => $filetype]
+                        ];
 
-                    $postObject = new PostObjectV4(
-                        $s3Client,
-                        $config->getSetting('aws_s3_bucket'),
-                        $formInputs,
-                        $options,
-                        $expires
-                    );
+                        $formInputs = ['key' => $requestKey];
+                        $expires = time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
 
-                    $apiResponse = new ApiResponse();
-                    $data = [
-                        'formInputs' => $postObject->getFormInputs(),
-                        'formAttributes' => $postObject->getFormAttributes()
-                    ];
-                    $apiResponse->sendResponse($data);
+                        $postObject = new PostObjectV4(
+                            $remoteClient,
+                            $config->getSetting('remote_files_container'),
+                            $formInputs,
+                            $options,
+                            $expires
+                        );
+
+                        $apiResponse = new ApiResponse();
+                        $data = [
+                            'formInputs' => $postObject->getFormInputs(),
+                            'formAttributes' => $postObject->getFormAttributes()
+                        ];
+                        $apiResponse->sendResponse($data);
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
 
                     break;
 
@@ -228,21 +219,8 @@ if (!empty($_POST)) {
 
                     $sanitizedFilename = UploadedFile::generateUniqueFilename($_POST['filename']);
 
-                    $sdk = new Aws\Sdk([
-                        'region' => $config->getSetting('aws_s3_region'),
-                        'credentials' =>  [
-                            'key'    => $config->getSetting('aws_s3_access_key'),
-                            'secret' => $config->getSetting('aws_s3_secret')
-                        ]
-                    ]);
-
-                    $s3Client = $sdk->createS3();
-
                     try {
-                        $meta = $s3Client->headObject([
-                            'Bucket' => $config->getSetting('aws_s3_bucket'),
-                            'Key' => $config->s3_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename
-                        ]);
+                        $meta = $fileSystem->getObjectMetaData($config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename);
 
                         $statement = $pdo->prepare("INSERT INTO `fuppi_uploaded_files` (`user_id`, `voucher_id`, `filename`, `display_filename`, `filesize`, `mimetype`, `extension`, `notes`) VALUES (:user_id, :voucher_id, :filename, :display_filename, :filesize, :mimetype, :extension, :notes)");
 
@@ -368,7 +346,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <h3 class="header">
                 <i class="upload icon"></i> 
                 <label for="files">Upload Some Files
-                    <?php if ($config->getSetting('use_aws_s3') < 1) { ?>
+                    <?php if (FileSystem::isRemote() < 1) { ?>
                         (max <?= ini_get('post_max_size') ?>)
                     <?php } ?>
                 </label>
@@ -383,10 +361,10 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                     </div>
                     <div class="extra content">
 
-                        <?php if ($config->getSetting('use_aws_s3') > 0) { ?>
+                        <?php if (FileSystem::isRemote() > 0) { ?>
                             <div class="ui container center aligned">
                                 <script>
-                                    async function processS3Uploads() {
+                                    async function processRemoteUpload() {
 
                                         if (document.getElementById('files').files.length < 1) {
                                             $('#uploadFilesForm .submit.button').prop('disabled', false);
@@ -403,18 +381,20 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                                             await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
 
+                                                console.log('the response is ', response);
+
                                                 const data = {
                                                     ...response.data.formInputs,
                                                     'Content-Type': file.type
-                                                };
-
-                                                let s3FormData = new FormData();
-                                                for (const name in data) {
-                                                    s3FormData.append(name, data[name]);
                                                 }
-                                                s3FormData.append('file', file);
 
-                                                await axios.post(response.data.formAttributes.action, s3FormData).then((response) => {
+                                                let remoteFormData = new FormData();
+                                                for (const name in data) {
+                                                    remoteFormData.append(name, data[name]);
+                                                }
+                                                remoteFormData.append('file', file);
+
+                                                await axios.post(response.data.formAttributes.action, remoteFormData).then((response) => {
                                                     formData.set('_action', 'saveS3UploadedFile');
                                                     axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
                                                         let lastFilename;
@@ -428,24 +408,28 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                         }
                                                     });
                                                 }).catch((error) => {
+                                                    alert(error.response?.data?.message || error.message);
                                                     console.log(error);
+                                                    $('#uploadFilesForm .submit.button').prop('disabled', false);
                                                 });
 
                                             }).catch((error) => {
+                                                alert(error.response?.data?.message || error.message);
                                                 console.log(error);
+                                                $('#uploadFilesForm .submit.button').prop('disabled', false);
                                             });
 
                                         }
 
                                     }
                                 </script>
-                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="button" onclick="(this.disabled='disabled', processS3Uploads())"><i class="upload icon right"></i> Upload to S3</button>
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="button" onclick="(this.disabled='disabled', processRemoteUpload())"><i class="upload icon right"></i> Upload to Cloud</button>
                             </div>
 
                         <?php } else { ?>
 
                             <div class="ui container center aligned">
-                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload</button>
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload to Server</button>
                             </div>
 
                         <?php } ?>
@@ -484,10 +468,12 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                     <label>With <span class="multi-select-count"></span> Selected (<span class="multi-select-size">0B</span>)</label>
                     <i class="dropdown icon"></i>
                     <div class="menu">
-                        <div class="item multi-select-action" data-multi-select-action="download">
-                            <i class="download icon"></i>        
-                            <label>Zip &amp; Download</label>
-                        </div>
+                        <?php if (_can_multiple_download()) { ?>
+                            <div class="item multi-select-action" data-multi-select-action="download">
+                                <i class="download icon"></i>        
+                                <label>Zip &amp; Download</label>
+                            </div>
+                        <?php } ?>
                         <div class="item multi-select-action"
                             data-multi-select-action-url="<?= $_SERVER['REQUEST_URI'] ?>"
                             data-multi-select-action-callback="refresh"
@@ -600,7 +586,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                             poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
                                             controls preload="metadata"
                                         >
-                                            <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>#t=0.5" type="<?= $uploadedFile->mimetype ?>" />
+                                            <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" type="<?= $uploadedFile->mimetype ?>" />
                                         </video>
                                     <?php } ?>
                                 </div>
@@ -1027,22 +1013,25 @@ function _can_write_file_meta(UploadedFile $uploadedFile)
     return false;
 }
 
+function _can_multiple_download()
+{
+    $config = \Fuppi\App::getInstance()->getConfig();
+    switch ($config->getSetting('file_storage_type')) {
+        case FileSystem::AWS_S3:
+            return !empty($config->getSetting('aws_lambda_multiple_zip_function_name') && FileSystem::isValidRemoteEndpoint());
+        case FileSystem::SERVER_FILESYSTEM:
+            return class_exists('ZipArchive');
+        case FileSystem::DIGITAL_OCEAN_SPACES:
+            // @TODO: implement DO Functions
+            return false;
+    }
+}
 
 function _can_multiple_select()
 {
     $app = \Fuppi\App::getInstance();
     $user = $app->getUser();
     $config = $app->getConfig();
-
-    if (!$config->getSetting('use_aws_s3')) {
-        if (!class_exists('ZipArchive')) {
-            return false;
-        }
-    } else {
-        if (empty($config->getSetting('aws_lambda_multiple_zip_function_name'))) {
-            return false;
-        }
-    }
 
     if ($voucher = $app->getVoucher()) {
         if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_READ)) {

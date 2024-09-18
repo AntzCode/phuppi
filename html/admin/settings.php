@@ -1,5 +1,6 @@
 <?php
 
+use Fuppi\FileSystem;
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
@@ -83,63 +84,33 @@ if (!empty($_POST)) {
             }
             break;
 
-        case 'syncToAwsS3':
+        case 'syncUpload':
 
             $numFilesPut = 0;
 
-            $sdk = new Aws\Sdk([
-                'region' => $config->getSetting('aws_s3_region'),
-                'credentials' =>  [
-                    'key'    => $config->getSetting('aws_s3_access_key'),
-                    'secret' => $config->getSetting('aws_s3_secret')
-                ]
-            ]);
-
-            $s3Client = $sdk->createS3();
-
             foreach (UploadedFile::getAll() as $uploadedFile) {
                 try {
-                    $meta = $s3Client->headObject([
-                        'Bucket' => $config->getSetting('aws_s3_bucket'),
-                        'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
-                    ]);
+                    $meta = $fileSystem->getObjectMetaData($config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename);
                 } catch (\Exception $e) {
                     $meta = false;
                 }
                 if (!$meta && file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename)) {
-                    $s3Client->putObject([
-                        'Bucket' => $config->getSetting('aws_s3_bucket'),
-                        'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
-                        'SourceFile' => $config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename
-                    ]);
+                    $fileSystem->putObject($config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, $config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename);
                     $numFilesPut++;
                 }
             }
-            fuppi_add_success_message($numFilesPut . ' files uploaded to S3 bucket');
+            fuppi_add_success_message($numFilesPut . ' files uploaded to Cloud');
             break;
 
-        case 'syncFromAwsS3':
+        case 'syncDownload':
 
             $numFilesGot = 0;
 
-            $sdk = new Aws\Sdk([
-                'region' => $config->getSetting('aws_s3_region'),
-                'credentials' =>  [
-                    'key'    => $config->getSetting('aws_s3_access_key'),
-                    'secret' => $config->getSetting('aws_s3_secret')
-                ]
-            ]);
-
-            $s3Client = $sdk->createS3();
-
-            $s3Client->registerStreamWrapper();
+            $fileSystem->getClient()->registerStreamWrapper();
 
             foreach (UploadedFile::getAll() as $uploadedFile) {
                 try {
-                    $meta = $s3Client->headObject([
-                        'Bucket' => $config->getSetting('aws_s3_bucket'),
-                        'Key' => $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
-                    ]);
+                    $meta = $fileSystem->getObjectMetaData($config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename);
                 } catch (\Exception $e) {
                     $meta = false;
                 }
@@ -149,19 +120,19 @@ if (!empty($_POST)) {
                         mkdir($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username, 0777, true);
                     }
 
-                    if ($s3Stream = fopen('s3://' . $config->getSetting('aws_s3_bucket') . '/' . $config->s3_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename, 'r')) {
+                    if ($remoteStream = fopen($fileSystem->getRemoteUrl($config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename), 'r')) {
                         $fileStream = fopen($config->uploaded_files_path . DIRECTORY_SEPARATOR . $uploadedFile->getUser()->username . DIRECTORY_SEPARATOR . $uploadedFile->filename, 'w');
-                        while (!feof($s3Stream)) {
-                            $chunk = fread($s3Stream, 1024);
+                        while (!feof($remoteStream)) {
+                            $chunk = fread($remoteStream, 1024);
                             fwrite($fileStream, $chunk);
                         }
-                        fclose($s3Stream);
+                        fclose($remoteStream);
                         fclose($fileStream);
                         $numFilesGot++;
                     }
                 }
             }
-            fuppi_add_success_message($numFilesGot . ' files downloaded from S3 bucket');
+            fuppi_add_success_message($numFilesGot . ' files downloaded from Cloud');
             break;
     }
 }
@@ -170,6 +141,12 @@ $allSettings = $config->getSetting();
 
 if (!class_exists('ZipArchive')) {
     fuppi_add_error_message('ZipArchive is not available on this server, so you will not be able to download multiple files unless you configure AWS S3.');
+}
+
+try {
+    FileSystem::validateEndpoint();
+} catch (\Exception $e) {
+    fuppi_add_error_message($e->getMessage());
 }
 
 ?>
@@ -193,14 +170,29 @@ if (!class_exists('ZipArchive')) {
 
         <div class="ui three stackable cards">
 
-            <?php foreach ($config->getDefaultSettings() as $defaultSetting) { ?>
+            <?php foreach ($config->getDefaultSettings() as $defaultSetting) {
+                $isDisabled = false; ?>
 
-                <div class="card"><div class="content">
+                <?php if (array_key_exists('show_if', $defaultSetting)) {
+                    foreach ($defaultSetting['show_if'] as $showKey => $showValue) {
+                        if (is_array($showValue)) {
+                            if (!in_array($config->getSetting($showKey), $showValue)) {
+                                $isDisabled = true;
+                            }
+                        } else {
+                            if ($config->getSetting($showKey) !== $showValue) {
+                                $isDisabled = true;
+                            }
+                        }
+                    }
+                } ?>
+
+                <div class="ui card <?= ($isDisabled) ? 'disabled' : '' ?>"><div class="content">
 
                     <?php if ($defaultSetting['type'] === 'boolean') { ?>
 
                         <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['title'] ?>: </label>
                             <select id="<?= $defaultSetting['name'] . 'Field' ?>" name="<?= $defaultSetting['name'] ?>">
                                 <option value="0" <?= $config->getSetting($defaultSetting['name']) > 0 ? '' : 'selected="selected"' ?>>No</option>
                                 <option value="1" <?= $config->getSetting($defaultSetting['name']) > 0 ? 'selected="selected"' : '' ?>>Yes</option>
@@ -212,7 +204,7 @@ if (!class_exists('ZipArchive')) {
                     <?php if ($defaultSetting['type'] === 'string') { ?>
 
                         <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['title'] ?>: </label>
                             <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="text" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
                         </div>
 
@@ -221,8 +213,21 @@ if (!class_exists('ZipArchive')) {
                     <?php if ($defaultSetting['type'] === 'password') { ?>
 
                         <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
-                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['name'] ?>: </label>
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['title'] ?>: </label>
                             <input id="<?= $defaultSetting['name'] . 'Field' ?>" type="password" name="<?= $defaultSetting['name'] ?>" value="<?= $_POST[$defaultSetting['name']] ?? $config->getSetting($defaultSetting['name']) ?>" />
+                        </div>
+
+                    <?php } ?>
+
+                    <?php if ($defaultSetting['type'] === 'option') { ?>
+
+                        <div class="field <?= (!empty($errors[$defaultSetting['name']] ?? []) ? 'error' : '') ?>">
+                            <label for="<?= $defaultSetting['name'] . 'Field' ?>"><?= $defaultSetting['title'] ?>: </label>
+                            <select id="<?= $defaultSetting['name'] . 'Field' ?>" type="text" name="<?= $defaultSetting['name'] ?>">
+                                <?php foreach ($defaultSetting['options'] as $value => $title) { ?>
+                                    <option value="<?= $value ?>" <?= ((array_key_exists($defaultSetting['name'], $_POST) ? $_POST[$defaultSetting['name']] : $config->getSetting($defaultSetting['name'])) === $value) ? 'selected="selected"' : '' ?>><?= $title ?></option>
+                                <?php } ?>
+                            </select>
                         </div>
 
                     <?php } ?>
@@ -248,13 +253,13 @@ if (!class_exists('ZipArchive')) {
             <div class="card raised">
                <div class="content">
                     <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
-                        <h3 class="header center aligned">Sync down from the cloud</h3>
+                        <h3 class="header center aligned">Sync down from the Cloud</h3>
                         <div class="description ui vertical segment">
-                            <p>Files that have been uploaded to AWS will be downloaded to the server (consumes server space).</p>
-                            <p>Use this feature if you have been using AWS S3 for storage but you want to copy the files onto the server.</p>
+                            <p>Files that have been uploaded to the Cloud will be downloaded to the server (consumes server space).</p>
+                            <p>Use this feature if you have been using the Cloud for storage but you want to copy the files onto the server.</p>
                         </div>
                         <div class="ui vertical segment center aligned">
-                            <button type="submit" name="_action" value="syncFromAwsS3" class="ui button green icon left labeled"><i class="down arrow icon"></i> Sync from AWS S3</button>
+                            <button type="submit" name="_action" value="syncDownload" class="ui button green icon left labeled"><i class="down arrow icon"></i> Sync from Cloud</button>
                         </div>
                     </form>
                 </div> 
@@ -263,13 +268,13 @@ if (!class_exists('ZipArchive')) {
             <div class="card raised">
                 <div class="content">
                     <form class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post">
-                        <h3 class="header center aligned">Sync up to the cloud</h3>
+                        <h3 class="header center aligned">Sync up to the Cloud</h3>
                         <div class="description ui vertical segment">
-                            <p>Files that have been saved onto the server will be uploaded to AWS S3 (may incur costs AWS service fees).</p>
-                            <p>Use this feature if you have been using the server for uploading files but now you want to begin hosting the files on AWS S3.</p>
+                            <p>Files that have been saved onto the server will be uploaded to the Cloud (may incur costs: AWS/Digital Ocean service fees).</p>
+                            <p>Use this feature if you have been using the server for uploading files but now you want to begin hosting the files on the Cloud.</p>
                         </div>
                         <div class="ui vertical segment center aligned">
-                            <button type="submit" name="_action" value="syncToAwsS3" class="ui button green icon left labeled"><i class="up arrow icon"></i> Sync to AWS S3</button>
+                            <button type="submit" name="_action" value="syncUpload" class="ui button green icon left labeled"><i class="up arrow icon"></i> Sync to Cloud</button>
                         </div>
                     </form>
                 </div>
