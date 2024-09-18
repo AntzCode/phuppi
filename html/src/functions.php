@@ -1,6 +1,5 @@
 <?php
 
-use \Fuppi\FileSystem;
 use \Fuppi\User;
 
 function fuppi_start()
@@ -200,7 +199,7 @@ function fuppi_gc()
     $db = \Fuppi\App::getInstance()->getDb();
     $fileSystem = \Fuppi\App::getInstance()->getFileSystem();
 
-    if (!FileSystem::isRemote()) {
+    if (!$fileSystem->isRemote()) {
         // purge all aws presigned urls
         $statement = $db->getPdo()->query('DELETE  FROM `fuppi_uploaded_files_remote_auth` WHERE 1');
         $statement->execute();

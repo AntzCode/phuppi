@@ -63,9 +63,9 @@ if (is_array($fileIds) && count($fileIds) > 0) {
     }
 
     //only gets here if they have permission for all the requested file ids
-    if (FileSystem::isRemote()) {
+    if ($fileSystem->isRemote()) {
         // use Lambda function to combine files on AWS S3
-        if (!FileSystem::isRemote(FileSystem::AWS_S3)) {
+        if (!$fileSystem->isRemote(FileSystem::AWS_S3)) {
             return fuppi_add_error_message('Multiple File Download is not supported with the current file storage type');
         }
         if (!FileSystem::isValidRemoteEndpoint()) {
@@ -202,7 +202,7 @@ if (is_array($fileIds) && count($fileIds) > 0) {
     $canReadFiles = $user->hasPermission(UserPermission::UPLOADEDFILES_READ);
 
     if ($isValidToken || (($isMyFile || $canReadUsers) && $canReadFiles)) {
-        if (FileSystem::isRemote()) {
+        if ($fileSystem->isRemote()) {
             // redirect to a presigned url for download from cloud server
             $voucherId = ($app->getVoucher() ? $app->getVoucher()->voucher_id : null);
 

@@ -19,7 +19,7 @@ class FileSystem
         $this->containerName = $config->getSetting('remote_files_container');
     }
 
-    public static function isRemote($storageType=null) : bool
+    public function isRemote($storageType=null) : bool
     {
         $config = \Fuppi\App::getInstance()->getConfig();
         if (!is_null($storageType)) {

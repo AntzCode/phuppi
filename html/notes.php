@@ -594,7 +594,7 @@ function _can_multiple_select()
     $user = $app->getUser();
     $config = $app->getConfig();
 
-    if (!FileSystem::isRemote()) {
+    if (!$fileSystem->isRemote()) {
         if (!class_exists('ZipArchive')) {
             return false;
         }

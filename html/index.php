@@ -70,7 +70,7 @@ if (!empty($_POST)) {
                         }
                     }
 
-                    if (FileSystem::isRemote()) {
+                    if ($fileSystem->isRemote()) {
                         try {
                             $fileSystem->deleteObject($config->remote_uploaded_files_prefix . '/' . $fileUser->username . '/' . $uploadedFile->filename);
 
@@ -346,7 +346,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <h3 class="header">
                 <i class="upload icon"></i> 
                 <label for="files">Upload Some Files
-                    <?php if (FileSystem::isRemote() < 1) { ?>
+                    <?php if ($fileSystem->isRemote() < 1) { ?>
                         (max <?= ini_get('post_max_size') ?>)
                     <?php } ?>
                 </label>
@@ -361,7 +361,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                     </div>
                     <div class="extra content">
 
-                        <?php if (FileSystem::isRemote() > 0) { ?>
+                        <?php if ($fileSystem->isRemote() > 0) { ?>
                             <div class="ui container center aligned">
                                 <script>
                                     async function processRemoteUpload() {

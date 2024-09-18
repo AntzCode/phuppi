@@ -1,7 +1,7 @@
 <?php
 
 $fuppiConfig = [
-    'fuppi_version' => '1.1.1',
+    'fuppi_version' => '1.1.2',
     'base_url' => $_SERVER['SERVER_NAME'],
     'phpliteadmin_folder_name' => 'phpliteadmin',
     'sqlite3_file_path' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'FUPPI_DB.sqlite3',
