@@ -64,74 +64,162 @@ if (is_array($fileIds) && count($fileIds) > 0) {
 
     //only gets here if they have permission for all the requested file ids
     if ($fileSystem->isRemote()) {
-        // use Lambda function to combine files on AWS S3
-        if (!$fileSystem->isRemote(FileSystem::AWS_S3)) {
+        // use Serverless function to combine files from remote filesystem
+        if ($fileSystem->isRemote(FileSystem::AWS_S3)) {
+            // use Lambda
+            if (!FileSystem::isValidRemoteEndpoint()) {
+                return fuppi_add_error_message(FileSystem::AWS_ENDPOINT_ERROR_MESSAGE);
+            }
+            $archiveFilename = 'archive-' . count($fileIds) . '-files_' . date('Ymd_His') . '.zip';
+
+            $sanitizedArchiveFilename = UploadedFile::generateUniqueFilename($archiveFilename);
+
+            $archiveFilePath = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedArchiveFilename;
+
+            $lambdaConfig = new stdClass();
+            $lambdaConfig->filenames = [];
+            $lambdaConfig->bucket = $config->getSetting('remote_files_container');
+            $lambdaConfig->zipFileName = $archiveFilePath;
+
+            foreach ($fileIds as $fileId) {
+                $uploadedFile = UploadedFile::getOne((int) $fileId);
+
+                $lambdaFilename = $uploadedFile->display_filename === $uploadedFile->filename
+                    ? $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
+                    : json_decode(json_encode([
+                        'filename' => $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
+                        'displayFilename' => $uploadedFile->display_filename
+                    ]))
+                ;
+
+                $lambdaConfig->filenames[] = $lambdaFilename;
+            }
+
+            $client = LambdaClient::factory(
+                [
+                    'credentials' => [
+                        'key' => $config->getSetting('remote_files_access_key'),
+                        'secret' => $config->getSetting('remote_files_secret')
+                    ],
+                    'version' => 'latest',
+                    'region'  => $config->getSetting('remote_files_region')
+                ]
+            );
+
+            $result = $client->invoke([
+                // The name your created Lamda function
+                'FunctionName' => $config->getSetting('aws_lambda_multiple_zip_function_name'),
+                'Payload' => json_encode($lambdaConfig)
+            ]);
+
+            $meta = $fileSystem->getObjectMetaData($archiveFilePath);
+
+            $statement = $pdo->prepare("INSERT INTO `fuppi_temporary_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`, `expires_at`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension, :expires_at)");
+
+            $statement->execute([
+                'user_id' => $user->user_id,
+                'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
+                'filename' => $sanitizedArchiveFilename,
+                'filesize' => $meta['ContentLength'],
+                'mimetype' => $meta['ContentType'],
+                'extension' => 'zip',
+                'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('remote_files_token_lifetime_seconds'))
+            ]);
+
+            $expiresAt = time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
+
+            $request = $fileSystem->createPresignedRequest($archiveFilePath);
+            $presignedUrl = (string) $request->getUri();
+            redirect($presignedUrl);
+        } else if ($fileSystem->isRemote(FileSystem::DIGITAL_OCEAN_SPACES)) {
+            // use Digital Ocean Functions
+            if (!FileSystem::isValidRemoteEndpoint()) {
+                return fuppi_add_error_message(FileSystem::DIGITAL_OCEAN_ENDPOINT_ERROR_MESSAGE);
+            }
+            $archiveFilename = 'archive-' . count($fileIds) . '-files_' . date('Ymd_His') . '.zip';
+
+            $sanitizedArchiveFilename = UploadedFile::generateUniqueFilename($archiveFilename);
+
+            $archiveFilePath = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedArchiveFilename;
+
+            $archiveConfig = new stdClass();
+            $archiveConfig->filenames = [];
+            $archiveConfig->endpoint = $config->getSetting('remote_files_endpoint');
+            $archiveConfig->accessKey = $config->getSetting('remote_files_access_key');
+            $archiveConfig->secret = $config->getSetting('remote_files_secret');
+            $archiveConfig->region = $config->getSetting('remote_files_region');
+            $archiveConfig->container = $config->getSetting('remote_files_container');
+            $archiveConfig->archiveFileName = $archiveFilePath;
+
+            foreach ($fileIds as $fileId) {
+                $uploadedFile = UploadedFile::getOne((int) $fileId);
+
+                $archiveFilename = new stdClass();
+                $archiveFilename->filename = $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename;
+                $archiveFilename->displayFilename = $uploadedFile->display_filename;
+                if ((substr($archiveFilename->displayFilename, -strlen($uploadedFile->extension)) !== $uploadedFile->extension)) {
+                    // append the file extension to the display filename in the archive
+                    $archiveFilename->displayFilename .= '.' . $uploadedFile->extension;
+                }
+                $archiveConfig->filenames[] = $archiveFilename;
+            }
+
+            $url = $config->getSetting('do_functions_multiple_zip_endpoint');
+            $url .= (stristr($url, '?') ? '&' : '?') . 'blocking=true&result=true';
+
+            // use key 'http' even if you send the request to https://...
+            $options = [
+                'http' => [
+                    'header' => [
+                        "Content-type: application/json",
+                        "Authorization: Basic " . $config->getSetting('do_functions_multiple_zip_api_token')
+                    ],
+                    'method' => 'POST',
+                    'content' => json_encode($archiveConfig),
+                    'timeout' => 1200
+                ],
+            ];
+
+            try {
+                $context = stream_context_create($options);
+                $result = file_get_contents($url, false, $context);
+                if ($result === false) {
+                    // Handle error
+                    fuppi_add_error_message('Error! cannot generate the archive!');
+                    return;
+                }
+            } catch (\Exception $e) {
+                fuppi_add_error_message($e->getMessage());
+                return;
+            }
+
+            try {
+                $meta = $fileSystem->getObjectMetaData($archiveFilePath);
+            } catch (\Exception $e) {
+                fuppi_add_error_message($e->getMessage());
+                return;
+            }
+
+            $statement = $pdo->prepare("INSERT INTO `fuppi_temporary_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`, `expires_at`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension, :expires_at)");
+
+            $statement->execute([
+                'user_id' => $user->user_id,
+                'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
+                'filename' => $sanitizedArchiveFilename,
+                'filesize' => $meta['ContentLength'],
+                'mimetype' => $meta['ContentType'],
+                'extension' => 'zip',
+                'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('remote_files_token_lifetime_seconds'))
+            ]);
+
+            $expiresAt = time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
+
+            $request = $fileSystem->createPresignedRequest($archiveFilePath);
+            $presignedUrl = (string) $request->getUri();
+            redirect($presignedUrl);
+        } else {
             return fuppi_add_error_message('Multiple File Download is not supported with the current file storage type');
         }
-        if (!FileSystem::isValidRemoteEndpoint()) {
-            return fuppi_add_error_message('Configuration error: AWS endpoint must end with amazonaws.com');
-        }
-        $archiveFilename = 'archive-' . count($fileIds) . '-files_' . date('Ymd_His') . '.zip';
-
-        $sanitizedArchiveFilename = UploadedFile::generateUniqueFilename($archiveFilename);
-
-        $archiveFilePath = $config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedArchiveFilename;
-
-        $lambdaConfig = new stdClass();
-        $lambdaConfig->filenames = [];
-        $lambdaConfig->bucket = $config->getSetting('remote_files_container');
-        $lambdaConfig->zipFileName = $archiveFilePath;
-
-        foreach ($fileIds as $fileId) {
-            $uploadedFile = UploadedFile::getOne((int) $fileId);
-
-            $lambdaFilename = $uploadedFile->display_filename === $uploadedFile->filename
-                ? $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename
-                : json_decode(json_encode([
-                    'filename' => $config->remote_uploaded_files_prefix . '/' . $uploadedFile->getUser()->username . '/' . $uploadedFile->filename,
-                    'displayFilename' => $uploadedFile->display_filename
-                ]))
-            ;
-
-            $lambdaConfig->filenames[] = $lambdaFilename;
-        }
-
-        $client = LambdaClient::factory(
-            [
-                'credentials' => [
-                    'key' => $config->getSetting('remote_files_access_key'),
-                    'secret' => $config->getSetting('remote_files_secret')
-                ],
-                'version' => 'latest',
-                'region'  => $config->getSetting('remote_files_region')
-            ]
-        );
-
-        $result = $client->invoke([
-            // The name your created Lamda function
-            'FunctionName' => $config->getSetting('aws_lambda_multiple_zip_function_name'),
-            'Payload' => json_encode($lambdaConfig)
-        ]);
-
-        $meta = $fileSystem->getObjectMetaData($archiveFilePath);
-
-        $statement = $pdo->prepare("INSERT INTO `fuppi_temporary_files` (`user_id`, `voucher_id`, `filename`, `filesize`, `mimetype`, `extension`, `expires_at`) VALUES (:user_id, :voucher_id, :filename, :filesize, :mimetype, :extension, :expires_at)");
-
-        $statement->execute([
-            'user_id' => $user->user_id,
-            'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
-            'filename' => $sanitizedArchiveFilename,
-            'filesize' => $meta['ContentLength'],
-            'mimetype' => $meta['ContentType'],
-            'extension' => 'zip',
-            'expires_at' => date('Y-m-d H:i:s', time() + $config->getSetting('remote_files_token_lifetime_seconds'))
-        ]);
-
-        $expiresAt = time() + (int) $config->getSetting('remote_files_token_lifetime_seconds');
-
-        $request = $fileSystem->createPresignedRequest($archiveFilePath);
-        $presignedUrl = (string) $request->getUri();
-        redirect($presignedUrl);
     } else {
         // zip the files locally and provide a download link
         $zip = new ZipArchive();

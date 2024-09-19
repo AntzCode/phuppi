@@ -1,0 +1,8 @@
+{
+  "name": "build",
+  "description": "Build output of bundled functions for Digital Ocean",
+  "type": "commonjs",
+  "scripts": {
+    "start": "npx do-functions-server ."
+  }
+}

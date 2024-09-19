@@ -1,7 +1,7 @@
 <?php
 
 $fuppiConfig = [
-    'fuppi_version' => '1.1.2',
+    'fuppi_version' => '1.1.3',
     'base_url' => $_SERVER['SERVER_NAME'],
     'phpliteadmin_folder_name' => 'phpliteadmin',
     'sqlite3_file_path' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'FUPPI_DB.sqlite3',
@@ -87,6 +87,24 @@ $fuppiConfig = [
                 "file_storage_type" => "aws_s3"
             ]
         ],
+        [
+            "title" => "Digital Ocean Multiple-Zip Download Zip Function Endpoint",
+            "name" => "do_functions_multiple_zip_endpoint",
+            "value" => "",
+            "type" => "string",
+            "show_if" => [
+                "file_storage_type" => "do_spaces"
+            ]
+        ],
+        [
+            "title" => "Digital Ocean Multiple-Zip Download Zip Function REST Api Token",
+            "name" => "do_functions_multiple_zip_api_token",
+            "value" => "",
+            "type" => "password",
+            "show_if" => [
+                "file_storage_type" => "do_spaces"
+            ]
+        ]
     ],
     'image_mime_types' => [
         'image/jpeg',

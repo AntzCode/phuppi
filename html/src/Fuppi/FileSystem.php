@@ -8,6 +8,9 @@ class FileSystem
     const AWS_S3 = 'aws_s3';
     const DIGITAL_OCEAN_SPACES = 'do_spaces';
 
+    const DIGITAL_OCEAN_ENDPOINT_ERROR_MESSAGE = 'Configuration error: Digital Ocean Spaces endpoint must end with digitaloceanspaces.com';
+    const AWS_ENDPOINT_ERROR_MESSAGE = 'Configuration error: AWS endpoint must end with amazonaws.com';
+
     private static $instance = null;
     private $sdk = null;
     private $client = null;
@@ -39,12 +42,12 @@ class FileSystem
         switch ($config->getSetting('file_storage_type')) {
             case self::AWS_S3:
                 if (!preg_match('/\.amazonaws\.com$/', $config->getSetting('remote_files_endpoint'))) {
-                    throw new \Exception('Configuration error: AWS endpoint must end with amazonaws.com');
+                    throw new \Exception(self::AWS_ENDPOINT_ERROR_MESSAGE);
                 }
                 break;
             case self::DIGITAL_OCEAN_SPACES:
                 if (!preg_match('/\.digitaloceanspaces\.com$/', $config->getSetting('remote_files_endpoint'))) {
-                    throw new \Exception('Configuration error: Digital Ocean Spaces endpoint must end with digitaloceanspaces.com');
+                    throw new \Exception(self::DIGITAL_OCEAN_ENDPOINT_ERROR_MESSAGE);
                 }
                 break;
         }

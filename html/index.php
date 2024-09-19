@@ -1018,12 +1018,11 @@ function _can_multiple_download()
     $config = \Fuppi\App::getInstance()->getConfig();
     switch ($config->getSetting('file_storage_type')) {
         case FileSystem::AWS_S3:
-            return !empty($config->getSetting('aws_lambda_multiple_zip_function_name') && FileSystem::isValidRemoteEndpoint());
+            return !empty($config->getSetting('aws_lambda_multiple_zip_function_name')) && FileSystem::isValidRemoteEndpoint();
         case FileSystem::SERVER_FILESYSTEM:
             return class_exists('ZipArchive');
         case FileSystem::DIGITAL_OCEAN_SPACES:
-            // @TODO: implement DO Functions
-            return false;
+            return !empty($config->getSetting('do_functions_multiple_zip_endpoint')) && !empty($config->getSetting('do_functions_multiple_zip_api_token')) && FileSystem::isValidRemoteEndpoint();
     }
 }
 

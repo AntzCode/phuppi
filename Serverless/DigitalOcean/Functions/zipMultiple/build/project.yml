@@ -1,0 +1,5 @@
+packages:
+  - name: phuppi
+    functions:
+      - name: zipMultiple
+        runtime: nodejs:18
