@@ -1,7 +1,7 @@
 <?php
 
 $fuppiConfig = [
-    'fuppi_version' => '1.1.3',
+    'fuppi_version' => '1.1.4',
     'base_url' => $_SERVER['SERVER_NAME'],
     'phpliteadmin_folder_name' => 'phpliteadmin',
     'sqlite3_file_path' => dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'FUPPI_DB.sqlite3',
@@ -13,6 +13,7 @@ $fuppiConfig = [
     'token_valid_for_options' => [
         300 => "5 mins", 600 => "10 mins", 1800 => "30 mins", 3600 => "1 hr", 7200 => "2 hrs", 14400 => "4 hrs", 43200 => "12 hrs", 86400 => "1 day", 259200 => "3 days", 604800 => "1 wk", 2678400 => "1 mth", 7884000 => "3 mths"
     ],
+    'notes_maximum_length' => 1000000000-1024*32,
     'settings' => [
         [
             "title" => "File Storage Type",

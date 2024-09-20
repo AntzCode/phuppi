@@ -127,7 +127,7 @@ if (!empty($_POST)) {
                             $apiResponse->throwException('Not permitted');
                         } else {
                             $sanitizedFilename = substr(trim($_POST['filename']), 0, 255);
-                            $sanitizedNotes = substr(trim($_POST['notes']), 0, 1000000000-1024*32);
+                            $sanitizedNotes = substr(trim($_POST['notes']), 0, $config->notes_maximum_length);
 
                             $statement = $pdo->prepare("UPDATE `fuppi_uploaded_files` SET `display_filename` = :display_filename, `notes` = :notes WHERE `uploaded_file_id` = :uploaded_file_id");
 
@@ -172,7 +172,7 @@ if (!empty($_POST)) {
                     }
                     break;
 
-                case 'getS3UploadPresignedURL':
+                case 'getRemoteUploadPresignedURL':
 
                     try {
                         $filename = $_POST['filename'];
@@ -215,9 +215,10 @@ if (!empty($_POST)) {
 
                     break;
 
-                case 'saveS3UploadedFile':
+                case 'saveRemoteUploadedFile':
 
                     $sanitizedFilename = UploadedFile::generateUniqueFilename($_POST['filename']);
+                    $sanitizedNotes = substr(($_POST['notes'] ?? ''), 0, $config->notes_maximum_length);
 
                     try {
                         $meta = $fileSystem->getObjectMetaData($config->remote_uploaded_files_prefix . '/' . $user->username . '/' . $sanitizedFilename);
@@ -232,7 +233,7 @@ if (!empty($_POST)) {
                             'filesize' => $meta['ContentLength'],
                             'mimetype' => $meta['ContentType'],
                             'extension' => pathinfo($sanitizedFilename, PATHINFO_EXTENSION),
-                            'notes' => ''
+                            'notes' => $sanitizedNotes
                         ]);
 
                         $apiResponse = new ApiResponse();
@@ -268,6 +269,7 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
         }
 
         $sanitizedFilename = UploadedFile::generateUniqueFilename($filename);
+        $sanitizedNotes = substr(($_POST['notes'] ?? ''), 0, $config->notes_maximum_length);
 
         if (!file_exists($config->uploaded_files_path . DIRECTORY_SEPARATOR . $user->username)) {
             mkdir($config->uploaded_files_path . DIRECTORY_SEPARATOR . $user->username, 0777, true);
@@ -286,7 +288,7 @@ if (!empty($_FILES) && count($_FILES['files']['name']) > 0) {
             'filesize' => filesize($storedFilepath),
             'mimetype' => mime_content_type($storedFilepath),
             'extension' => pathinfo($filename, PATHINFO_EXTENSION),
-            'notes' => ''
+            'notes' => $sanitizedNotes
         ]);
     }
 
@@ -341,7 +343,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
     <form id="uploadFilesForm" disabled class="ui large form" action="<?= $_SERVER['REQUEST_URI'] ?>" method="post" enctype="multipart/form-data">
 
-        <div class="ui segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
+        <div class="ui form segment <?= ($user->user_id !== $profileUser->user_id ? 'disabled' : '') ?> ">
 
             <h3 class="header">
                 <i class="upload icon"></i> 
@@ -355,9 +357,40 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <div class="ui one cards">
                 <div class="card">
                     <div class="content">
-                        <div class="field">
-                            <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+                        <div class="field ui grid">
+                            <div class="fifteen wide column">
+                                <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+                            </div>
+                            <div class="one wide column right middle aligned clickable" 
+                                id="showUploadExtraFieldsButton"
+                                title="Show Extra Fields"
+                                onclick="toggleShowUploadExtraFields()">
+                                <i class="large primary icon arrow alternate circle down"></i>
+                            </div>
                         </div>
+                        <div class="inline field" id="uploadExtraFields" style="display: none">
+                            <label>Notes:</label>
+                            <textarea <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="notes" name="notes" placeholder=""></textarea>
+                        </div>
+                        <script type="text/javascript">
+                            async function toggleShowUploadExtraFields(){
+                                const button = $('#showUploadExtraFieldsButton').get(0);
+                                const extraFieldsContainer = $('#uploadExtraFields').get(0);
+                                if(button.classList.contains('open')){
+                                    // hide the extra fields
+                                    $(button).removeClass('open');
+                                    $(button).attr('title', 'Show Extra Fields');
+                                    $('i', button).removeClass('up').addClass('down');
+                                    $(extraFieldsContainer).hide();
+                                }else{
+                                    // show the extra fields
+                                    $(button).addClass('open');
+                                    $(button).attr('title', 'Hide Extra Fields');
+                                    $('i', button).removeClass('down').addClass('up');
+                                    $(extraFieldsContainer).show();
+                                }
+                            }
+                        </script>
                     </div>
                     <div class="extra content">
 
@@ -374,7 +407,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                         for (let file of document.getElementById('files').files) {
 
                                             let formData = new FormData();
-                                            formData.append('_action', 'getS3UploadPresignedURL');
+                                            formData.append('_action', 'getRemoteUploadPresignedURL');
                                             formData.append('filename', file.name);
                                             formData.append('filetype', file.type);
                                             formData.append('filesize', file.size);
@@ -395,7 +428,8 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                 remoteFormData.append('file', file);
 
                                                 await axios.post(response.data.formAttributes.action, remoteFormData).then((response) => {
-                                                    formData.set('_action', 'saveS3UploadedFile');
+                                                    formData.set('_action', 'saveRemoteUploadedFile');
+                                                    formData.set('notes', $('#notes').val());
                                                     axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
                                                         let lastFilename;
                                                         for (let _file of document.getElementById('files').files) {

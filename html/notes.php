@@ -593,6 +593,7 @@ function _can_multiple_select()
     $app = \Fuppi\App::getInstance();
     $user = $app->getUser();
     $config = $app->getConfig();
+    $fileSystem = $app->getFileSystem();
 
     if (!$fileSystem->isRemote()) {
         if (!class_exists('ZipArchive')) {
