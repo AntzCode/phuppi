@@ -45,7 +45,8 @@ if (!empty($_POST)) {
         case 'delete':
             if (_can_delete_files()) {
                 $apiResponse = new ApiResponse();
-                foreach ((json_decode($_POST['fileIds']) ?? [($_POST['fileId'] ?? 0)]) as $fileId) {
+                
+                foreach ((isset($_POST['fileIds']) ? json_decode($_POST['fileIds']) : [$_POST['fileId']]) as $fileId) {
                     $uploadedFile = UploadedFile::getOne($fileId);
                     $fileUser = $uploadedFile->getUser();
                     if ($uploadedFile->user_id !== $profileUser->user_id) {
@@ -519,7 +520,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } else { ?>
 
                             <div class="ui container center aligned">
-                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit" onclick="this.disabled='disabled';setTimeout(()=>{this.disabled=null;}, 5*60*1000);"><i class="upload icon right"></i> Upload to Server</button>
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit" onclick="$('#uploadFilesForm').submit();this.disabled='disabled';setTimeout(()=>{this.disabled=null;}, 5*60*1000);"><i class="upload icon right"></i> Upload to Server</button>
                             </div>
 
                         <?php } ?>
