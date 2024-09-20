@@ -229,7 +229,7 @@ if (!empty($_POST)) {
                             'user_id' => $user->user_id,
                             'voucher_id' => $app->getVoucher()->voucher_id ?? 0,
                             'filename' => $sanitizedFilename,
-                            'display_filename' => $_POST['filename'],
+                            'display_filename' => (!empty($_POST['displayFilename']) ? $_POST['displayFilename'] : $sanitizedFilename),
                             'filesize' => $meta['ContentLength'],
                             'mimetype' => $meta['ContentType'],
                             'extension' => pathinfo($sanitizedFilename, PATHINFO_EXTENSION),
@@ -357,35 +357,53 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <div class="ui one cards">
                 <div class="card">
                     <div class="content">
-                        <div class="field ui grid">
-                            <div class="fifteen wide column">
-                                <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" />
+                        <div class="field ui stackable grid">
+                            <div class="thirteen wide column">
+                                <input <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="files" type="file" name="files[]" placeholder="" multiple="multiple" onchange="updateUploadFilesSelectionSummary(event)" />
+                                <p class="" id="uploadFilesSelectionSummary" style="display: none"></p>
                             </div>
-                            <div class="one wide column right middle aligned clickable" 
-                                id="showUploadExtraFieldsButton"
-                                title="Show Extra Fields"
-                                onclick="toggleShowUploadExtraFields()">
-                                <i class="large primary icon arrow alternate circle down"></i>
+                            <div class="three wide column right middle aligned clickable" 
+                                id="showUploadExtraFieldsButton">
+                                <button class="ui labeled icon button" onclick="toggleShowUploadExtraFields()" type="button"><i class="icon arrow circle down"></i> <span>Advanced</span></button>
                             </div>
                         </div>
                         <div class="inline field" id="uploadExtraFields" style="display: none">
                             <label>Notes:</label>
                             <textarea <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="notes" name="notes" placeholder=""></textarea>
                         </div>
+                        <div class="field" id="uploadFileProgressContainer" style="display: none">
+                            <div class="ui small progress green top attached" id="uploadOverallProgress" data-percent="0">
+                                <div class="bar"><div class="progress"></div></div>
+                            </div>    
+                            <div class="ui progress teal" id="uploadFileProgress" data-percent="100">
+                                <div class="bar"><div class="progress"></div></div>
+                                <div class="label" id="uploadOverallProgressStatus"></div>
+                            </div>
+                        </div>
                         <script type="text/javascript">
+                            async function updateUploadFilesSelectionSummary(e){
+                                const $fileField = $(event.target);
+                                const files = event.target.files;
+                                const $summaryContainer = $('#uploadFilesSelectionSummary');
+                                if(files.length < 1){
+                                    $summaryContainer.hide();
+                                }else{
+                                    $summaryContainer.show();
+                                    const totalSize = Array.from(files).map((_file) => _file.size).reduce((prev, curr) => prev + curr, 0);
+                                    $summaryContainer.html(files.length + ' files selected (' + humanFileSize(totalSize) + ')');
+                                }
+                            }
                             async function toggleShowUploadExtraFields(){
                                 const button = $('#showUploadExtraFieldsButton').get(0);
                                 const extraFieldsContainer = $('#uploadExtraFields').get(0);
-                                if(button.classList.contains('open')){
+                                if($(button).hasClass('open')){
                                     // hide the extra fields
                                     $(button).removeClass('open');
-                                    $(button).attr('title', 'Show Extra Fields');
                                     $('i', button).removeClass('up').addClass('down');
                                     $(extraFieldsContainer).hide();
                                 }else{
                                     // show the extra fields
                                     $(button).addClass('open');
-                                    $(button).attr('title', 'Hide Extra Fields');
                                     $('i', button).removeClass('down').addClass('up');
                                     $(extraFieldsContainer).show();
                                 }
@@ -404,17 +422,47 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                             return;
                                         }
 
-                                        for (let file of document.getElementById('files').files) {
+                                        setTimeout(() => {
+                                            // only show progress bar if uploads are taking a while, otherwise it's distracting
+                                            $('#uploadFileProgressContainer').show();
+                                        }, 8000)
 
-                                            let formData = new FormData();
+                                        const filesTotalCount = document.getElementById('files').files.length;
+                                        const fileNames = Array.from(document.getElementById('files').files).map(_file => _file.name);
+                                        const filesTotalSize = Array.from(document.getElementById('files').files).map(_file => _file.size).reduce((prev, curr) => prev+curr, 0);
+                                        let filesCompleteSize = 0;
+
+                                        for (let file of document.getElementById('files').files) {
+                                            let fileIndex = fileNames.indexOf(file.name);
+
+                                            const formData = new FormData();
                                             formData.append('_action', 'getRemoteUploadPresignedURL');
                                             formData.append('filename', file.name);
                                             formData.append('filetype', file.type);
                                             formData.append('filesize', file.size);
+                                 
+                                            const onUploadProgress = function(progressEvent) {
+                                                const filePercent = Math.round( ((progressEvent.loaded * 100) / progressEvent.total) );
+                                                const overallPercent = Math.round(((filesCompleteSize + progressEvent.loaded) * 100) / filesTotalSize);
+                                                if(progressEvent.loaded === progressEvent.total){
+                                                    $('#uploadOverallProgressStatus').html('Saving file ' + (fileIndex + 1) + ' of ' + filesTotalCount)
+                                                    $('#uploadFileProgress .bar').hide();
+                                                }else{
+                                                    $('#uploadFileProgress').progress({
+                                                        percent: filePercent,
+                                                        text: {
+                                                            active: 'Uploading file ' + (fileIndex + 1) + ' of ' + filesTotalCount + ' (' + humanFileSize(Math.round(filesTotalSize/100 * overallPercent)) + ' of ' + humanFileSize(filesTotalSize) + ', ' + overallPercent + '%' + ')',
+                                                        }
+                                                    });
+                                                }
+                                                $('#uploadOverallProgress').progress({ percent: overallPercent });
+                                                
+                                            }
 
+                                            const uploadConfig = { onUploadProgress };
+
+                                            // obtain a presigned url as the remote endpoint
                                             await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
-
-                                                console.log('the response is ', response);
 
                                                 const data = {
                                                     ...response.data.formInputs,
@@ -427,24 +475,32 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                 }
                                                 remoteFormData.append('file', file);
 
-                                                await axios.post(response.data.formAttributes.action, remoteFormData).then((response) => {
+                                                // send the file to the remote endpoint
+                                                await axios.post(response.data.formAttributes.action, remoteFormData, uploadConfig)
+                                                .then(async (response) => {
+                                                    filesCompleteSize += file.size;
                                                     formData.set('_action', 'saveRemoteUploadedFile');
                                                     formData.set('notes', $('#notes').val());
-                                                    axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+                                                    await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
                                                         let lastFilename;
                                                         for (let _file of document.getElementById('files').files) {
                                                             lastFilename = _file.name;
                                                         }
                                                         if (lastFilename === file.name) {
                                                             window.location = window.location;
-                                                        } else {
-                                                            console.log('waiting for to finish after ' + file.name + ', lastfilename: ' + lastFilename);
                                                         }
                                                     });
                                                 }).catch((error) => {
                                                     alert(error.response?.data?.message || error.message);
                                                     console.log(error);
                                                     $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                                }).then((response) => {
+                                                    $('#uploadFileProgress').progress({
+                                                        percent: 100,
+                                                        text: {
+                                                            success: 'Saving the file ' + (fileIndex + 1) + ' of ' + filesTotalCount
+                                                        }
+                                                    });
                                                 });
 
                                             }).catch((error) => {
@@ -463,7 +519,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } else { ?>
 
                             <div class="ui container center aligned">
-                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit"><i class="upload icon right"></i> Upload to Server</button>
+                                <button <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> class="ui primary right labeled icon submit button" type="submit" onclick="this.disabled='disabled';setTimeout(()=>{this.disabled=null;}, 5*60*1000);"><i class="upload icon right"></i> Upload to Server</button>
                             </div>
 
                         <?php } ?>
