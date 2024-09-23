@@ -168,9 +168,15 @@ function list_migrations()
 
 function logout()
 {
-    $_SESSION = [];
+    $config = Fuppi\App::getInstance()->getConfig();
+    if (!empty($_COOKIE[$config->session_persist_cookie_name])) {
+        Fuppi\App::getInstance()->getUser()->destroyPersistentCookie($_COOKIE[$config->session_persist_cookie_name]);
+        setcookie($config->session_persist_cookie_name, session_id(), -1, $config->session_persist_cookie_path, $config->session_persist_cookie_domain);
+        unset($_COOKIE[$config->session_persist_cookie_name]);
+    }
     Fuppi\App::getInstance()->getUser()->setData(['user_id' => 0, 'username' => '', 'password' => '']);
     Fuppi\App::getInstance()->setVoucher(null);
+    $_SESSION = [];
 }
 
 function redirect(string $url = '')
@@ -198,6 +204,10 @@ function fuppi_gc()
     $config=\Fuppi\App::getInstance()->getConfig();
     $db = \Fuppi\App::getInstance()->getDb();
     $fileSystem = \Fuppi\App::getInstance()->getFileSystem();
+
+    // delete expired user sessions
+    $statement = $db->getPdo()->query('DELETE FROM `fuppi_user_sessions` WHERE `session_expires_at` < :expires_at_floor');
+    $results = $statement->execute(['expires_at_floor' => date('Y-m-d H:i:s')]);
 
     if (!$fileSystem->isRemote()) {
         // purge all aws presigned urls

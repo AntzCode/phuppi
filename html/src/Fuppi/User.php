@@ -47,6 +47,69 @@ class User extends Model
         return parent::getOne($id);
     }
 
+    public static function findBySessionId(string $sessionId)
+    {
+        $instance = new self();
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare('SELECT `user_id`, `session_expires_at` FROM `fuppi_user_sessions` WHERE `session_id` = :session_id');
+        if ($statement->execute(['session_id' => $sessionId]) && $row = $statement->fetch(PDO::FETCH_ASSOC)) {
+            if(strtotime($row['session_expires_at']) > time()){
+                return self::getOne($row['user_id']);
+            }else{
+                $statement = $db->getPdo()->prepare('DELETE FROM `fuppi_user_sessions` WHERE `session_id` = :session_id');
+                $statement->execute(['session_id' => $sessionId]);
+            }
+        }
+        return null;
+    }
+
+    public function destroyPersistentCookie($sessionId){
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare('DELETE FROM `fuppi_user_sessions` WHERE `session_id` = :session_id');
+        if ($statement->execute([
+            'session_id' => $sessionId,
+        ])) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public function extendPersistentCookie($oldSessionId, $newSessionId, $expiresAt, $userAgent, $clientIp){
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare('INSERT INTO `fuppi_user_sessions` (`session_id`, `user_id`, `session_expires_at`, `last_login_at`, `user_agent`, `client_ip`) VALUES  (:session_id, :user_id, :expires_at, :last_login_at, :user_agent, :client_ip)');
+        if ($statement->execute([
+            'session_id' => $newSessionId,
+            'user_id' => $this->user_id,
+            'expires_at' => date('Y-m-d H:i:s', $expiresAt),
+            'user_agent' => $userAgent,
+            'client_ip' => $clientIp,
+            'last_login_at' => date('Y-m-d H:i:s')
+        ])) {
+            $statement = $db->getPdo()->query('DELETE  FROM `fuppi_user_sessions` WHERE `session_id` = :id');
+            $statement->execute(['id' => $oldSessionId]);
+        } else {
+            return false;
+        }
+    }
+
+    public function setPersistentCookie($sessionId, $expiresAt, $userAgent, $clientIp){
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare('INSERT INTO `fuppi_user_sessions` (`session_id`, `user_id`, `session_expires_at`, `last_login_at`, `user_agent`, `client_ip`) VALUES  (:session_id, :user_id, :expires_at, :last_login_at, :user_agent, :client_ip)');
+        if ($statement->execute([
+            'session_id' => $sessionId,
+            'user_id' => $this->user_id,
+            'expires_at' => date('Y-m-d H:i:s', $expiresAt),
+            'last_login_at' => date('Y-m-d H:i:s'),
+            'user_agent' => $userAgent,
+            'client_ip' => $clientIp
+        ])) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     public static function findByUsername(string $username)
     {
         $instance = new self();

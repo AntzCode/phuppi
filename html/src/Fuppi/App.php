@@ -2,6 +2,8 @@
 
 namespace Fuppi;
 
+use Exception;
+
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'User.php');
 
 
@@ -24,8 +26,34 @@ class App
         $this->db = new Db();
         $this->fileSystem = FileSystem::getInstance();
         $this->user = new User();
-        $this->user->setData($_SESSION['\Fuppi\App.user'] ?? []);
-        $this->user->setSettings($_SESSION['\Fuppi\App.userSettings'] ?? []);
+
+        if (empty($_SESSION['\Fuppi\App.user']) && !empty($_COOKIE[$this->config->session_persist_cookie_name])) {
+            // load session from cookie
+            try {
+                if ($cookieUser = User::findBySessionId($_COOKIE[$this->config->session_persist_cookie_name])) {
+                    $this->user = $cookieUser;
+
+                    // regenerate the session_id to reduce css attack vector from cookies
+                    if ($this->user->user_id <= 0) {
+                        // not logged in, destroy the cookie
+                        setcookie($this->config->session_persist_cookie_name, session_id(), -1, $this->config->session_persist_cookie_path, $this->config->session_persist_cookie_domain);
+                        unset($_COOKIE[$this->config->session_persist_cookie_name]);
+                    } else {
+                        $oldSessionId = $_COOKIE[$this->config->session_persist_cookie_name];
+                        session_regenerate_id();
+                        $newSessionId = session_id();
+                        setcookie($this->config->session_persist_cookie_name, $newSessionId, time() + $this->config->session_persist_cookie_lifetime, $this->config->session_persist_cookie_path, $this->config->session_persist_cookie_domain);
+                        $this->user->extendPersistentCookie($oldSessionId, $newSessionId, time() + $this->config->session_persist_cookie_lifetime, $_SERVER['HTTP_USER_AGENT'], $_SERVER['REMOTE_ADDR']);
+                    }
+                }
+            } catch (Exception $e) {
+            }
+        } else {
+            // load session from PHP session handler if possible, or set to default
+            $this->user->setData($_SESSION['\Fuppi\App.user'] ?? []);
+            $this->user->setSettings($_SESSION['\Fuppi\App.userSettings'] ?? []);
+        }
+
         if (isset($_SESSION['\Fuppi\App.voucher'])) {
             try {
                 $voucher = Voucher::getOne($_SESSION['\Fuppi\App.voucher']['voucher_id']);

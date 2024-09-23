@@ -37,6 +37,12 @@ if (!empty($_POST)) {
                         fuppi_add_error_message('Your account has been disabled.');
                     } else {
                         $user->setData($authenticatingUser->getData());
+                        if (($_POST['persist'] ?? 0) > 0) {
+                            // set a cookie to keep them logged in
+                            $authenticatingUser->setPersistentCookie(session_id(), time() + $config->session_persist_cookie_lifetime, $_SERVER['HTTP_USER_AGENT'], $_SERVER['REMOTE_ADDR']);
+                            $_COOKIE[$config->session_persist_cookie_name] = session_id();
+                            setcookie($config->session_persist_cookie_name, session_id(), time() + $config->session_persist_cookie_lifetime, $config->session_persist_cookie_path, $config->session_persist_cookie_domain);
+                        }
                         redirect($_GET['redirectAfterLogin'] ?? '/');
                     }
                 } else {
@@ -108,8 +114,15 @@ if (!empty($_POST)) {
                 <input id="password" type="password" name="password" value="<?= $_POST['password'] ?? '' ?>" />
             </div>
 
-            <button class="ui right labeled icon green button" type="submit"><i class="user icon left"></i> Log In</button>
+            <div class="field inline <?= (!empty($errors['persist'] ?? []) ? 'error' : '') ?>">
+                <label for="persist">Stay logged in </label>
+                <input id="persist" type="checkbox" name="persist" value="1" <?= ((($_POST['persist'] ?? 0) > 0) ? 'checked="checked"' : '') ?> />
+            </div>
 
+            <div class="ui vertical segment">
+                <button class="ui right labeled icon green button" type="submit"><i class="user icon left"></i> Log In</button>
+            </div>
+            
         </form>
 
     </div>
