@@ -13,6 +13,7 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Co
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Db.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'FileSystem.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Note.php');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'Tag.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'SearchQuery.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'UploadedFile.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'Fuppi' . DIRECTORY_SEPARATOR . 'User.php');

@@ -1,0 +1,6 @@
+CREATE TABLE `fuppi_tags` (
+    `tag_id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    `slug` VARCHAR(40) NOT NULL,
+    `tagname` VARCHAR(255) NOT NULL,
+    `notes` TEXT NOT NULL
+);

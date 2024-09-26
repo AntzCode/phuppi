@@ -15,6 +15,8 @@ class UploadedFile extends Model
     protected string $_primaryKeyColumnName = 'uploaded_file_id';
     protected string $_userColumnName = 'user_id';
 
+    protected $tags = null;
+
     protected $data = [
         'uploaded_file_id' => 0,
         'user_id' => 0,
@@ -170,4 +172,78 @@ class UploadedFile extends Model
             return false;
         }
     }
+
+    public function getTags() : Array
+    {
+        if(is_array($this->tags)){
+            return $this->tags;
+        }
+        $this->tags = [];
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare("SELECT `tag_id` FROM `fuppi_uploaded_files_tags` WHERE `uploaded_file_id` = :uploaded_file_id");
+        if($statement->execute(['uploaded_file_id' => $this->uploaded_file_id])){
+            while($row = $statement->fetch(PDO::FETCH_ASSOC)){
+                $this->tags[] = Tag::getOne($row['tag_id']);
+            }
+        }
+        return $this->tags;
+    }
+
+    public function hasTag(Tag $tag) : bool
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare("SELECT COUNT(*) AS `tcount` FROM `fuppi_uploaded_files_tags` WHERE `uploaded_file_id` = :uploaded_file_id AND `tag_id` = :tag_id");
+        if($statement->execute(['uploaded_file_id' => $this->uploaded_file_id, 'tag_id' => $tag->tag_id]) && $statement->fetch(PDO::FETCH_ASSOC)['tcount'] > 0){
+            return true;
+        }
+        return false;
+    }
+
+    public function addTag(Tag $tag) : bool
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+        if($this->hasTag($tag)){
+            return true;
+        } else {
+            if($tag->tag_id > 0){
+                $statement = $db->getPdo()->prepare("INSERT INTO `fuppi_uploaded_files_tags` (`uploaded_file_id`, `tag_id`) VALUES (:uploaded_file_id, :tag_id)");
+                if($statement->execute(['uploaded_file_id' => $this->uploaded_file_id, 'tag_id' => $tag->tag_id])){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public function removeTag(Tag $tag) : bool
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+        $statement = $db->getPdo()->prepare("DELETE FROM `fuppi_uploaded_files_tags` WHERE `uploaded_file_id` = :uploaded_file_id AND `tag_id` = :tag_id");
+        if($statement->execute(['uploaded_file_id' => $this->uploaded_file_id, 'tag_id' => $tag->tag_id])){
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+
+    public static function getAllByTag(Tag $tag)
+    {
+        $db = \Fuppi\App::getInstance()->getDb();
+
+        $statement = $db->getPdo()->query('SELECT uploaded_file_id FROM `fuppi_uploaded_files_tags` WHERE tag_id = :tag_id');
+        $results = $statement->execute(['tag_id' => $tag->tag_id]);
+
+        $uploadedFileIds = [];
+
+        if ($results) {
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $data) {
+                $uploadedFileIds[] = $data['uploaded_file_id'];
+            }
+        }
+
+        return self::getAll($uploadedFileIds);
+    }
+
+
 }

@@ -5,6 +5,7 @@ use Aws\S3\PostObjectV4;
 use Fuppi\ApiResponse;
 use Fuppi\FileSystem;
 use Fuppi\SearchQuery;
+use Fuppi\Tag;
 use Fuppi\UploadedFile;
 use Fuppi\User;
 use Fuppi\UserPermission;
@@ -45,7 +46,7 @@ if (!empty($_POST)) {
         case 'delete':
             if (_can_delete_files()) {
                 $apiResponse = new ApiResponse();
-                
+
                 foreach ((isset($_POST['fileIds']) ? json_decode($_POST['fileIds']) : [$_POST['fileId']]) as $fileId) {
                     $uploadedFile = UploadedFile::getOne($fileId);
                     $fileUser = $uploadedFile->getUser();
@@ -245,6 +246,146 @@ if (!empty($_POST)) {
                     }
 
                     break;
+                case 'getTags':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $tags = Tag::getAll();
+                        foreach ($tags as $k => $tag) {
+                            $tags[$k] = $tag->getData();
+                        }
+                        $apiResponse->sendResponse($tags);
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
+                case 'tagFiles':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $tag = Tag::getOne($_POST['tag_id']);
+                        if (!$tag) {
+                            $apiResponse->throwException('Invalid tag id');
+                        }
+                        foreach (json_decode($_POST['file_ids']) as $fileId) {
+                            $uploadedFile = UploadedFile::getOne($fileId);
+                            $res = $uploadedFile->addTag($tag);
+                        }
+                        $apiResponse->sendResponse('');
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
+                case 'untagFiles':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $response = new stdClass();
+                        $response->deletedTags = [];
+                        if ($tag = Tag::getOne($_POST['tag_id'])) {
+                            foreach (json_decode($_POST['file_ids']) as $fileId) {
+                                $uploadedFile = UploadedFile::getOne($fileId);
+                                $uploadedFile->removeTag($tag);
+                                $uploadedFile->save();
+                            }
+                            if (count(UploadedFile::getAllByTag($tag)) < 1) {
+                                // delete the tag
+                                Tag::deleteOne($tag->tag_id);
+                                $response->deletedTags[] = $tag->getData();
+                            }
+                            $apiResponse->sendResponse($response);
+                        } else {
+                            throw new Error('Invalid tag id');
+                        }
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
+                case 'setFilesTags':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $response = new stdClass();
+                        $response->deletedTags = [];
+                        foreach (json_decode($_POST['file_ids']) as $fileId) {
+                            $uploadedFile = UploadedFile::getOne($fileId);
+                            $oldTagIds = [];
+                            foreach ($uploadedFile->getTags() as $tag) {
+                                $oldTagIds[] = $tag->tag_id;
+                            }
+                            $newTagIds = [];
+                            foreach (json_decode($_POST['tag_ids']) as $tagId) {
+                                if ($tag = Tag::getOne($tagId)) {
+                                    $uploadedFile->addTag($tag);
+                                    $newTagIds[] = $tag->tag_id;
+                                }
+                            }
+                            $deletedTags = array_diff($oldTagIds, $newTagIds);
+                            foreach ($deletedTags as $tagId) {
+                                $tag = Tag::getOne($tagId);
+                                $uploadedFile->removeTag($tag);
+                            }
+                            $uploadedFile->save();
+                        }
+                        foreach (Tag::getAll() as $tag) {
+                            if (count(UploadedFile::getAllByTag($tag)) < 1) {
+                                // delete the tag
+                                Tag::deleteOne($tag->tag_id);
+                                $response->deletedTags[] = $tag->getData();
+                            }
+                        }
+                        $apiResponse->sendResponse($response);
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
+                case 'getFileTags':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $tagList = [];
+                        foreach (json_decode($_POST['file_ids']) as $fileId) {
+                            $uploadedFile = UploadedFile::getOne($fileId);
+                            $tagRecord = new stdClass();
+                            $tagRecord->uploadedFileId = $fileId;
+                            $tagRecord->tags = [];
+                            foreach ($uploadedFile->getTags() as $tag) {
+                                $tagRecord->tags[] = $tag->getData();
+                            }
+                            $tagList[] = $tagRecord;
+                        }
+                        $apiResponse->sendResponse($tagList);
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
+                case 'getTagId':
+                    try {
+                        $apiResponse = new ApiResponse();
+                        $tagname = Tag::sanitizeTagname($_POST['tagname']);
+                        $doForceCreate = ($_POST['force_create'] ?? 0) > 0;
+                        if (!empty($tagname)) {
+                            $tag = Tag::getOneByTagName($tagname);
+                            if (!$tag) {
+                                if ($doForceCreate) {
+                                    $tag = new Tag();
+                                    $tag->tagname = $tagname;
+                                    $tag->slug = Tag::generateSlug($tagname);
+                                    $tag->save();
+                                } else {
+                                    // returns null if tag doesn't exist
+                                    $apiResponse->sendResponse(null);
+                                }
+                            }
+                            $apiResponse->sendResponse($tag->getData());
+                        } else {
+                            $apiResponse->throwException('Tagname cannot be empty');
+                        }
+                    } catch (\Exception $e) {
+                        $apiResponse = new ApiResponse();
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
             }
             break;
     }
@@ -306,11 +447,21 @@ $pageSize = $profileUser->getSetting('filesPageSize') ?? $defaultPageSize;
 $orderBy = $profileUser->getSetting('filesOrderBy') ?? $defaultOrderBy;
 
 $searchTerm = $_GET['searchTerm'] ?? '';
+$searchTags = $_GET['tags'] ?? '';
 
 $searchQuery = (new SearchQuery())
+->setTableName('fuppi_uploaded_files')
 ->where('user_id', $profileUser->user_id)
 ->orderBy($orderBy)
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
+
+if (strlen($searchTags) > 0) {
+    $searchTagsQuery = new SearchQuery();
+    $searchTagsQuery->where('fuppi_tags.slug', explode(',', $searchTags), SearchQuery::IN);
+    $searchQuery->joinTable('fuppi_uploaded_files_tags', 'fuppi_uploaded_files_tags.uploaded_file_id', 'fuppi_uploaded_files.uploaded_file_id');
+    $searchQuery->joinTable('fuppi_tags', 'fuppi_uploaded_files_tags.tag_id', 'fuppi_tags.tag_id');
+    $searchQuery->append($searchTagsQuery);
+}
 
 if (strlen($searchTerm) > 0) {
     $searchTermQuery = new SearchQuery();
@@ -553,16 +704,22 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <?php if (_can_multiple_select()) { ?>
                 <div class="clickable item multi-select-all" data-multi-select-item-selector=".multi-select-item.uploaded-file">
                     <i class="square outline large primary icon"></i>
-                    <label>Select All / Deselect All</label>
+                    <label>Select All</label>
                 </div>
                 <div class="ui dropdown item clickable">
                     <label>With <span class="multi-select-count"></span> Selected (<span class="multi-select-size">0B</span>)</label>
                     <i class="dropdown icon"></i>
                     <div class="menu">
-                        <?php if (_can_multiple_download()) { ?>
+                    <?php if (_can_multiple_download()) { ?>
                             <div class="item multi-select-action" data-multi-select-action="download">
                                 <i class="download icon"></i>        
                                 <label>Zip &amp; Download</label>
+                            </div>
+                        <?php } ?>
+                        <?php if (_can_multiple_tag()) { ?>
+                            <div class="item multi-select-action" data-multi-select-action="tag" data-modal-selector=".tag-modal">
+                                <i class="download icon"></i>        
+                                <label>Manage Tags</label>
                             </div>
                         <?php } ?>
                         <div class="item multi-select-action"
@@ -636,6 +793,26 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             </div>
         </div>
 
+        <div class="ui inline field">
+            <script type="text/javascript">
+                function getTagFilterUrl(slugs){
+                    const _url = new URL(window.location.href);
+                    _url.searchParams.set('tags', slugs.join(','));
+                    return _url.toString();
+                }
+            </script>
+            <label for="taglist">Filter by Tag</label>
+            <select id="taglist" aria-placeholder="Filter by Tag" class="item ui fluid search dropdown" multiple="" onchange="window.location=getTagFilterUrl($(event.currentTarget).val())">
+                <?php foreach (Tag::getAll() as $tag) { ?>
+                    <option class="item" value="<?= $tag->slug ?>"
+                        <?= (in_array($tag->slug, explode(',', ($_GET['tags'] ?? ''))) ? 'selected="selected"' : '') ?>
+                    >
+                    <?= $tag->tagname ?>
+                </option>
+                <?php } ?>
+            </select>
+        </div>
+
         <div class="ui divider"></div>
 
         <?php if (empty($uploadedFiles)) { ?>
@@ -650,7 +827,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                 <?php foreach ($uploadedFiles as $uploadedFileIndex => $uploadedFile) { ?>
 
-                    <div class="ui item" style="position: relative">
+                    <div id="uploadedFile_<?= $uploadedFile->uploaded_file_id ?>" class="ui item" style="position: relative">
 
                         <?php if (_can_delete_files()) { ?>
                             <button class="red ui top right attached round label raised clickable-confirm" style="z-index: 1;" data-confirm="Are you sure you want to delete this file?" data-action="(e) => document.getElementById('deleteUploadedFileForm<?= $uploadedFileIndex ?>').submit()">
@@ -929,8 +1106,21 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
 
                         <div class="content">
 
-                            <div class="header" style="">
+                            <div class="header">
                                 <span id="uploadedFileDisplayFilename<?= $uploadedFile->uploaded_file_id ?>" style="word-break: break-all;"><?= $uploadedFile->display_filename ?></span>
+                                <div class="inline field">
+                                    <select id="taglist_<?= $uploadedFile->uploaded_file_id ?>" class="item ui fluid search dropdown taglist" multiple="" onchange="setFilesTags([<?= $uploadedFile->uploaded_file_id ?>], $(event.currentTarget).dropdown('get values'))">
+                                        <?php foreach (Tag::getAll() as $tag) { ?>
+                                            <option class="item" value="<?= $tag->tag_id ?>"
+                                                <?= ($uploadedFile->hasTag($tag) ? 'selected="selected"' : '') ?>
+                                            >
+                                            <?= $tag->tagname ?>
+                                        </option>
+                                        <?php } ?>
+                                    </select>
+
+                                </div>
+                                
                                 <?php if (_can_write_file_meta($uploadedFile)) { ?>
                                     <script type="text/javascript">
                                         $('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('setting', {
@@ -964,15 +1154,16 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                             }
                                         });
                                     </script>
-                                    <div class="ui right button circular icon clickable" onclick="$('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('show')">
-                                        <i class="edit icon" title="Edit File Info"></i>
-                                        <input type="hidden" name="_action" value="userLogin" />
-                                    </div>
+                                    
                                 <?php } ?>
                             </div>
 
                             <div class="meta">
                                 <?= _get_meta_content($uploadedFile) ?>
+                                <div class="ui right button circular icon clickable" onclick="$('.meta<?= $uploadedFile->uploaded_file_id ?>').modal('show')">
+                                    <i class="edit icon" title="Edit File Info"></i>
+                                    <input type="hidden" name="_action" value="userLogin" />
+                                </div>
                             </div>
 
                             <?php if (_can_read_file($uploadedFile)) { ?>
@@ -1019,6 +1210,130 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
             <?php } ?>
         </div>
     </div>
+
+    <?php if (_can_multiple_tag()) { ?>
+        <div class="ui modal tag-modal">
+           
+            <i class="close icon"></i>
+
+            <div class="header">
+                Manage Tags
+            </div>
+            <div class="content">
+                <div id="tag-form" method="post" class="ui form">
+                    <input type="hidden" name="_action" value="addTagToFiles" />
+                    <div class="field <?= (!empty($errors['password'] ?? []) ? 'error' : '') ?>">
+                        <label for="tagname">Tagname: </label>
+                        <input id="tagname" type="text" name="tagname" value="<?= $_POST['tagname'] ?? '' ?>" onkeyup="if(event.key==='Enter'){$('#tags-modal-save-button').trigger('click');}" />
+                    </div>
+                </div>
+            </div>
+            <div class="actions">
+                <script type="text/javascript">
+                    async function updateTaglists(){
+                        const formData = new FormData();
+                        formData.append('_action', 'getTags');
+                        await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {        
+                            $('.taglist.dropdown').each((index, el) => {
+                                const selectedValues = $(el).dropdown('get values').map((tagId) => parseInt(tagId));
+                                const values = response.data.map((tag) => {
+                                    return {
+                                        type: 'item',
+                                        name: tag.tagname,
+                                        value: tag.tag_id,
+                                        selected: selectedValues.indexOf(tag.tag_id) > -1
+                                    }
+                                });
+                                $(el).dropdown({
+                                    values
+                                });
+                            });
+                        }).catch(error => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                    function showFilesTags(fileIds){
+                        const formData = new FormData();
+                        formData.append('_action', 'getFileTags');
+                        formData.append('file_ids', JSON.stringify(fileIds));
+                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                            response.data.map(taggedFile => {
+                                const uploadedFileContainer = $('#uploadedFile_'+taggedFile.uploadedFileId);
+                                taggedFile.tags.map((tag) => {
+                                    $('.taglist.dropdown', uploadedFileContainer).dropdown('set selected', tag.tag_id, true);
+                                });
+                            });
+                        }).catch(error => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                    function untagFiles(tagId, fileIds){
+                        const formData = new FormData();
+                        formData.append('_action', 'untagFiles');
+                        formData.append('tag_id', tagId);
+                        formData.append('file_ids', JSON.stringify(fileIds));
+                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+                            if(response.data?.deletedTags?.length > 0){
+                                await updateTaglists();
+                                showFilesTags(fileIds);
+                            }
+                        }).catch(e => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                    function tagFiles(tagId, fileIds){
+                        const formData = new FormData();
+                        formData.append('_action', 'tagFiles');
+                        formData.append('tag_id', tagId);
+                        formData.append('file_ids', JSON.stringify(fileIds));
+                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+                            await updateTaglists();
+                            showFilesTags(fileIds);
+                        }).catch(error => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                    function setFilesTags(fileIds, tagIds){
+                        const formData = new FormData();
+                        formData.append('_action', 'setFilesTags');
+                        formData.append('tag_ids', JSON.stringify(tagIds));
+                        formData.append('file_ids', JSON.stringify(fileIds));
+                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
+                            if(response.data?.deletedTags?.length > 0){
+                                await updateTaglists();
+                                showFilesTags(fileIds);
+                            }
+                        }).catch(error => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                    function applyMultiFileTags(){
+                        const formData = new FormData();
+                        formData.append('_action', 'getTagId');
+                        formData.append('tagname', $('#tagname').val());
+                        formData.append('force_create', 1);
+                        axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then((response) => {
+                            tagFiles(response.data.tag_id, JSON.parse($('.tag-modal').data('selected-ids')));
+                            $('#tagname').val('');
+                        }).catch(e => {
+                            console.log(error);
+                            alert('error!');
+                        });
+                    }
+                </script>
+                <div id="tags-modal-save-button" class="ui positive right labeled icon button clickable" onclick="applyMultiFileTags()">
+                    Save
+                    <i class="save icon"></i>
+                </div>
+            </div>
+
+        </div>
+    <?php } ?>
     
 <?php } ?>
 
@@ -1115,6 +1430,22 @@ function _can_multiple_download()
         case FileSystem::DIGITAL_OCEAN_SPACES:
             return !empty($config->getSetting('do_functions_multiple_zip_endpoint')) && !empty($config->getSetting('do_functions_multiple_zip_api_token')) && FileSystem::isValidRemoteEndpoint();
     }
+}
+
+function _can_multiple_tag()
+{
+    $app = \Fuppi\App::getInstance();
+    $user = $app->getUser();
+
+    if ($voucher = $app->getVoucher()) {
+        if ($user->hasPermission(VoucherPermission::UPLOADEDFILES_PUT)) {
+            return true;
+        }
+    } else {
+        return $user->hasPermission(UserPermission::UPLOADEDFILES_PUT);
+    }
+
+    return false;
 }
 
 function _can_multiple_select()

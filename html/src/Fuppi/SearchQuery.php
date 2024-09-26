@@ -16,6 +16,7 @@ class SearchQuery
     const LIKE = 'like';
     const AND = 'and';
     const OR = 'or';
+    const IN = 'in';
 
     public function __construct($tableName=null, $columns=[])
     {
@@ -25,9 +26,10 @@ class SearchQuery
 
     public function where(string $what, mixed $where, string $operator="eq")
     {
-        switch($operator) {
+        switch ($operator) {
             case self::EQ:
             case self::LIKE:
+            case self::IN:
                 $this->conditions[] = [
                     'what' => $what,
                     'op' => $operator,
@@ -74,6 +76,21 @@ class SearchQuery
         return $this;
     }
 
+    public function getTablename() : string
+    {
+        return $this->tableName;
+    }
+
+    public function getColumnNames()
+    {
+        return $this->columns;
+    }
+
+    public function joinTable(string $tableName, $leftColumnName, $rightColumnName)
+    {
+        $this->tableName = $this->tableName . ' JOIN ' . $tableName . ' ON ' . $leftColumnName . ' = ' . $rightColumnName;
+    }
+
     public function append(SearchQuery $condition)
     {
         $this->conditions[] = $condition;
@@ -92,7 +109,7 @@ class SearchQuery
 
         if (is_null($what)) {
             if (count($this->columns) > 0) {
-                $what = '`' . implode('`, `', $this->columns) . '`';
+                $what = implode(', ', $this->columns);
             } else {
                 $what = '*';
             }
@@ -143,16 +160,27 @@ class SearchQuery
                 $outputs[$iteration] = ' ( ' . $_conditions . ' ) ';
                 $bindings = array_merge($bindings, $_bindings);
             } else {
-                switch($condition['op']) {
+                switch ($condition['op']) {
                     case self::EQ:
                         $iteration = count($outputs);
-                        $outputs[$iteration] = '`' . $condition['what'] . '`' . ' = :' . $bindingPrefix . $iteration;
+                        $outputs[$iteration] = $condition['what'] . ' = :' . $bindingPrefix . $iteration;
                         $bindings[$bindingPrefix . $iteration] = $condition['where'];
                         break;
                     case self::LIKE:
                         $iteration = count($outputs);
-                        $outputs[$iteration] = '`' . $condition['what'] . '`' . ' LIKE :' . $bindingPrefix . $iteration;
+                        $outputs[$iteration] = $condition['what'] . ' LIKE :' . $bindingPrefix . $iteration;
                         $bindings[$bindingPrefix . $iteration] = $condition['where'];
+                        break;
+                    case self::IN:
+                        $iteration = count($outputs);
+                        $ins = [];
+                        $iteration2 = 0;
+                        foreach ($condition['where'] as $value) {
+                            $ins[] = ':' . $bindingPrefix . $iteration . '_' . $iteration2;
+                            $bindings[$bindingPrefix . $iteration . '_' . $iteration2] = $value;
+                            $iteration2++;
+                        }
+                        $outputs[$iteration] = $condition['what'] . ' IN (' . implode(',', $ins) . ')';
                         break;
                 }
             }

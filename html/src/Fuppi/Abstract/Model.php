@@ -63,23 +63,29 @@ abstract class Model
     {
         $className = get_called_class();
         $instance = new $className();
-        $userPermissions = [];
+        $items = [];
         $db = \Fuppi\App::getInstance()->getDb();
         if (!is_null($ids)) {
-            $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '` WHERE `' . $instance->_primaryKeyColumnName . '` IN :ids');
-            $results = $statement->execute(['ids' => $ids]);
+            $bindings = [];
+            $iteration = 0;
+            foreach($ids as $id){
+                $bindings[':v' . $iteration] = $id;
+                $iteration++;
+            }
+            $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '` WHERE `' . $instance->_primaryKeyColumnName . '` IN (' . implode(',', array_keys($bindings)) . ')');
+            $results = $statement->execute($bindings);
         } else {
             $statement = $db->getPdo()->query('SELECT `' . implode('`, `', array_keys($instance->getData())) . '` FROM `' . $instance->_tablename . '`');
             $results = $statement->execute();
         }
         if ($results) {
-            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $userPermissionData) {
-                $userPermission = new $className();
-                $userPermission->setData($userPermission->fromDb($userPermissionData));
-                $userPermissions[] = $userPermission;
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $itemData) {
+                $item = new $className();
+                $item->setData($item->fromDb($itemData));
+                $items[] = $item;
             }
         }
-        return $userPermissions;
+        return $items;
     }
 
     public static function search(SearchQuery $condition=null){
@@ -90,10 +96,24 @@ abstract class Model
         
         $rows = [];
 
-        $condition->setTablename($instance->_tablename)->setColumnNames(array_keys($instance->getData()));
-        
+        if(empty($condition->getTablename())){
+            $condition->setTablename($instance->_tablename);
+        }
+
+        if(empty($condition->getColumnNames())){
+            $columnNames = array_keys($instance->getData());
+            foreach($columnNames as $k => $columnName){
+                if($columnName === $instance->_primaryKeyColumnName){
+                    $columnNames[$k] = 'DISTINCT ' . $instance->_tablename . '.' . $instance->_primaryKeyColumnName . ' AS ' . $instance->_primaryKeyColumnName;
+                }else{
+                    $columnNames[$k] = $instance->_tablename . '.' . $columnName . ' AS ' . $columnName;
+                }
+            }
+            $condition->setColumnNames($columnNames);
+        }
+
         list($rowsQuery, $rowsBindings) = $condition->getQuery();
-        list($countQuery, $countBindings) = $condition->getQuery('COUNT(*) AS totalCount', 0, 0);
+        list($countQuery, $countBindings) = $condition->getQuery('COUNT(DISTINCT ' . $instance->_tablename . '.' . $instance->_primaryKeyColumnName . ') AS totalCount', 0, 0);
 
         $rowsStatement = $db->getPdo()->query($rowsQuery);
         $rowsResults = $rowsStatement->execute($rowsBindings);

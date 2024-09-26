@@ -83,6 +83,10 @@ $(() => {
                         $('.ui.page.dimmer').dimmer('hide');
                     }, 3000);
                     break;
+                case 'tag':
+                    $($(action).data('modal-selector')).data('selected-ids', JSON.stringify(selectedIds));
+                    $($(action).data('modal-selector')).modal('show');
+                    break;
                 case 'delete':
                     if (confirm('Are you sure you want to delete the ' + selectedIds.length + ' selected? This action cannot be undone!')) {
                         $('.ui.page.dimmer').dimmer('show');
