@@ -18,6 +18,10 @@ abstract class Model
     {
     }
 
+    public function getTablename(){
+        return $this->_tablename;
+    }
+
     public function save(): bool
     {
         $db = \Fuppi\App::getInstance()->getDb();

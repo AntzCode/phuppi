@@ -149,6 +149,7 @@ $orderBy = $profileUser->getSetting('notesOrderBy') ?? $defaultOrderBy;
 $searchTerm = $_GET['searchTerm'] ?? '';
 
 $searchQuery = (new SearchQuery())
+->setTableName((new Note() )->getTableName())
 ->where('user_id', $profileUser->user_id)
 ->orderBy($orderBy)
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);

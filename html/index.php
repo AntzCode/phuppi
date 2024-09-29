@@ -450,7 +450,7 @@ $searchTerm = $_GET['searchTerm'] ?? '';
 $searchTags = $_GET['tags'] ?? '';
 
 $searchQuery = (new SearchQuery())
-->setTableName('fuppi_uploaded_files')
+->setTableName((new UploadedFile())->getTablename())
 ->where('user_id', $profileUser->user_id)
 ->orderBy($orderBy)
 ->limit($pageSize)->offset(($pageNum - 1) * $pageSize);
