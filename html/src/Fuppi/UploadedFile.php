@@ -56,18 +56,25 @@ class UploadedFile extends Model
         return $uploadedFiles;
     }
 
+    public static function sanitizeFilename(string $filename){
+        return preg_replace('/[^a-zA-Z0-9\.\-_(),]/', '', str_replace(' ', '_', $filename));
+    }
+
     public static function generateUniqueFilename(string $filename)
     {
         $db = \Fuppi\App::getInstance()->getDb();
 
-        $strippedFilename = preg_replace('/[^a-zA-Z0-9\.\-_(),]/', '', str_replace(' ', '_', $filename));
+        $strippedFilename = self::sanitizeFilename($filename);
+
+        $sanitizedFilename = $strippedFilename;
+
+        $statement = $db->getPdo()->prepare("SELECT COUNT(*) AS `tcount` FROM `fuppi_uploaded_files` WHERE `filename` = :filename");
 
         $iterations = 0;
-        do {
+        while($statement->execute(['filename' => $sanitizedFilename]) && $statement->fetch()['tcount'] > 0 && $iterations < 500){
             $sanitizedFilename = ($iterations < 1 ? $strippedFilename : pathinfo($strippedFilename, PATHINFO_FILENAME) . '(' . ($iterations * 1) . ').' . pathinfo($strippedFilename, PATHINFO_EXTENSION));
             $iterations++;
-            $statement = $db->getPdo()->prepare("SELECT COUNT(*) AS `tcount` FROM `fuppi_uploaded_files` WHERE `filename` = :filename");
-        } while ($statement->execute(['filename' => $sanitizedFilename]) && $statement->fetch()['tcount'] > 0 && $iterations < 500);
+        }
 
         return $sanitizedFilename;
     }

@@ -121,6 +121,41 @@ if (!empty($_POST)) {
                         $apiResponse->throwException('Invalid sort order');
                     }
                     break;
+                case 'getFilesMeta':
+                    $apiResponse = new ApiResponse();
+                    try {
+                        $filenames = json_decode($_POST['filenames']);
+                        $sanitizedFilenames = $filenames;
+                        array_map(function ($filename) {
+                            return UploadedFile::sanitizeFilename($filename);
+                        }, $sanitizedFilenames);
+                        $searchQuery = (new SearchQuery())
+                        ->setTableName((new UploadedFile())->getTablename())
+                        ->where('filename', array_map(function ($filename) {
+                            return UploadedFile::sanitizeFilename($filename);
+                        }, $sanitizedFilenames), SearchQuery::IN);
+
+                        $searchResult = UploadedFile::search($searchQuery);
+
+                        $results = [];
+                        foreach ($searchResult['rows'] as $uploadedFile) {
+                            $resultRow = array_filter((array) $uploadedFile->getData(), function ($value, $key) {
+                                return in_array($key, [
+                                    'uploaded_file_id',
+                                    'filename',
+                                    'filesize',
+                                    'mimetype',
+                                    'uploaded_at'
+                                ]);
+                            }, ARRAY_FILTER_USE_BOTH);
+                            $resultRow['name'] = $filenames[array_search($uploadedFile->filename, $sanitizedFilenames)];
+                            $results[] = $resultRow;
+                        }
+                        $apiResponse->sendResponse($results);
+                    } catch (\Exception $e) {
+                        $apiResponse->throwException($e->getMessage());
+                    }
+                    break;
                 case 'writeFileMeta':
                     $apiResponse = new ApiResponse();
                     $uploadedFileId = (int) $_POST['fileId'];
@@ -239,7 +274,7 @@ if (!empty($_POST)) {
                         ]);
 
                         $apiResponse = new ApiResponse();
-                        $apiResponse->sendResponse(UploadedFile::getOne($pdo->lastInsertId()));
+                        $apiResponse->sendResponse(UploadedFile::getOne($pdo->lastInsertId())->getData());
                     } catch (\Exception $e) {
                         $apiResponse = new ApiResponse();
                         $apiResponse->throwException($e->getMessage());
@@ -520,8 +555,14 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                             </div>
                         </div>
                         <div class="inline field" id="uploadExtraFields" style="display: none">
-                            <label>Notes:</label>
-                            <textarea <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="notes" name="notes" placeholder=""></textarea>
+                            <div class="inline field">
+                                <label>Notes:</label>
+                                <textarea <?= ($user->user_id !== $profileUser->user_id ? 'disabled="disabled"' : '') ?> id="notes" name="notes" placeholder=""></textarea>
+                            </div>
+                            <div class="inline field ui checkbox">
+                                <input id="replace_all" type="checkbox" value="1" name="replace_all" <?= ($_POST['replace_all'] ?? 0) > 0 ? 'checked="checked"' : '' ?> />
+                                <label for="replace_all">Do not skip duplicates</label>
+                            </div>
                         </div>
                         <div class="field" id="uploadFileProgressContainer" style="display: none">
                             <div class="ui small progress green top attached" id="uploadOverallProgress" data-percent="0">
@@ -583,8 +624,56 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                         const fileNames = Array.from(document.getElementById('files').files).map(_file => _file.name);
                                         const filesTotalSize = Array.from(document.getElementById('files').files).map(_file => _file.size).reduce((prev, curr) => prev+curr, 0);
                                         let filesCompleteSize = 0;
+                                        let skipFiles = [];
+
+                                        if(!$('#replace_all').is(':checked')){
+                                            
+                                            const formData = new FormData();
+                                            formData.append('_action', 'getFilesMeta');
+                                            formData.append('filenames', JSON.stringify(fileNames));
+
+                                            await axios.post('index.php', formData, 'json')
+                                            .then(response => {
+
+                                                if(response.data){
+                                                    if(typeof response.data === 'object'){
+                                                        serverFilesMeta = Array.from(response.data);
+                                                    } else {
+                                                        serverFilesMeta = Array.from(JSON.parse(response.data.replace(/<div.*>/gms, '')));
+                                                    }
+                                                    for(let serverFileMeta of serverFilesMeta){
+                                                        let clientFile = Array.from(document.getElementById('files').files).filter(_file => _file.name === serverFileMeta.name)[0] ?? null;
+                                                        if(clientFile && clientFile?.size === serverFileMeta.filesize){
+                                                            if(skipFiles.map(_skipFile => _skipFile.name).indexOf(clientFile.name) < 0){
+                                                                skipFiles.push({...clientFile, ...serverFileMeta});
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }).catch(e => {
+                                                console.log(e);
+                                                alert('Error: could not do a pre-upload duplicate test: '+e?.message+JSON.stringify(e));
+                                                alert(error.response?.data?.message || error.message);
+                                            });
+
+                                            if(skipFiles.length === fileNames.length){
+                                                // all files have been uploaded - no further action required
+                                                alert('The selected files have already been uploaded and will not be overwritten');
+                                                $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                                return;
+                                            }else{
+                                                console.log({skipFiles, fileNames});
+                                            }
+                                        }
 
                                         for (let file of document.getElementById('files').files) {
+                                            if(skipFiles.map(_file => _file.name).indexOf(file.name).length > -1){
+                                                // do not re-upload identical existing files
+                                                const skipFile = skipFiles.filter(_file => _file.name === file.name)[0];
+                                                filesCompleteSize += skipFile.filesize;
+                                                continue;
+                                            }
+
                                             let fileIndex = fileNames.indexOf(file.name);
 
                                             const formData = new FormData();
@@ -635,7 +724,10 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                     formData.set('notes', $('#notes').val());
                                                     await axios.post('<?= $_SERVER['REQUEST_URI'] ?>', formData).then(async (response) => {
                                                         let lastFilename;
-                                                        for (let _file of document.getElementById('files').files) {
+                                                        let nonSkippedFiles = Array.from(document.getElementById('files').files).filter(_file => {
+                                                            return skipFiles.map(_skipFile => _skipFile.name).indexOf(_file.name) < 0;
+                                                        });
+                                                        for (let _file of nonSkippedFiles) {
                                                             lastFilename = _file.name;
                                                         }
                                                         if (lastFilename === file.name) {
@@ -656,9 +748,15 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                 });
 
                                             }).catch((error) => {
-                                                alert(error.response?.data?.message || error.message);
-                                                console.log(error);
-                                                $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                                if(error.response?.status === 504){
+                                                    // timeout error, silently ignore
+                                                    console.log(error);
+                                                    
+                                                }else{
+                                                    alert(error.response?.data?.message || error.message);
+                                                    console.log(error);
+                                                    $('#uploadFilesForm .submit.button').prop('disabled', false);
+                                                }
                                             });
 
                                         }

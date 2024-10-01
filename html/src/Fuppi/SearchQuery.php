@@ -9,7 +9,7 @@ class SearchQuery
     protected $concatenator = 'AND';
     protected $conditions = [];
     protected $orderBy = '';
-    protected $limit = 20;
+    protected $limit = 0;
     protected $offset = 0;
 
     const EQ = 'eq';
@@ -131,16 +131,18 @@ class SearchQuery
             }
         } else {
             if (!is_null($this->limit)) {
-                $query .= " LIMIT $this->limit ";
+                if ($this->limit > 0) {
+                    $query .= " LIMIT $this->limit ";
+                }
             }
         }
 
         if (!is_null($offset)) {
-            if ($offset > 0) {
+            if ($offset > 0 && ($limit ?? $this->limit ?? 0) > 0) {
                 $query .= " OFFSET $offset ";
             }
         } else {
-            if (!is_null($this->offset)) {
+            if ($this->offset > 0 && ($limit ?? $this->limit ?? 0) > 0) {
                 $query .= " OFFSET $this->offset ";
             }
         }
