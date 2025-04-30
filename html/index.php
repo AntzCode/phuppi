@@ -1024,7 +1024,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                     <div class="sixteen wide column ui labeled ticked slider attached computer tablet only" id="sharableLinkSlider<?= $uploadedFileIndex ?>"></div>
                                                     <div class="sixteen wide column mobile only">
                                                         <div class="ui dropdown" id="sharableLinkDropdown<?= $uploadedFileIndex ?>">
-                                                            <input type="hidden" name="sharableLinkDropdown<?= $uploadedFileIndex ?>" value="<?= $_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[3], array_keys($config->token_valid_for_options) ?>" />
+                                                            <input type="hidden" name="sharableLinkDropdown<?= $uploadedFileIndex ?>" value="<?= $_POST['valid_for'] ?? array_search(array_values($config->token_valid_for_options)[3], $config->token_valid_for_options) ?>" />
                                                             <label><?= array_values($config->token_valid_for_options)[(array_search($_POST['valid_for'] ?? array_keys($config->token_valid_for_options)[3], array_keys($config->token_valid_for_options)))] ?></label>
                                                             <i class="dropdown icon"></i>
                                                             <div class="menu">
