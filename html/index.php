@@ -949,7 +949,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                     <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
                                         <video class="ui centered massive image" 
                                             id="preview-video-<?= $uploadedFile->uploaded_file_id ?>"
-                                            poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
+                                            poster="/assets/images/filetype-icons/<?= strtolower($uploadedFile->extension) ?>.png"
                                             controls preload="metadata"
                                         >
                                             <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" type="<?= $uploadedFile->mimetype ?>" />
@@ -989,7 +989,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                                 <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
                                                     <video class="ui centered massive image" 
                                                         id="share-video-<?= $uploadedFile->uploaded_file_id ?>"
-                                                        poster="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png"
+                                                        poster="/assets/images/filetype-icons/<?= strtolower($uploadedFile->extension) ?>.png"
                                                         preload="none"
                                                     >
                                                         <source src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>#t=0.1" type="<?= $uploadedFile->mimetype ?>" />
@@ -998,7 +998,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                             <?php } else if (empty("{$uploadedFile->extension}")) { ?>
                                                 <img src="/assets/images/filetype-icons/unknown.png" />
                                             <?php } else { ?>
-                                                <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                                                <img src="/assets/images/filetype-icons/<?= strtolower($uploadedFile->extension) ?>.png" />
                                             <?php } ?>
                                         </div>
 
@@ -1183,7 +1183,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                                 <?php if (in_array($uploadedFile->mimetype, $config->image_mime_types)) { ?>
                                     <img class="tiny rounded image" src="file.php?id=<?= $uploadedFile->uploaded_file_id ?>" />
                                 <?php } else if (in_array($uploadedFile->mimetype, $config->video_mime_types)) { ?>
-                                    <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                                    <img src="/assets/images/filetype-icons/<?= strtolower($uploadedFile->extension) ?>.png" />
                                 <?php } ?>
 
                             </div>
@@ -1197,7 +1197,7 @@ $resultSetEnd = ((($pageNum-1) * $pageSize) + count($uploadedFiles));
                         <?php } else { ?>
 
                             <div class="ui tiny image raised">
-                                <img src="/assets/images/filetype-icons/<?= $uploadedFile->extension ?>.png" />
+                                <img src="/assets/images/filetype-icons/<?= strtolower($uploadedFile->extension) ?>.png" />
                             </div>
 
                         <?php } ?>
