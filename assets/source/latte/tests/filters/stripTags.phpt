@@ -1,0 +1,47 @@
+<?php
+
+/**
+ * Test: Latte\Essential\Filters::stripTags()
+ */
+
+declare(strict_types=1);
+
+use Latte\ContentType;
+use Latte\Essential\Filters;
+use Latte\Runtime\FilterInfo;
+use Tester\Assert;
+
+require __DIR__ . '/../bootstrap.php';
+
+
+$latte = createLatte();
+Assert::same(
+	'&quot;',
+	$latte->renderToString('{="<br>&quot;"|stripTags}'),
+);
+
+
+test('exception on incompatible content type (TEXT)', function () {
+	$info = new FilterInfo(ContentType::Text);
+	Assert::exception(
+		fn() => Filters::stripTags($info, ''),
+		Latte\RuntimeException::class,
+		'Filter |stripTags used with incompatible type TEXT.',
+	);
+});
+
+
+test('HTML tag stripping with entity preservation', function () {
+	$info = new FilterInfo(ContentType::Html);
+	Assert::same('', Filters::stripTags($info, ''));
+	Assert::same('abc', Filters::stripTags($info, 'abc'));
+	Assert::same('&lt;  c', Filters::stripTags($info, '&lt; <b> c'));
+});
+
+
+test('XML tag stripping with entity preservation', function () {
+	$info = new FilterInfo(ContentType::Xml);
+	Assert::same('', Filters::stripTags($info, ''));
+	Assert::same('abc', Filters::stripTags($info, 'abc'));
+	Assert::same('&lt;  c', Filters::stripTags($info, '&lt; <b> c'));
+});

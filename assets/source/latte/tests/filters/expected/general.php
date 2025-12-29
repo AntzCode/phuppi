@@ -1,0 +1,97 @@
+<?php
+%A%
+final class Template%a% extends Latte\Runtime\Template
+{
+
+	public function main(array $ʟ_args): void
+	{
+%A%
+		echo '<ul>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->h2)(($this->filters->h1)($hello))) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo ($this->filters->h2)(($this->filters->h1)($hello)) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->h1)(($this->filters->h2)($hello))) /* pos %d%:%d% */;
+		echo '</li>
+</ul>
+
+<ul>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->types)((int) $hello * 0, 0, 0.0, '0')) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->types)((int) $hello * 1, 1, '1')) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->types)($hello, true, null, false)) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->types)($hello, true, null, false)) /* pos %d%:%d% */;
+		echo '</li>
+	<li>';
+		echo LR\HtmlHelpers::escapeText(($this->filters->types)($hello, '', '', "{$hello}")) /* pos %d%:%d% */;
+		echo '</li>
+</ul>
+
+
+
+';
+		ob_start(fn() => '') /* pos %d%:%d% */;
+		try {
+			(function () {
+				extract(func_get_arg(0));
+				echo '  <a   href="#"
+> test</a>
+A   A
+
+<script>
+// comment
+alert();
+</script>
+';
+
+			})(get_defined_vars());
+		} finally {
+			$ʟ_fi = new LR\FilterInfo('html');
+			echo LR\Helpers::convertTo($ʟ_fi, 'html', $this->filters->filterContent('strip', $ʟ_fi, ob_get_clean()));
+		}
+		echo '
+
+
+<p>
+Nested blocks: ';
+		ob_start(fn() => '') /* pos %d%:%d% */;
+		try {
+			(function () {
+				extract(func_get_arg(0));
+				echo ' Outer   ';
+				ob_start(fn() => '') /* pos %d%:%d% */;
+				try {
+					(function () {
+						extract(func_get_arg(0));
+						echo ' Inner Block ';
+
+					})(get_defined_vars());
+				} finally {
+					$ʟ_fi = new LR\FilterInfo('html');
+					echo LR\Helpers::convertTo($ʟ_fi, 'html', $this->filters->filterContent('upper', $ʟ_fi, $this->filters->filterContent('striphtml', $ʟ_fi, ob_get_clean())));
+				}
+				echo '  Block ';
+
+			})(get_defined_vars());
+		} finally {
+			$ʟ_fi = new LR\FilterInfo('html');
+			echo LR\Helpers::convertTo($ʟ_fi, 'html', $this->filters->filterContent('truncate', $ʟ_fi, $this->filters->filterContent('striphtml', $ʟ_fi, ob_get_clean()), 20));
+		}
+		echo '
+</p>
+
+Breaklines: ';
+		echo LR\HtmlHelpers::escapeText(($this->filters->breakLines)('hello
+bar')) /* pos %d%:%d% */;
+		echo "\n";
+	}
+}

@@ -1,0 +1,34 @@
+{parameters
+    ?string $type = null,
+    ?string $id = null,
+    string $componentId = 'msg_' . $type . '_' . $id,
+    ?string $attitude = null,
+    ?string $color = null,
+    ?string $header = null,
+    ?string $icon = null,
+    array $messages = []
+}
+
+{if $type && $messages}
+<div class="ui container" id={$id}>
+    <div class="ui attached padded segment" id="component_messages_{$componentId}">
+        <div class="ui icon {$attitude} message" style="position: relative">
+            <label class="ui corner label {$color} clickable" onclick="(() => document.getElementById('component_messages_' + {$componentId}).remove())()"><i class="close icon"></i></label>
+            <i class="icon {$icon} circle"></i>
+            <div class="content">
+                {if $header}
+                <div class="header">
+                    {$header}
+                </div>
+                {/if}
+                <ul class="list">
+                    {foreach $messages as $messageLine}
+                        <li>{$messageLine->message}</li>
+                    {/foreach}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{/if}
+

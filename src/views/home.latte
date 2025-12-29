@@ -1,1 +1,9 @@
-<h1>Hello from {$name}!</h1>
+{layout 'layout.latte'}
+
+{block content}
+<div class="ui segment">
+    <h2 class="ui header">Welcome to {$name}</h2>
+    <p>This is the home page using the reusable layout with Semantic UI styles imported from phuppi-v1.</p>
+    <p>Session Id: {$sessionId}</p>
+</div>
+{/block}

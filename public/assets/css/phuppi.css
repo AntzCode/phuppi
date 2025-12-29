@@ -1,0 +1,55 @@
+html,
+body {
+    background-color: pink !important;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100svh;
+}
+
+body>header.page-header {
+    position: relative;
+    z-index: 1;
+    background-color: bisque;
+    padding-left: 2rem !important;
+    box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.39);
+    -webkit-box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.39);
+    -moz-box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.39);
+}
+
+body>.container.content.page-content {
+    padding: 2rem;
+    background-color: white;
+    flex-grow: 1;
+    box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+    -webkit-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+    -moz-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+}
+
+body>footer.page-footer {
+    margin-top: auto;
+    width: 100%;
+    padding: 1rem;
+}
+
+.clickable,
+.clickable-confirm {
+    cursor: pointer;
+}
+
+.clickable .icon,
+.clickable label,
+.clickable-confirm .icon,
+.clickable-confirm label {
+    cursor: pointer !important;
+}
+
+.raised {
+    box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+    -webkit-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+    -moz-box-shadow: 0px 6px 8px 0px rgba(0, 0, 0, 0.39);
+}
+
+.ui.cards>.card>.content>form>.description {
+    color: rgba(0, 0, 0, .68);
+}

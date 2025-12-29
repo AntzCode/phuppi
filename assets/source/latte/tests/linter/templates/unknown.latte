@@ -1,0 +1,12 @@
+{* Invalid constructs - should warn *}
+{$text|unknownFilter}
+{=unknownFunction($value)}
+{=unknownFunction(...)}
+{var $obj = new UnknownClass()}
+{=DateTime::unknownMethod()}
+{=DateTime::unknownMethod(...)}
+{=DateTime::UNKNOWN_CONSTANT}
+{=\UNKNOWN_GLOBAL_CONSTANT}
+{if $x instanceof UnknownClass}bad{/if}
+{=DateTime::$unknownProperty}
+{=UnknownClass::class}
