@@ -1,0 +1,13 @@
+services:
+  phuppi:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    ports:
+      - "80:80"
+    volumes:
+      - ./public:/var/www/html
+    user: "${UID:-1000}:${GID:-1000}"
