@@ -3,12 +3,15 @@
 // include Flight framework and session plugin
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'autoload.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Session.php');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR . 'permissions' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Permission.php');
 
 // PSR-4 Autoloader
 spl_autoload_register(function ($class) {
     $prefixes = [
         'Phuppi\\' => __DIR__ . DIRECTORY_SEPARATOR . 'Phuppi' . DIRECTORY_SEPARATOR,
         'Latte\\' => __DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Latte' . DIRECTORY_SEPARATOR,
+        'Valitron\\' => __DIR__ . DIRECTORY_SEPARATOR . 'valitron' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Valitron' . DIRECTORY_SEPARATOR,
+        'Psr\\Log\\' => __DIR__ . DIRECTORY_SEPARATOR . 'psr' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR
     ];
 
     foreach ($prefixes as $prefix => $base_dir) {
@@ -32,6 +35,9 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'sr
  * set Flight variables
  */
 Flight::set('flight.views.path', __DIR__ . DIRECTORY_SEPARATOR . 'views');
+Flight::set('flight.root.path', dirname(__DIR__));
+Flight::set('flight.data.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' );
+Flight::set('flight.cache.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cache');
 
 /**
  * create and configure view engine
@@ -39,12 +45,12 @@ Flight::set('flight.views.path', __DIR__ . DIRECTORY_SEPARATOR . 'views');
 Flight::register('latte', 'Latte\Engine');
 
 $latte = Flight::latte();
-$latte->setTempDirectory(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cache');
+$latte->setTempDirectory(Flight::get('flight.cache.path') . DIRECTORY_SEPARATOR . 'latte');
 $latte->setLoader(new \Latte\Loaders\FileLoader(Flight::get('flight.views.path')));
 $latte->addFunction('phuppi_version', [Phuppi\Helper::class, 'getPhuppiVersion']);
 $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages']);
 
-Flight::map('render', function(string $template, array $data, ?string $block=null) : void {
+Flight::map('render', function(string $template, array $data=[], ?string $block=null) : void {
     $latte = Flight::latte();
     $latte->render($template, $data, $block);
 });
@@ -54,5 +60,29 @@ Flight::map('render', function(string $template, array $data, ?string $block=nul
  */
 Flight::register('session', 'flight\Session');
 Flight::register('messages', '\Phuppi\Messages');
+Flight::register('permissions', 'flight\Permission');
+Flight::register('logger', 'Phuppi\FileLogger');
+Flight::register('user', 'Phuppi\User');
 
+Flight::session();
+
+/**
+ * register Database plugin
+ */
+Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite'), function($db) {
+    // Optional: Set PDO attributes for better error handling
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+});
+
+/**
+ * Initialize migrations system
+ */
+Phuppi\Migration::init();
+
+/**
+ * Initialize User
+ */
+if(Flight::session()->get('id')) {
+    Flight::user()->load(Flight::session()->get('id'));
+}
 

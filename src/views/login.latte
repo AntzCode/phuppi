@@ -1,0 +1,44 @@
+{parameters
+    string $formUrl,
+    ?string $username = "",
+    ?string $error = "",
+    ?string $errorUsername = "",
+    ?string $errorPassword = ""
+}
+{layout 'layout.latte'}
+
+{block content}
+    <div class="ui container content page-content">
+
+        <h1 class="header">Login to Phuppi</h1>
+
+        <div class="ui bottom attached segment">
+
+            <form class="ui large form" action="{$formUrl}" method="POST">
+                <div class="field {$errorUsername ? 'error'}">
+                    <label for="username"><i class="user icon"></i>Username: </label>
+                    <input id="username" type="text" name="username" value="{$username}" />
+                    {if $errorUsername}
+                        <div><small><span class="ui red text"><strong>{$errorUsername}</strong></span></small></div>
+                    {/if}
+                </div>
+                <div class="field {$errorPassword ? 'error'}">
+                    <label for="password"><i class="key icon"></i>Password: </label>
+                    <input id="password" type="password" name="password" />
+                    {if $errorPassword}
+                        <div><small><span class="ui red text"><strong>{$errorPassword}</strong></span></small></div>
+                    {/if}
+                </div>
+                {if $error}
+                    <div class="ui error message">
+                        <p>{$error}</p>
+                    </div>
+                {/if}
+
+                <button class="ui right labeled icon green button" type="submit"><i class="sign-in icon left"></i> Login</button>
+
+            </form>
+        </div>
+
+    </div>
+{/block}

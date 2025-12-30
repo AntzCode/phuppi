@@ -25,4 +25,18 @@ class Messages
     {
         Flight::session()->set(get_class($this) . '::' . $message->type->value, json_encode([$message]));
     }
+
+    public function addInfo($message, $header='') {
+        $this->addUserMessage(new UserMessage\InfoMessage($message, $header));
+    }
+
+    public function addSuccess($message, $header='') {
+        $this->addUserMessage(new UserMessage\SuccessMessage($message, $header));
+    }
+
+    public function addError($message, $header='') {
+        $this->addUserMessage(new UserMessage\ErrorMessage($message, $header));
+    }
+
+
 }

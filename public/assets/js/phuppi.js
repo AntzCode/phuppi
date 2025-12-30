@@ -1,3 +1,3 @@
 (() => {
-    alert('Hello world from Phuppi!');
+    // alert('Hello world from Phuppi!');
 })();
