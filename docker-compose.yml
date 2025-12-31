@@ -12,4 +12,6 @@ services:
       - ./public:/var/www/html
       - ./src:/var/www/src
       - ./data:/var/www/data
+      - ./docker/php/php.ini-development:/usr/local/etc/php/php.ini
+      - ./docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf
     user: "${UID:-1000}:${GID:-1000}"

@@ -6,16 +6,15 @@ namespace Phuppi;
 
 use Flight;
 use Phuppi\Messages\UserMessage;
-use Phuppi\Messages\UserMessage\Enum\Type as Type;
 
 class Messages
 {
-    public function getUserMessages(Type|string $type): ?array
+    public function getUserMessages(string $type): ?array
     {
-        if($messages = Flight::session()->get(get_class($this) . '::' . ($type->value ?? $type))) {
+        if($messages = Flight::session()->get(get_class($this) . '::' . $type)) {
             $messages = json_decode($messages);
             // delete flash messages when read
-            Flight::session()->delete(get_class($this) . '::' . ($type->value ?? $type));
+            Flight::session()->delete(get_class($this) . '::' . $type);
             return $messages;
         }
         return null;

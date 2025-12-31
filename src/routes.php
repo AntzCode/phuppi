@@ -20,9 +20,7 @@ if (!$usersTableExists) {
     }
 } else {
     // Normal routes
-    Flight::route('GET /', function() {
-        Flight::render('home.latte', ['name' => 'Phuppi!', 'sessionId' => Flight::session()->get('id')]);
-    });
+    Flight::route('GET /', [new \Phuppi\Controllers\FileController(), 'index']);
 
     Flight::route('GET /test1', function() {
         Flight::render('home.latte', ['name' => 'Test Phuppi!', 'sessionId' => Flight::session()->get('id')]);
@@ -31,5 +29,24 @@ if (!$usersTableExists) {
     Flight::route('GET /login', [new \Phuppi\Controllers\UserController(), 'login']);
     Flight::route('POST /login', [new \Phuppi\Controllers\UserController(), 'login']);
     Flight::route('GET /logout', [new \Phuppi\Controllers\UserController(), 'logout']);
+
+    // File routes
+    Flight::route('GET /files', [new \Phuppi\Controllers\FileController(), 'listFiles']);
+    Flight::route('GET /files/@id', [new \Phuppi\Controllers\FileController(), 'getFile']);
+    Flight::route('GET /files/thumbnail/@id', [new \Phuppi\Controllers\FileController(), 'getThumbnail']);
+    Flight::route('GET /files/preview/@id', [new \Phuppi\Controllers\FileController(), 'getPreview']);
+
+
+    Flight::route('POST /files', [new \Phuppi\Controllers\FileController(), 'uploadFile']);
+    Flight::route('PUT /files/@id', [new \Phuppi\Controllers\FileController(), 'updateFile']);
+    Flight::route('DELETE /files/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile']);
+    Flight::route('DELETE /files', [new \Phuppi\Controllers\FileController(), 'deleteMultipleFiles']);
+    Flight::route('POST /files/download', [new \Phuppi\Controllers\FileController(), 'downloadMultipleFiles']);
+    Flight::route('POST /files/@id/share', [new \Phuppi\Controllers\FileController(), 'generateShareToken']);
+
+    Flight::map('notFound', function(){
+        Flight::logger()->info('Route not found: ' . Flight::request()->url);
+    });
+
 }
 

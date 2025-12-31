@@ -23,24 +23,12 @@
             <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg?{phuppi_version()}" width="280" height="122" />
         </div>
         <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
-            <?php if (user_can('notes.access')): ?>
-                <a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>
-            <?php endif; ?>
-            <?php if (user_can('uploads.access')): ?>
-                <a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>
-            <?php endif; ?>
-            <?php if (user_can('vouchers.access')): ?>
-                <a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>
-            <?php endif; ?>
-            <?php if (user_can('admin.settings.access')): ?>
-                <a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>
-            <?php endif; ?>
-            <?php if (user_can('admin.users.access')): ?>
-                <a class="item ui button" href="/admin/users"><i class="user icon"></i> Users</a>
-            <?php endif; ?>
-            <?php if (true): ?>
-                <a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>
-            <?php endif; ?>
+            <a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>
+            <a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>
+            <a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>
+            <a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>
+            <a class="item ui button" href="/admin/users"><i class="user icon"></i> Users</a>
+            <a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>
         </div>
     </header>
     <div class="ui container content page-content">

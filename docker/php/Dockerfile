@@ -9,6 +9,10 @@ RUN chown -R www-data:www-data /var/www/html
 
 RUN a2enmod rewrite
 
-RUN apt-get update && apt-get install -y libsqlite3-dev \
-    && docker-php-ext-install pdo_sqlite \
+RUN apt-get update && apt-get install -y libsqlite3-dev libzip-dev \
+    && docker-php-ext-install pdo_sqlite zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /var/www/data/log
+
+COPY docker/php/000-default.conf /etc/apache2/sites-available/000-default.conf
