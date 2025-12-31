@@ -167,29 +167,48 @@ class FileController
         if (!$checker->canPutFile()) {
             Flight::halt(403, 'Forbidden');
         }
-        $upload = Flight::request()->files['file'] ?? null;
-        if (!$upload) {
+        $uploads = Flight::request()->files['file'] ?? null;
+        if (!$uploads) {
             Flight::halt(400, 'No file uploaded');
         }
-        // Move file to uploads/
-        $filename = uniqid() . '_' . $upload['name'];
-        $path = 'uploads/' . $filename;
-        if (!move_uploaded_file($upload['tmp_name'], $path)) {
-            Flight::halt(500, 'Failed to save file');
+        // Handle multiple files
+        if (!is_array($uploads['name'])) {
+            $uploads = [
+                'name' => [$uploads['name']],
+                'type' => [$uploads['type']],
+                'tmp_name' => [$uploads['tmp_name']],
+                'error' => [$uploads['error']],
+                'size' => [$uploads['size']]
+            ];
         }
-        $file = new UploadedFile();
-        $file->user_id = $this->getCurrentUser() ? $this->getCurrentUser()->id : null;
-        $file->voucher_id = $this->getCurrentVoucher() ? $this->getCurrentVoucher()->id : null;
-        $file->filename = $filename;
-        $file->display_filename = $upload['name'];
-        $file->filesize = $upload['size'];
-        $file->mimetype = $upload['type'];
-        $file->extension = pathinfo($upload['name'], PATHINFO_EXTENSION);
-        if ($file->save()) {
-            Flight::json(['id' => $file->id, 'message' => 'File uploaded']);
-        } else {
-            Flight::halt(500, 'Failed to save file record');
+        $results = [];
+        foreach ($uploads['name'] as $index => $name) {
+            if ($uploads['error'][$index] !== UPLOAD_ERR_OK) {
+                $results[] = ['error' => 'Upload error for ' . $name];
+                continue;
+            }
+            // Move file to uploads/
+            $filename = uniqid() . '_' . $name;
+            $path = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $filename;
+            if (!move_uploaded_file($uploads['tmp_name'][$index], $path)) {
+                $results[] = ['error' => 'Failed to save file ' . $name];
+                continue;
+            }
+            $file = new UploadedFile();
+            $file->user_id = $this->getCurrentUser() ? $this->getCurrentUser()->id : null;
+            $file->voucher_id = $this->getCurrentVoucher() ? $this->getCurrentVoucher()->id : null;
+            $file->filename = $filename;
+            $file->display_filename = $name;
+            $file->filesize = $uploads['size'][$index];
+            $file->mimetype = $uploads['type'][$index];
+            $file->extension = pathinfo($name, PATHINFO_EXTENSION);
+            if ($file->save()) {
+                $results[] = ['id' => $file->id, 'message' => 'File uploaded: ' . $name];
+            } else {
+                $results[] = ['error' => 'Failed to save file record for ' . $name];
+            }
         }
+        Flight::json($results);
     }
 
     public function updateFile($id)
@@ -222,7 +241,7 @@ class FileController
         if (!$checker->canDeleteFile($file)) {
             Flight::halt(403, 'Forbidden');
         }
-        $filePath = 'uploads/' . $file->filename;
+        $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
         if (file_exists($filePath)) {
             unlink($filePath);
         }
@@ -254,7 +273,7 @@ class FileController
                 $errors[] = "Forbidden to delete file $id";
                 continue;
             }
-            $filePath = 'uploads/' . $file->filename;
+            $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
             if (file_exists($filePath)) {
                 unlink($filePath);
             }
