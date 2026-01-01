@@ -35,6 +35,9 @@ if (!$usersTableExists) {
     Flight::route('POST /users/@id/add-permission', [new \Phuppi\Controllers\UserController(), 'addPermission']);
     Flight::route('POST /users/@id/remove-permission', [new \Phuppi\Controllers\UserController(), 'removePermission']);
 
+    // Admin settings
+    Flight::route('GET /admin/settings', [new \Phuppi\Controllers\SettingsController(), 'index']);
+
     // File routes
     Flight::route('GET /files', [new \Phuppi\Controllers\FileController(), 'listFiles']);
     Flight::route('GET /files/@id', [new \Phuppi\Controllers\FileController(), 'getFile']);

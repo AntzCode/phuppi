@@ -147,9 +147,19 @@ string $sessionId = ''
             setModalOpen(true);
         };
 
-        const openViewModal = (note) => {
-            setViewNote(note);
-            setViewModalOpen(true);
+        const openViewModal = async (note) => {
+            try {
+                const response = await fetch(`/api/notes/${note.id}`);
+                if (response.ok) {
+                    const fullNote = await response.json();
+                    setViewNote(fullNote);
+                    setViewModalOpen(true);
+                } else {
+                    console.error('Error fetching full note:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error fetching full note:', error);
+            }
         };
 
         const shareNote = (note) => {
