@@ -29,6 +29,11 @@ if (!$usersTableExists) {
     Flight::route('GET /login', [new \Phuppi\Controllers\UserController(), 'login']);
     Flight::route('POST /login', [new \Phuppi\Controllers\UserController(), 'login']);
     Flight::route('GET /logout', [new \Phuppi\Controllers\UserController(), 'logout']);
+    Flight::route('GET /users', [new \Phuppi\Controllers\UserController(), 'listUsers']);
+    Flight::route('POST /users', [new \Phuppi\Controllers\UserController(), 'createUser']);
+    Flight::route('DELETE /users/@id', [new \Phuppi\Controllers\UserController(), 'deleteUser']);
+    Flight::route('POST /users/@id/add-permission', [new \Phuppi\Controllers\UserController(), 'addPermission']);
+    Flight::route('POST /users/@id/remove-permission', [new \Phuppi\Controllers\UserController(), 'removePermission']);
 
     // File routes
     Flight::route('GET /files', [new \Phuppi\Controllers\FileController(), 'listFiles']);

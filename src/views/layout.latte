@@ -27,7 +27,7 @@
             <a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>
             <a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>
             <a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>
-            <a class="item ui button" href="/admin/users"><i class="user icon"></i> Users</a>
+            {if Flight::user()->can('user_list')}<a class="item ui button" href="/users"><i class="user icon"></i> Users</a>{/if}
             <a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>
         </div>
     </header>

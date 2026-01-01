@@ -3,6 +3,9 @@
 namespace Phuppi;
 
 use Flight;
+use Phuppi\Permissions\UserPermission;
+use Phuppi\Permissions\VoucherPermission;
+use Phuppi\Permissions\FilePermission;
 
 class Voucher
 {
@@ -78,10 +81,11 @@ class Voucher
         return $permissions;
     }
 
-    public function hasPermission(string $permission): bool
+    public function hasPermission(UserPermission|VoucherPermission|FilePermission $permission): bool
     {
         $perms = $this->getPermissions();
-        return isset($perms[$permission]) && $perms[$permission] === 'allow';
+        $permValue = is_string($permission) ? $permission : $permission->value;
+        return isset($perms[$permValue]) && $perms[$permValue] === 'allow';
     }
 
     public function isExpired(): bool

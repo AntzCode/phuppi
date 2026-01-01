@@ -3,6 +3,10 @@
 namespace Phuppi;
 
 use Flight;
+use Phuppi\Permissions\FilePermission;
+use Phuppi\Permissions\NotePermission;
+use Phuppi\Permissions\UserPermission;
+use Phuppi\Permissions\VoucherPermission;
 
 class User
 {
@@ -65,6 +69,14 @@ class User
         return $data ? new self($data) : null;
     }
 
+    public static function findAll(): array
+    {
+        $db = Flight::db();
+        $stmt = $db->query('SELECT * FROM users ORDER BY username');
+        $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        return array_map(fn($row) => new self($row), $data);
+    }
+
     public function authenticate(string $password): bool
     {
         return password_verify($password, $this->password);
@@ -77,6 +89,11 @@ class User
 
     public function save(): bool
     {
+        // Hash password if not already hashed
+        if (!password_get_info($this->password)['algo']) {
+            $this->password = password_hash($this->password, PASSWORD_DEFAULT);
+        }
+
         $db = Flight::db();
         if ($this->id) {
             // Update
@@ -110,6 +127,29 @@ class User
         }
     }
 
+    public function delete(): bool
+    {
+        if (!$this->id) {
+            return false;
+        }
+
+        $db = Flight::db();
+
+        // Delete user permissions
+        $stmt = $db->prepare('DELETE FROM user_permissions WHERE user_id = ?');
+        $stmt->execute([$this->id]);
+
+        // Delete user roles
+        $stmt = $db->prepare('DELETE FROM user_roles WHERE user_id = ?');
+        $stmt->execute([$this->id]);
+
+        // Delete user
+        $stmt = $db->prepare('DELETE FROM users WHERE id = ?');
+        return $stmt->execute([$this->id]);
+
+        // @TODO: Delete uploaded files - this should be handled by background job
+    }
+
     public function getRoles(): array
     {
         $db = Flight::db();
@@ -122,4 +162,62 @@ class User
     {
         return in_array($role, $this->getRoles());
     }
+
+    public function hasPermission(FilePermission|NotePermission|UserPermission|VoucherPermission $permission): bool
+    {
+        $permissionChecker = PermissionChecker::forUser($this);
+        return $permissionChecker->hasPermission($permission);
+    }
+
+    public function getFileStats() {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT COUNT(*) as file_count, SUM(filesize) as total_size FROM uploaded_files WHERE user_id = ?');
+        $stmt->execute([$this->id]);
+        $stats = $stmt->fetch(\PDO::FETCH_OBJ);
+        return (object) [
+            'file_count' => (int) $stats->file_count,
+            'total_size' => (int) $stats->total_size
+        ];
+    }
+
+    public function allowedPermissions(): array
+    {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT permission_name, permission_value FROM user_permissions WHERE user_id = ? AND permission_value = ?');
+        $stmt->execute([$this->id, json_encode(true)]);
+        $perms = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $permissions = [];
+        foreach ($perms as $perm) {
+            $permissions[] = $perm['permission_name'];
+        }
+        return $permissions;
+    }
+
+    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|UploadedFile|User|Voucher $subject=null) :bool {
+        if(is_string($permission)) {
+            if(null === $permission = $this->permissionFromString($permission)) {
+                return false;
+            };
+        }
+        if($permission === UserPermission::DELETE && $subject instanceof User && $subject->hasRole('admin')) {
+            // cannot delete admin user
+            return false;
+        }
+        $permissionChecker = PermissionChecker::forUser($this);
+        return $permissionChecker->userCan($permission, $subject);
+    }
+
+    public function permissionFromString($permissionString) {
+        switch(substr($permissionString, 0, strpos($permissionString, '_'))) {
+            case 'file':
+                return FilePermission::fromString($permissionString);
+            case 'note':
+                return NotePermission::fromString($permissionString);
+            case 'user':
+                return UserPermission::fromString($permissionString);
+            case 'voucher':
+                return VoucherPermission::fromString($permissionString);
+        }
+    }
+
 }

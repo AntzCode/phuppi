@@ -157,23 +157,44 @@ $db->exec("CREATE TABLE uploaded_files_tags (
     FOREIGN KEY (tag_id) REFERENCES tags (id)
 )");
 
+// roles table
+$db->exec("CREATE TABLE roles (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT ''
+)");
+
+$db->exec("INSERT INTO roles (name, description) VALUES 
+    ('admin', 'Administrator with full access'), 
+    ('user', 'Regular user'), 
+    ('guest', 'Guest user with limited access')");
+
+// user_roles table
+$db->exec("CREATE TABLE user_roles (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    role_id INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE,
+    UNIQUE(user_id, role_id)
+)");
+
+// voucher_roles table
+$db->exec("CREATE TABLE voucher_roles (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    voucher_id INTEGER NOT NULL,
+    role_id INTEGER NOT NULL,
+    FOREIGN KEY (voucher_id) REFERENCES vouchers (id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE,
+    UNIQUE(voucher_id, role_id)
+)");
+
 // User permissions table
 $db->exec("CREATE TABLE user_permissions (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     permission_name VARCHAR(255) NOT NULL,
     permission_value VARCHAR(255) NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users (id)
-)");
-
-// User sessions table
-$db->exec("CREATE TABLE user_sessions (
-    session_id VARCHAR(255) NOT NULL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    session_expires_at DATETIME NULL DEFAULT NULL,
-    last_login_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_agent VARCHAR(255) NOT NULL DEFAULT '',
-    client_ip VARCHAR(40) NOT NULL DEFAULT '',
     FOREIGN KEY (user_id) REFERENCES users (id)
 )");
 
@@ -233,7 +254,7 @@ if ($v1Exists) {
             $user['session_expires_at'],
             $user['notes']
         ]);
-        $userIdMap[$user['user_id']] = $db->lastInsertId();
+        $userIdMap[(string) $user['user_id']] = (int) $db->lastInsertId();
         $statement = null;
     }
     $users = null;
@@ -241,13 +262,174 @@ if ($v1Exists) {
     // Migrate user permissions
     $permissions = $db->query('SELECT * FROM fuppi_user_permissions')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($permissions as $perm) {
-        $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
-        $statement->execute([
-            $userIdMap[$perm['user_id']] ?? null,
-            $perm['permission_name'],
-            $perm['permission_value']
-        ]);
-        $statement = null;
+        // make sure the user is still existing in the database
+        if(!isset($userIdMap[(string) $perm['user_id']])) {
+            continue;
+        }
+        switch($perm['permission_name']) {
+            case 'IS_ADMINISTRATOR':
+                if($perm['permission_value'] == 'true') {
+                    // get the admin role id
+                    $statement = $db->prepare('SELECT id FROM roles WHERE name = "admin"');
+                    $statement->execute();
+                    $adminRoleId = $statement->fetchColumn();
+                    $statement = null;
+                    
+                    // add user to admin role
+                    $statement = $db->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)');
+                    $statement->execute([
+                        $userIdMap[(string) $perm['user_id']],
+                        $adminRoleId
+                    ]);
+                    $statement = null;
+                    
+                }
+                break;
+            case 'UPLOADEDFILES_PUT':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::PUT->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_DELETE':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_LIST':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_READ':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\FilePermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_PUT':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::PERMIT->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_DELETE':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_LIST':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_READ':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\UserPermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_PUT':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\NotePermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\NotePermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_DELETE':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\NotePermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_LIST':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\NotePermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_READ':
+                $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $userIdMap[(string) $perm['user_id']],
+                    \Phuppi\Permissions\NotePermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+        }
+
     }
     $permissions = null;
 
@@ -264,9 +446,12 @@ if ($v1Exists) {
     $voucherIdMap = [];
     $vouchers = $db->query('SELECT * FROM fuppi_vouchers')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($vouchers as $voucher) {
+        if(!isset($userIdMap[(string) $voucher['user_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO vouchers (user_id, voucher_code, session_id, created_at, updated_at, expires_at, redeemed_at, deleted_at, valid_for, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $statement->execute([
-            $userIdMap[$voucher['user_id']] ?? null,
+            $userIdMap[(string) $voucher['user_id']],
             $voucher['voucher_code'],
             $voucher['session_id'],
             $voucher['created_at'],
@@ -277,7 +462,7 @@ if ($v1Exists) {
             $voucher['valid_for'],
             $voucher['notes']
         ]);
-        $voucherIdMap[$voucher['voucher_id']] = $db->lastInsertId();
+        $voucherIdMap[(string) $voucher['voucher_id']] = (int) $db->lastInsertId();
         $statement = null;
     }
     $vouchers = null;
@@ -286,10 +471,16 @@ if ($v1Exists) {
     $uploadedFileIdMap = [];
     $files = $db->query('SELECT * FROM fuppi_uploaded_files')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($files as $file) {
+        if(!isset($voucherIdMap[(string) $file['voucher_id']])) {
+            continue;
+        }
+        if(!isset($userIdMap[(string) $file['user_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $statement->execute([
-            $userIdMap[$file['user_id']] ?? null,
-            $voucherIdMap[$file['voucher_id']] ?? null,
+            $userIdMap[(string) $file['user_id']],
+            $voucherIdMap[(string) $file['voucher_id']],
             $file['filename'],
             $file['display_filename'],
             $file['filesize'],
@@ -298,7 +489,7 @@ if ($v1Exists) {
             $file['uploaded_at'],
             $file['notes']
         ]);
-        $uploadedFileIdMap[$file['uploaded_file_id']] = $db->lastInsertId();
+        $uploadedFileIdMap[(string) $file['uploaded_file_id']] = (int) $db->lastInsertId();
         $statement = null;
     }
     $files = null;
@@ -307,16 +498,22 @@ if ($v1Exists) {
     $noteIdMap = [];
     $notes = $db->query('SELECT * FROM fuppi_notes')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($notes as $note) {
+        if($note['voucher_id'] > 0 && !isset($voucherIdMap[(string) $note['voucher_id']])) {
+            continue;
+        }
+        if($note['user_id'] > 0 && !isset($userIdMap[(string) $note['user_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO notes (user_id, voucher_id, filename, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)');
         $statement->execute([
-            $userIdMap[$note['user_id']] ?? null,
-            $voucherIdMap[$note['voucher_id']] ?? null,
+            $note['user_id'] > 0 ? $userIdMap[(string) $note['user_id']] : null,
+            $note['voucher_id'] > 0 ? $voucherIdMap[(string) $note['voucher_id']] : null,
             $note['filename'],
             $note['content'],
             $note['created_at'],
             $note['updated_at']
         ]);
-        $noteIdMap[$note['note_id']] = $db->lastInsertId();
+        $noteIdMap[(string) $note['note_id']] = (int) $db->lastInsertId();
         $statement = null;
     }
     $notes = null;
@@ -324,10 +521,16 @@ if ($v1Exists) {
     // Migrate note_tokens
     $noteTokens = $db->query('SELECT * FROM fuppi_note_tokens')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($noteTokens as $token) {
+        if (!isset($noteIdMap[(string) $token['note_id']])) {
+            continue;
+        }
+        if (!is_null($token['voucher_id']) && !isset($voucherIdMap[(string) $token['voucher_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO note_tokens (note_id, voucher_id, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)');
         $statement->execute([
-            $noteIdMap[$token['note_id']] ?? null,
-            $voucherIdMap[$token['voucher_id']] ?? null,
+            $noteIdMap[(string) $token['note_id']],
+            is_null($token['voucher_id']) ? null : $voucherIdMap[(string) $token['voucher_id']],
             $token['token'],
             $token['created_at'],
             $token['expires_at']
@@ -346,7 +549,7 @@ if ($v1Exists) {
             $tag['tagname'],
             $tag['notes']
         ]);
-        $tagIdMap[$tag['tag_id']] = $db->lastInsertId();
+        $tagIdMap[(string) $tag['tag_id']] = (int) $db->lastInsertId();
         $statement = null;
     }
     $tags = null;
@@ -354,10 +557,16 @@ if ($v1Exists) {
     // Migrate temporary_files
     $tempFiles = $db->query('SELECT * FROM fuppi_temporary_files')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($tempFiles as $temp) {
+        if(!isset($voucherIdMap[(string) $temp['voucher_id']])) {
+            continue;
+        }
+        if(!isset($userIdMap[(string) $temp['user_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO temporary_files (user_id, voucher_id, filename, filesize, mimetype, extension, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         $statement->execute([
-            $userIdMap[$temp['user_id']] ?? null,
-            $voucherIdMap[$temp['voucher_id']] ?? null,
+            $userIdMap[(string) $temp['user_id']],
+            $voucherIdMap[(string) $temp['voucher_id']],
             $temp['filename'],
             $temp['filesize'],
             $temp['mimetype'],
@@ -372,10 +581,16 @@ if ($v1Exists) {
     // Migrate uploaded_file_tokens
     $fileTokens = $db->query('SELECT * FROM fuppi_uploaded_file_tokens')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fileTokens as $token) {
+        if (!isset($uploadedFileIdMap[(string) $token['uploaded_file_id']])) {
+            continue;
+        }
+        if(!is_null($token['voucher_id']) && !isset($voucherIdMap[(string) $token['voucher_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO uploaded_file_tokens (uploaded_file_id, voucher_id, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)');
         $statement->execute([
-            $uploadedFileIdMap[$token['uploaded_file_id']] ?? null,
-            $voucherIdMap[$token['voucher_id']] ?? null,
+            $uploadedFileIdMap[(string) $token['uploaded_file_id']],
+            is_null($token['voucher_id']) ? null : $voucherIdMap[(string) $token['voucher_id']],
             $token['token'],
             $token['created_at'],
             $token['expires_at']
@@ -387,10 +602,16 @@ if ($v1Exists) {
     // Migrate uploaded_files_remote_auth
     $remoteAuths = $db->query('SELECT * FROM fuppi_uploaded_files_remote_auth')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($remoteAuths as $auth) {
+        if (!isset($uploadedFileIdMap[(string) $auth['uploaded_file_id']])) {
+            continue;
+        }
+        if(!isset($voucherIdMap[(string) $auth['voucher_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO uploaded_files_remote_auth (uploaded_file_id, voucher_id, action, url, expires_at) VALUES (?, ?, ?, ?, ?)');
         $statement->execute([
-            $uploadedFileIdMap[$auth['uploaded_file_id']] ?? null,
-            $voucherIdMap[$auth['voucher_id']] ?? null,
+            $uploadedFileIdMap[(string) $auth['uploaded_file_id']],
+            $voucherIdMap[(string) $auth['voucher_id']],
             $auth['action'],
             $auth['url'],
             $auth['expires_at']
@@ -402,46 +623,195 @@ if ($v1Exists) {
     // Migrate uploaded_files_tags
     $fileTags = $db->query('SELECT * FROM fuppi_uploaded_files_tags')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fileTags as $fileTag) {
+        if(!isset($uploadedFileIdMap[(string) $fileTag['uploaded_file_id']])) {
+            continue;
+        }
+        if(!isset($tagIdMap[(string) $fileTag['tag_id']])) {
+            continue;
+        }
         $statement = $db->prepare('INSERT INTO uploaded_files_tags (uploaded_file_id, tag_id) VALUES (?, ?)');
         $statement->execute([
-            $uploadedFileIdMap[$fileTag['uploaded_file_id']] ?? null,
-            $tagIdMap[$fileTag['tag_id']] ?? null
+            $uploadedFileIdMap[(string) $fileTag['uploaded_file_id']],
+            $tagIdMap[(string) $fileTag['tag_id']]
         ]);
         $statement = null;
     }
     $fileTags = null;
 
-    // Migrate user_sessions
-    $sessions = $db->query('SELECT * FROM fuppi_user_sessions')->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($sessions as $session) {
-        $statement = $db->prepare('INSERT INTO user_sessions (session_id, user_id, session_expires_at, last_login_at, user_agent, client_ip) VALUES (?, ?, ?, ?, ?, ?)');
-        $statement->execute([
-            $session['session_id'],
-            $userIdMap[$session['user_id']] ?? null,
-            $session['session_expires_at'],
-            $session['last_login_at'],
-            $session['user_agent'],
-            $session['client_ip']
-        ]);
-        $statement = null;
-    }
-    $sessions = null;
-
     // Migrate voucher_permissions
-    $voucherPerms = $db->query('SELECT * FROM fuppi_voucher_permissions')->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($voucherPerms as $perm) {
-        if (!isset($voucherIdMap[$perm['voucher_id']])) {
+    $permissions = $db->query('SELECT * FROM fuppi_voucher_permissions')->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($permissions as $perm) {
+        // make sure the voucher is still existing in the database
+        if(!isset($voucherIdMap[(string) $perm['voucher_id']])) {
             continue;
         }
-        $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
-        $statement->execute([
-            $voucherIdMap[$perm['voucher_id']] ?? null,
-            $perm['permission_name'],
-            $perm['permission_value']
-        ]);
         $statement = null;
+        switch($perm['permission_name']) {
+            case 'IS_ADMINISTRATOR':
+                if($perm['permission_value'] == 'true') {
+                    // get the admin role id
+                    $statement = $db->prepare('SELECT id FROM roles WHERE name = "admin"');
+                    $statement->execute();
+                    $adminRoleId = $statement->fetchColumn();
+                    $statement = null;
+                    
+                    // add voucher to admin role
+                    $statement = $db->prepare('INSERT INTO voucher_roles (voucher_id, role_id) VALUES (?, ?)');
+                    $statement->execute([
+                        $voucherIdMap[(string) $perm['voucher_id']],
+                        $adminRoleId
+                    ]);
+                    $statement = null;
+                    
+                }
+                break;
+            case 'UPLOADEDFILES_PUT':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::PUT->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_DELETE':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_LIST':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'UPLOADEDFILES_READ':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\FilePermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_PUT':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::PERMIT->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_DELETE':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_LIST':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'USERS_READ':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\UserPermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_PUT':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\NotePermission::CREATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\NotePermission::UPDATE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_DELETE':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\NotePermission::DELETE->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_LIST':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\NotePermission::LIST->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+            case 'NOTES_READ':
+                $statement = $db->prepare('INSERT INTO voucher_permissions (voucher_id, permission_name, permission_value) VALUES (?, ?, ?)');
+                $statement->execute([
+                    $voucherIdMap[(string) $perm['voucher_id']],
+                    \Phuppi\Permissions\NotePermission::VIEW->value,
+                    json_encode(true)
+                ]);
+                $statement = null;
+                break;
+        }
+
     }
-    $voucherPerms = null;
+    $permissions = null;
 
     // delete the v1 tables
     $db->exec('PRAGMA foreign_keys = OFF');
@@ -459,6 +829,8 @@ if ($v1Exists) {
     $db->exec('DROP TABLE fuppi_uploaded_files_tags');
     $db->exec('DROP TABLE fuppi_user_sessions');
     $db->exec('DROP TABLE fuppi_voucher_permissions');
+    $db->exec('DROP TABLE fuppi_migrations');
+
     $db->exec('PRAGMA foreign_keys = ON');
     $db->exec("VACUUM");
 

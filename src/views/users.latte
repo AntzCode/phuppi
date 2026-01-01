@@ -1,0 +1,193 @@
+{parameters
+    array $can = [],
+    array $users = [],
+    array $avatars = [],
+    array $filePermissions = [],
+    array $notePermissions = [],
+    array $userPermissions = [],
+    array $voucherPermissions = [],
+}
+
+{layout 'layout.latte'}
+
+{block content}
+<div id="user-list"></div>
+<script>
+    const can = {$can};
+    const userId = {Flight::user()->id};
+    const users = {$users};
+    const avatars = {$avatars};
+    const filePermissions = {$filePermissions};
+    const notePermissions = {$notePermissions};
+    const userPermissions = {$userPermissions};
+    const voucherPermissions = {$voucherPermissions};
+</script>
+<script type="module" n:syntax="off">
+    import { html, render, useState } from '/assets/preact/htm-standalone.mjs';
+
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function UserList({ _users }) {
+
+        const [users, setUsers] = useState(_users);
+        const [createForm, setCreateForm] = useState({ username: '', password: '', errors: {} });
+
+        const handleCreateSubmit = function (e) {
+            e.preventDefault();
+            createUser(createForm.username, createForm.password).then(data => {
+                if (data.success) {
+                    setUsers(prev => [...prev, data.user]);
+                    setCreateForm({ username: '', password: '', errors: {} });
+                } else {
+                    setCreateForm(prev => ({ ...prev, errors: data.errors || {} }));
+                }
+            });
+        };
+
+        const removePermission = function (user, permission) {
+            fetch(`/users/${user.id}/remove-permission`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ permission: permission.value })
+            }).then(response => {
+                if (response.ok) {
+                    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, allowedPermissions: u.allowedPermissions.filter(p => p !== permission.value) } : u));
+                }
+            });
+        }
+
+        const handleDeleteUser = function (user) {
+            deleteUser(user.id).then(data => {
+                if (data.success) {
+                    setUsers(prev => prev.filter(u => u.id !== user.id));
+                }
+            }).catch(() => { });
+        }
+
+        const addPermission = function (user, permission) {
+            fetch(`/users/${user.id}/add-permission`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ permission: permission.value })
+            }).then(response => {
+                if (response.ok) {
+                    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, allowedPermissions: [...u.allowedPermissions, permission.value] } : u));
+                }
+            });
+        }
+
+        const createUser = function (username, password) {
+            return fetch('/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username: username, password: password })
+            }).then(response => response.json());
+        }
+
+        const deleteUser = function (userId) {
+            if (confirm('Are you sure you want to delete this user?')) {
+                return fetch(`/users/${userId}`, {
+                    method: 'DELETE'
+                }).then(response => response.json());
+            }
+            return Promise.reject('Cancelled');
+        }
+
+        return html`
+        <div class="ui segment">
+            <h2 class="ui top attached header">
+                <i class="user icon"></i>
+                User Management
+            </h2>
+            ${can.user_create ? html`
+                <div class="ui segment">
+                    <h3>Create New User</h3>
+                    <form class="ui form" onSubmit=${handleCreateSubmit}>
+                        <div class="two fields">
+                            <div class="field ${createForm.errors.username ? 'error' : ''}">
+                                <label>Username</label>
+                                <input type="text" value=${createForm.username} onInput=${e => setCreateForm(prev => ({ ...prev, username: e.target.value }))} required />
+                                ${createForm.errors.username ? html`<div class="ui pointing red basic label">${createForm.errors.username[0]}</div>` : ''}
+                            </div>
+                            <div class="field ${createForm.errors.password ? 'error' : ''}">
+                                <label>Password</label>
+                                <input type="password" value=${createForm.password} onInput=${e => setCreateForm(prev => ({ ...prev, password: e.target.value }))} required />
+                                ${createForm.errors.password ? html`<div class="ui pointing red basic label">${createForm.errors.password[0]}</div>` : ''}
+                            </div>
+                        </div>
+                        <button class="ui primary button" type="submit">Create User</button>
+                    </form>
+                </div>
+            ` : ''}
+            <div class="ui divided items">
+                ${!can.user_list && html`<p>No permission to list users</p>`}
+                ${can.user_list && users.map(user => {
+            const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
+            return html`
+                        <div class="ui item" style="position: relative;">
+                            ${can.user_view && html`<div class="ui tiny raised image">
+                                <img src="/assets/images/default-avatars/${randomAvatar}" />
+                            </div>`}
+                            <div class="content">
+                                <h3 class="header ui label" style="width: 100%">${user.username}</h3>
+                                <div class="description">
+                                    <div class="ui grid container">
+                                        <div class="ten wide column">
+                                            ${!can.user_view && html`<p>No permission to view user</p>`}
+                                            ${can.user_view && html`<p>Created at ${user.created_at}</p>`}
+                                        </div>
+                                        <div class="six wide column right aligned">
+                                            ${can.user_view && html`<p>${formatBytes(user.fileStats.total_size)}<br />${user.fileStats.file_count} uploaded files</p>`}
+                                        </div>
+                                    </div>
+                                </div>
+                                ${can.user_view && html`<div class="extra floated left">
+                                    ${user.isAdmin ? html`
+                                        <div class="green ui label" title="Is Administrator">Administrator</div>
+                                    ` : html`
+                                        <h3>Allowed Permissions: </h3>
+                                        ${user.allowedPermissions.length === 0 && html`<div>- No Permissions Granted -</div>`}
+                                        ${[...filePermissions, ...notePermissions, ...userPermissions, ...voucherPermissions].filter(permission => user.allowedPermissions.includes(permission.value)).map(permission => html`
+                                            <div class="ui green right icon label">${permission.label}
+                                                ${can.user_permit && html`<i class="close icon clickable" title="Remove Permission" onClick=${() => removePermission(user, permission)}></i>`}
+                                            </div>
+                                        `)}
+                                        <h3>Available Permissions:</h3>
+                                        ${[...filePermissions, ...notePermissions, ...userPermissions, ...voucherPermissions].filter(permission => !user.allowedPermissions.includes(permission.value)).map(permission => html`
+                                            <div class="ui gray right icon label">${permission.label}
+                                                ${can.user_permit && html`<i class="check icon clickable" title="Add Permission" onClick=${() => addPermission(user, permission)}></i>`}
+                                            </div>
+                                        `)}
+                                        ${user.roles.map(roleName => html`
+                                            <div class="ui label" title="${roleName}">${roleName}</div>
+                                        `)}
+                                        ${can.user_delete && user.id !== userId && html`
+                                            <div class="ui red button" onClick=${() => handleDeleteUser(user)} style="margin-top: 10px;">Delete User</div>
+                                        `}
+                                    `}
+                                </div>`}
+                            </div>
+                        </div>
+                    `;
+        })}
+            </div>
+        </div>
+    `;
+    }
+
+    render(html`<${UserList} _users=${users} />`, document.getElementById('user-list'));
+</script>
+{/block}

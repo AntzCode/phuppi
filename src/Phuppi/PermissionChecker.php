@@ -2,6 +2,12 @@
 
 namespace Phuppi;
 
+use Flight;
+use Phuppi\Permissions\FilePermission;
+use Phuppi\Permissions\NotePermission;
+use Phuppi\Permissions\UserPermission;
+use Phuppi\Permissions\VoucherPermission;
+
 class PermissionChecker
 {
     private $user;
@@ -23,23 +29,63 @@ class PermissionChecker
         return new self(null, $voucher);
     }
 
+    public function hasPermission(FilePermission|NotePermission|UserPermission|VoucherPermission $permission): bool
+    {
+        if($this->voucher) {
+            $db = Flight::db();
+            $stmt = $db->prepare('SELECT COUNT(*) FROM voucher_permissions WHERE voucher_id = ? AND permission_name = ? AND permission_value = ?');
+            $stmt->execute([$this->voucher->id, $permission->value, json_encode(true)]);
+            $count = $stmt->fetchColumn();
+            return $count > 0;
+        }
+
+        if($this->user) {
+            $db = Flight::db();
+            $stmt = $db->prepare('SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission_name = ? AND permission_value = ?');
+            $stmt->execute([$this->user->id, $permission->value, json_encode(true)]);
+            $count = $stmt->fetchColumn();
+            return $count > 0;
+        }
+
+        return false;
+
+    }
+
+    public function userCan(NotePermission|UserPermission|VoucherPermission|FilePermission $permission, null|UploadedFile|User|Voucher $subject = null): bool
+    {
+        if($this->voucher) {
+            if($subject instanceof UploadedFile) {
+                return $subject->voucher_id === $this->voucher->id && $this->hasPermission($permission);
+            }
+            return $this->hasPermission($permission);
+        }
+        if($this->user) {
+            if($this->user->hasRole('admin')) {
+                return true;
+            }
+            return $this->hasPermission($permission);
+        }
+
+        return false;
+    }
+
     public function canListFiles(): bool
     {
-        if ($this->user) {
-            return true; // Users can list their files
-        }
         if ($this->voucher) {
-            return $this->voucher->hasPermission(Permissions::LIST);
+            return $this->hasPermission(FilePermission::LIST);
+        }
+        if ($this->user) {
+            return $this->hasPermission(FilePermission::LIST);
         }
         return false;
     }
 
     public function canViewFile(UploadedFile $file): bool
     {
-        if ($this->user && $file->user_id == $this->user->id) {
+        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->hasPermission(FilePermission::VIEW)) {
             return true;
         }
-        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->voucher->hasPermission(Permissions::VIEW)) {
+        if ($this->user && $file->user_id == $this->user->id && $this->hasPermission(FilePermission::VIEW)) {
             return true;
         }
         return false;
@@ -47,21 +93,21 @@ class PermissionChecker
 
     public function canGetFile(UploadedFile $file): bool
     {
-        if ($this->user && $file->user_id == $this->user->id) {
+        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->hasPermission(FilePermission::GET)) {
             return true;
         }
-        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->voucher->hasPermission(Permissions::GET)) {
+        if ($this->user && $file->user_id == $this->user->id && $this->hasPermission(FilePermission::GET)) {
             return true;
         }
         return false;
     }
 
-    public function canPutFile(): bool
+    public function canPutFile(?UploadedFile $file = null): bool
     {
-        if ($this->user) {
+        if ($this->voucher && (!$file || $file->voucher_id == $this->voucher->id) && $this->hasPermission(FilePermission::PUT)) {
             return true;
         }
-        if ($this->voucher && $this->voucher->hasPermission(Permissions::PUT)) {
+        if ($this->user && (!$file || $file->user_id == $this->user->id) && $this->hasPermission(FilePermission::PUT)) {
             return true;
         }
         return false;
@@ -69,10 +115,10 @@ class PermissionChecker
 
     public function canCreateFile(): bool
     {
-        if ($this->user) {
+        if ($this->voucher && $this->hasPermission(FilePermission::CREATE)) {
             return true;
         }
-        if ($this->voucher && $this->voucher->hasPermission(Permissions::CREATE)) {
+        if ($this->user && $this->hasPermission(FilePermission::CREATE)) {
             return true;
         }
         return false;
@@ -80,10 +126,10 @@ class PermissionChecker
 
     public function canUpdateFile(UploadedFile $file): bool
     {
-        if ($this->user && $file->user_id == $this->user->id) {
+        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->hasPermission(FilePermission::UPDATE)) {
             return true;
         }
-        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->voucher->hasPermission(Permissions::UPDATE)) {
+        if ($this->user && $file->user_id == $this->user->id && $this->hasPermission(FilePermission::UPDATE)) {
             return true;
         }
         return false;
@@ -91,23 +137,55 @@ class PermissionChecker
 
     public function canDeleteFile(UploadedFile $file): bool
     {
-        if ($this->user && $file->user_id == $this->user->id) {
+        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->hasPermission(FilePermission::DELETE)) {
             return true;
         }
-        if ($this->voucher && $file->voucher_id == $this->voucher->id && $this->voucher->hasPermission(Permissions::DELETE)) {
+        if ($this->user && $file->user_id == $this->user->id && $this->hasPermission(FilePermission::DELETE)) {
             return true;
         }
         return false;
     }
 
-    public function getAccessibleFiles(): array
+    public function canListUsers(): bool
+    {
+        if ($this->voucher && $this->hasPermission(UserPermission::LIST)) {
+            return true;
+        }
+        if ($this->user && $this->hasPermission(UserPermission::LIST)) {
+            return true;
+        }
+        return false;
+    }
+
+    public function canViewUser(User $user): bool
+    {
+        return $this->user !== null;
+    }
+
+    public function canCreateUser(): bool
+    {
+        return $this->user !== null;
+    }
+
+    public function canEditUser(User $user): bool
+    {
+        return $this->user !== null;
+    }
+
+    public function canDeleteUser(User $user): bool
+    {
+        return $this->user !== null;
+    }
+
+    public function canManageVouchers(): bool
     {
         if ($this->user) {
-            return UploadedFile::findByUser($this->user->id);
+            return true;
         }
         if ($this->voucher) {
-            return UploadedFile::findByVoucher($this->voucher->id);
+            return $this->hasPermission(VoucherPermission::LIST);
         }
-        return [];
+        return false;
     }
+
 }

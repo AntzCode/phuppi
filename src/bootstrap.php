@@ -52,6 +52,7 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'sr
 Flight::set('flight.views.path', __DIR__ . DIRECTORY_SEPARATOR . 'views');
 Flight::set('flight.root.path', dirname(__DIR__));
 Flight::set('flight.data.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' );
+Flight::set('flight.public.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'html' );
 Flight::set('flight.cache.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cache');
 
 // Ensure cache directory exists
@@ -93,12 +94,12 @@ Flight::register('messages', '\Phuppi\Messages');
 Flight::register('permissions', 'flight\Permission');
 Flight::register('user', 'Phuppi\User');
 
-Flight::session();
-
 /**
  * Initialize migrations system
  */
 Phuppi\Migration::init();
+
+Flight::session();
 
 /**
  * Initialize User
