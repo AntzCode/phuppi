@@ -71,6 +71,8 @@ $latte = Flight::latte();
 $latte->setLoader(new \Latte\Loaders\FileLoader(Flight::get('flight.views.path')));
 $latte->addFunction('phuppi_version', [Phuppi\Helper::class, 'getPhuppiVersion']);
 $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages']);
+$latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
+$latte->addFunction('user_can', [Phuppi\Helper::class, 'userCan']);
 
 Flight::map('render', function(string $template, array $data=[], ?string $block=null) : void {
     $latte = Flight::latte();

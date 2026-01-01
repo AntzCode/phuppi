@@ -6,6 +6,7 @@
     array $notePermissions = [],
     array $userPermissions = [],
     array $voucherPermissions = [],
+    ?int $user_id = user_id()
 }
 
 {layout 'layout.latte'}
@@ -14,7 +15,7 @@
 <div id="user-list"></div>
 <script>
     const can = {$can};
-    const userId = {Flight::user()->id};
+    const userId = {$user_id};
     const users = {$users};
     const avatars = {$avatars};
     const filePermissions = {$filePermissions};

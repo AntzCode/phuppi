@@ -49,6 +49,16 @@ if (!$usersTableExists) {
     Flight::route('POST /files/download', [new \Phuppi\Controllers\FileController(), 'downloadMultipleFiles']);
     Flight::route('POST /files/@id/share', [new \Phuppi\Controllers\FileController(), 'generateShareToken']);
 
+    // Note routes
+    Flight::route('GET /notes', [new \Phuppi\Controllers\NoteController(), 'index']);
+    Flight::route('GET /notes/@id/shared', [new \Phuppi\Controllers\NoteController(), 'showSharedNote']);
+    Flight::route('GET /api/notes', [new \Phuppi\Controllers\NoteController(), 'listNotes']);
+    Flight::route('GET /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'getNote']);
+    Flight::route('POST /api/notes', [new \Phuppi\Controllers\NoteController(), 'createNote']);
+    Flight::route('PUT /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'updateNote']);
+    Flight::route('DELETE /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'deleteNote']);
+    Flight::route('POST /api/notes/@id/share', [new \Phuppi\Controllers\NoteController(), 'generateShareToken']);
+
     Flight::map('notFound', function(){
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
     });

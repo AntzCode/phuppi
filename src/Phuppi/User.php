@@ -193,8 +193,11 @@ class User
         return $permissions;
     }
 
-    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|UploadedFile|User|Voucher $subject=null) :bool {
+    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|Note|UploadedFile|User|Voucher $subject=null) :bool {
         if(is_string($permission)) {
+            if($permission === 'admin') {
+                return $this->hasRole('admin');
+            }
             if(null === $permission = $this->permissionFromString($permission)) {
                 return false;
             };

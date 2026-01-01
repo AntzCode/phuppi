@@ -4,6 +4,15 @@ namespace Phuppi;
 
 use Flight;
 
+use Phuppi\Note;
+use Phuppi\UploadedFile;
+use Phuppi\User;
+use Phuppi\Voucher;
+use Phuppi\Permissions\NotePermission;
+use Phuppi\Permissions\UserPermission;
+use Phuppi\Permissions\VoucherPermission;
+use Phuppi\Permissions\FilePermission;
+
 class Helper {
 
     public static function getViewPath($template) {
@@ -49,4 +58,14 @@ class Helper {
             return null;
         }
     }
+
+    public static function getUserId() {
+        return Flight::user()?->id ?? null;
+    }
+
+    public static function userCan(NotePermission|UserPermission|VoucherPermission|FilePermission|string $permission, null|Note|UploadedFile|User|Voucher $subject = null) {
+        return Flight::user()?->can($permission, $subject) ?? false;
+    }
+
+
 }

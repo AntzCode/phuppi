@@ -102,6 +102,7 @@
                     setPage(1);
                 }
             });
+            $('.ui.dropdown.filelist-limit').dropdown();
         }, []);
 
         useEffect(() => {
@@ -511,7 +512,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="ui dropdown item clickable" title="Rows per page">
+                    <div class="ui dropdown filelist-limit item clickable" title="Rows per page">
                         <label>
                             ${limit} per page
                         </label>

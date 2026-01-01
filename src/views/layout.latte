@@ -23,12 +23,12 @@
             <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg?{phuppi_version()}" width="280" height="122" />
         </div>
         <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
-            <a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>
-            <a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>
-            <a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>
-            <a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>
-            {if Flight::user()->can('user_list')}<a class="item ui button" href="/users"><i class="user icon"></i> Users</a>{/if}
-            <a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>
+            {if user_can('note_list')}<a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>{/if}
+            {if user_can('file_list')}<a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>{/if}
+            {if user_can('voucher_list')}<a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>{/if}
+            {if user_can('admin')}<a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>{/if}
+            {if user_can('user_list')}<a class="item ui button" href="/users"><i class="user icon"></i> Users</a>{/if}
+            {if user_id()}<a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>{/if}
         </div>
     </header>
     <div class="ui container content page-content">

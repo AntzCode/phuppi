@@ -7,7 +7,7 @@ use Phuppi\User;
 use Phuppi\Voucher;
 use Phuppi\UploadedFile;
 use Phuppi\UploadedFileToken;
-use Phuppi\PermissionChecker;
+use Phuppi\Permissions\FilePermission;
 
 class FileController
 {
@@ -56,21 +56,11 @@ class FileController
         return null;
     }
 
-    private function getPermissionChecker(): PermissionChecker
-    {
-        $user = $this->getCurrentUser();
-        $voucher = $this->getCurrentVoucher();
-        if (!$user && !$voucher) {
-            Flight::halt(403, 'Unauthorized');
-        }
-        return new PermissionChecker($user, $voucher);
-    }
-
     public function listFiles()
     {
         Flight::logger()->info('listFiles called with session ID: ' . (Flight::session()->get('id') ?? 'none'));
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canListFiles()) {
+        
+        if (!Flight::user()->can(FilePermission::LIST)) {
             Flight::logger()->warning('listFiles: Forbidden access');
             Flight::halt(403, 'Forbidden');
         }
@@ -121,39 +111,46 @@ class FileController
 
     public function getFile($id)
     {
-        $file = UploadedFile::findById($id);
-        if (!$file) {
-            Flight::halt(404, 'File not found');
-        }
 
         // Check for token-based access
         $token = Flight::request()->query['token'] ?? null;
-        if ($token) {
-            $fileToken = UploadedFileToken::findByToken($token);
-            if (!$fileToken || $fileToken->uploaded_file_id != $id) {
-                Flight::halt(403, 'Invalid or expired token');
-            }
-        } else {
-            $checker = $this->getPermissionChecker();
-            if (!$checker->canGetFile($file)) {
-                Flight::halt(403, 'Forbidden');
-            }
+
+        if(!$token) {
+            Flight::halt(403, 'Token required');
         }
+
+        if(strlen($token) > 255) {
+            Flight::halt(413, 'Invalid token');
+        }
+        
+        $file = UploadedFile::findById($id);
+        if (!$file) {
+            Flight::halt(403, 'Invalid or expired token');
+        }
+        
+        $fileToken = UploadedFileToken::findByToken($token);
+        if (!$fileToken || $fileToken->uploaded_file_id != $id) {
+            Flight::halt(403, 'Invalid or expired token');
+        }
+        
 
         $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
         if (!file_exists($filePath)) {
             Flight::halt(404, 'File not found on disk');
         }
+
         // Clear any output buffers to prevent memory issues
         while (ob_get_level()) {
             ob_end_clean();
         }
+
         // Set headers
         header('Content-Type: ' . $file->mimetype);
         $forceDownload = Flight::request()->query['download'] ?? false;
         $disposition = $forceDownload || !(str_starts_with($file->mimetype, 'image/') || str_starts_with($file->mimetype, 'video/')) ? 'attachment' : 'inline';
         header('Content-Disposition: ' . $disposition . '; filename="' . $file->display_filename . '"');
         header('Content-Length: ' . filesize($filePath));
+        
         // Stream the file
         $fp = fopen($filePath, 'rb');
         fpassthru($fp);
@@ -163,8 +160,7 @@ class FileController
 
     public function uploadFile()
     {
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canPutFile()) {
+        if (!Flight::user()->can(FilePermission::PUT)) {
             Flight::halt(403, 'Forbidden');
         }
         $uploads = Flight::request()->files['file'] ?? null;
@@ -217,8 +213,7 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canUpdateFile($file)) {
+        if (!Flight::user()->can(FilePermission::UPDATE, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $data = Flight::request()->data;
@@ -237,8 +232,7 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canDeleteFile($file)) {
+        if (!Flight::user()->can(FilePermission::DELETE, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
@@ -260,7 +254,6 @@ class FileController
             Flight::json(['error' => 'Invalid or missing file IDs'], 400);
             return;
         }
-        $checker = $this->getPermissionChecker();
         $deleted = 0;
         $errors = [];
         foreach ($ids as $id) {
@@ -269,7 +262,7 @@ class FileController
                 $errors[] = "File $id not found";
                 continue;
             }
-            if (!$checker->canDeleteFile($file)) {
+            if (!Flight::user()->can(FilePermission::DELETE, $file)) {
                 $errors[] = "Forbidden to delete file $id";
                 continue;
             }
@@ -293,7 +286,6 @@ class FileController
         if (empty($ids) || !is_array($ids)) {
             Flight::halt(400, 'Invalid or missing file IDs');
         }
-        $checker = $this->getPermissionChecker();
         $files = [];
         foreach ($ids as $id) {
             $file = UploadedFile::findById($id);
@@ -301,7 +293,7 @@ class FileController
                 Flight::json(['error' => "File $id not found"], 404);
                 return;
             }
-            if (!$checker->canGetFile($file)) {
+            if (!Flight::user()->can(FilePermission::GET, $file)) {
                 Flight::json(['error' => "Forbidden to access file $id"], 403);
                 return;
             }
@@ -348,8 +340,7 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canGetFile($file)) {
+        if (!Flight::user()->can(FilePermission::GET, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $data = Flight::request()->data;
@@ -412,8 +403,7 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canGetFile($file)) {
+        if (!Flight::user()->can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
@@ -430,8 +420,7 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        $checker = $this->getPermissionChecker();
-        if (!$checker->canGetFile($file)) {
+        if (!Flight::user()->can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;

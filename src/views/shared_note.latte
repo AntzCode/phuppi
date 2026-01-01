@@ -1,0 +1,35 @@
+{parameters
+    $note,
+    $expires_at = null
+}
+
+{layout 'layout.latte'}
+
+{block title}{$note->filename} - Shared Note{/block}
+
+{block content}
+<div class="ui segment">
+    <h2 class="ui header">{$note->filename}</h2>
+    {if $expires_at}
+    <div class="ui info message">
+        <i class="clock icon"></i>
+        This shared link expires on {$expires_at}.
+    </div>
+    {/if}
+    <div class="ui divider"></div>
+    <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 1em;">{$note->content|noescape}</pre>
+    <div class="ui divider"></div>
+    <div class="ui center aligned">
+        <button class="ui primary button" onclick="viewRaw()">View Raw Content</button>
+    </div>
+</div>
+
+<script>
+    function viewRaw() {
+        const content = document.querySelector('pre').textContent;
+        const newWindow = window.open('', '_blank');
+        newWindow.document.write('<html><head><title>Raw Note</title></head><body><pre>' + content.replace(/</g, '<').replace(/>/g, '>') + '</pre></body></html>');
+        newWindow.document.close();
+    }
+</script>
+{/block}
