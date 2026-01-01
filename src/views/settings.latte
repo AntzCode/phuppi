@@ -246,6 +246,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 fileIds = data.file_ids.join(',');
+                fileList = data.files;
+                totalSize = fileList.reduce((sum, f) => sum + f.filesize, 0);
             } catch (error) {
                 alert('Error getting files');
                 resetMigrationForm();
@@ -266,11 +268,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const total = ids.length;
         const startTime = Date.now();
         let lastUpdateTime = startTime;
+        let processedSize = 0;
 
         $('#progressBar').progress({ percent: 0, total: total });
 
         for (let i = 0; i < ids.length; i++) {
             const id = ids[i];
+            const file = fileList.find(f => f.id == id);
             const migrateData = new FormData();
             migrateData.append('action', 'migrate');
             migrateData.append('from_connector', formData.get('from_connector'));
@@ -287,6 +291,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     migrated += data.results.migrated || 0;
                     skipped += data.results.skipped || 0;
                     errors += data.results.errors ? data.results.errors.length : 0;
+                    if (data.results.migrated > 0 || data.results.skipped > 0) {
+                        processedSize += file.filesize;
+                    }
                 } else if (data.error) {
                     errors++;
                 }
@@ -301,17 +308,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const eta = remaining / rate;
 
             $('#progressBar').progress({ percent: ((i + 1) / total) * 100 });
-            progressLabel.textContent = `Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
-            etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining`;
+            progressLabel.textContent = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+            etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining, Migrating: ${file.display_filename} (${formatFileSize(file.filesize)})`;
 
             if (abortMigration) {
-                progressLabel.textContent = `Migration aborted. Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+                progressLabel.textContent = `Migration aborted. Copied: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
                 break;
             }
         }
 
         if (!abortMigration) {
-            progressLabel.textContent = `Migration completed! Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+            progressLabel.textContent = `Migration completed! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+        } else {
+            progressLabel.textContent = `Migration aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
         }
         etaDisplay.textContent = '';
         startBtn.disabled = false;
@@ -678,7 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
     function displayOrphanedFiles() {

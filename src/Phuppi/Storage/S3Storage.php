@@ -73,11 +73,17 @@ class S3Storage implements StorageInterface
     public function delete(string $filename): bool
     {
         $key = $this->getRelativePath($filename);
-        $this->s3Client->deleteObject([
-            'Bucket' => $this->bucket,
-            'Key' => $key,
-        ]);
-        return true;
+        try {
+            $this->s3Client->deleteObject([
+                'Bucket' => $this->bucket,
+                'Key' => $key,
+            ]);
+            Flight::logger()->info('S3Storage delete: Successfully deleted ' . $key);
+            return true;
+        } catch (\Exception $e) {
+            Flight::logger()->error('S3Storage delete: Failed to delete ' . $key . ': ' . $e->getMessage());
+            return false;
+        }
     }
 
     public function size(string $filename): ?int

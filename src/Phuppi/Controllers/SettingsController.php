@@ -257,7 +257,12 @@ class SettingsController
             $result = \Phuppi\UploadedFile::findFiltered(null, null, '', 'date_newest', PHP_INT_MAX, 0);
             $files = $result['files'];
             $fileIds = array_map(fn($file) => $file->id, $files);
-            Flight::json(['file_ids' => $fileIds]);
+            $fileData = array_map(fn($file) => [
+                'id' => $file->id,
+                'display_filename' => $file->display_filename,
+                'filesize' => $file->filesize
+            ], $files);
+            Flight::json(['file_ids' => $fileIds, 'files' => $fileData]);
         } catch (\Exception $e) {
             Flight::json(['error' => 'Failed to get files: ' . $e->getMessage()], 500);
         }

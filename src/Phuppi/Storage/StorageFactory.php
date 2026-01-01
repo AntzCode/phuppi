@@ -87,9 +87,23 @@ class StorageFactory
             $files = array_filter($files); // Remove nulls
         }
 
-        $results = ['migrated' => 0, 'skipped' => 0, 'errors' => []];
+        // Sort files by size ascending (smallest first)
+        usort($files, function($a, $b) {
+            return $a->filesize <=> $b->filesize;
+        });
+
+        $totalSize = array_sum(array_map(fn($f) => $f->filesize, $files));
+        $processedSize = 0;
+        $startTime = microtime(true);
+        $currentFile = null;
+        $currentSize = 0;
+
+        $results = ['migrated' => 0, 'skipped' => 0, 'errors' => [], 'total_size' => $totalSize, 'processed_size' => 0, 'current_file' => null, 'current_size' => 0, 'eta' => 0];
 
         foreach ($files as $file) {
+            $currentFile = $file->display_filename;
+            $currentSize = $file->filesize;
+            Flight::logger()->info("Migrating file: {$file->display_filename} ({$file->filesize} bytes)");
             try {
                 $filePath = $file->getUsername() . '/' . $file->filename;
 
@@ -105,6 +119,7 @@ class StorageFactory
                     $destSize = $toStorage->size($filePath);
                     if ($sourceSize !== null && $destSize !== null && $sourceSize === $destSize) {
                         $results['skipped']++;
+                        $processedSize += $file->filesize;
                         continue;
                     }
                 }
@@ -161,11 +176,19 @@ class StorageFactory
                 // Update file record with new connector (if we add a field for it)
                 // For now, just count as migrated
                 $results['migrated']++;
+                $processedSize += $file->filesize;
 
             } catch (\Exception $e) {
                 $results['errors'][] = "Error migrating {$file->filename}: " . $e->getMessage();
             }
         }
+
+        $elapsed = microtime(true) - $startTime;
+        $progress = $totalSize > 0 ? $processedSize / $totalSize : 1;
+        $results['eta'] = $progress > 0 ? ($elapsed / $progress) - $elapsed : 0;
+        $results['processed_size'] = $processedSize;
+        $results['current_file'] = $currentFile;
+        $results['current_size'] = $currentSize;
 
         return $results;
     }

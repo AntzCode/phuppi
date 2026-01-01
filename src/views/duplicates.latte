@@ -1,0 +1,221 @@
+{parameters
+    ?array $duplicates = [],
+    ?Phuppi\User $user = null,
+    int $total = 0,
+    int $totalPages = 0,
+    int $currentPage = 1,
+    int $limit = 10,
+    int $totalDuplicateSize = 0,
+    int $totalSpaceSaved = 0
+}
+
+{layout 'layout.latte'}
+
+{define readableSize}
+{var $size = $size ?? 0}
+{if $size < 1024}
+    {$size} bytes
+{elseif $size < 1024 * 1024}
+    {number_format($size / 1024, 2)} KB
+{elseif $size < 1024 * 1024 * 1024}
+    {number_format($size / 1024 / 1024, 2)} MB
+{else}
+    {number_format($size / 1024 / 1024 / 1024, 2)} GB
+{/if}
+{/define}
+
+{block content}
+<div class="ui segment">
+    <h2 class="ui header">Duplicate File Cleanup</h2>
+    <p>Review and delete potential duplicate files. Files with identical size and mimetype are shown as potential duplicates.</p>
+    <p>Check files you want to delete. By default, the oldest file in each group is not selected for deletion.</p>
+    <div class="ui info message">
+        <i class="info circle icon"></i>
+        Note: Duplicates are identified by size and type only. For large files, consider manually verifying content before deletion.
+    </div>
+</div>
+
+{if count($duplicates) == 0}
+    <div class="ui info message">
+        <i class="check icon"></i>
+        No duplicate files found.
+    </div>
+{else}
+    <div class="ui segment">
+        <h3 class="header"><i class="copy icon"></i> Found {$total} duplicate groups ({count($duplicates)} shown)</h3>
+        <p>Total duplicate space: {include readableSize, size => $totalDuplicateSize} | Potential space savings: {include readableSize, size => $totalSpaceSaved}</p>
+            {foreach $duplicates as $group}
+                <div class="ui styled accordion active" style="margin-bottom: 1em;">
+                    <div class="active title">
+                        <i class="dropdown icon"></i>
+                        Duplicate Group: {$group[0]->display_filename} ({count($group)} files, {include readableSize, size => count($group) * $group[0]->filesize} total)
+                    </div>
+                    <div class="active content">
+                        <div class="ui divided items">
+                            {foreach $group as $index => $file}
+                                <div class="item">
+                                    <div class="ui checkbox" style="margin-right: 1em;">
+                                        <input type="checkbox" name="ids[]" value="{$file->id}" {if $index != 0}checked{/if} id="file-{$file->id}">
+                                        <label for="file-{$file->id}"></label>
+                                    </div>
+                                    <div class="ui tiny rounded image">
+                                        {if in_array(strtolower($file->extension), ['png', 'jpg', 'gif'])}
+                                            <img src="/files/thumbnail/{$file->id}" />
+                                        {else}
+                                            <img src="/assets/images/filetype-icons/{$file->extension}.png" />
+                                        {/if}
+                                    </div>
+                                    <div class="content">
+                                        <div class="header">
+                                            [{$file->id}] {$file->display_filename}
+                                        </div>
+                                        <div class="meta">
+                                            <p>{$file->notes}</p>
+                                            <span>Size: {include readableSize, size => $file->filesize} | Type: {$file->mimetype}</span><br>
+                                            <span>Uploaded: {$file->uploaded_at}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            {/foreach}
+                        </div>
+                        <div class="ui divider"></div>
+                        <button type="button" class="ui blue small button verify-group" data-group="group-{$iterator->counter}">
+                            <i class="search icon"></i>
+                            Verify Duplicates
+                        </button>
+                        <button type="button" class="ui red small button delete-group" data-group="group-{$iterator->counter}">
+                            <i class="trash icon"></i>
+                            Delete Selected in This Group
+                        </button>
+                    </div>
+                </div>
+            {/foreach}
+        </div>
+    </div>
+
+    {if $totalPages > 1}
+        <div class="ui pagination menu" style="overflow-x: auto; white-space: nowrap;">
+            <a class={$currentPage === 1 ? "disabled item" : "item"} href="?page={$currentPage - 1}&limit={$limit}">
+                <i class="left chevron icon"></i>
+                Previous
+            </a>
+            {var $pages = []}
+            {if $totalPages <= 10}
+                {for $i = 1; $i <= $totalPages; $i++}
+                    {$pages[] = $i}
+                {/for}
+            {else}
+                {$pages[] = 1}
+                {var $start = max(2, $currentPage - 2)}
+                {var $end = min($totalPages - 1, $currentPage + 2)}
+                {if $start > 2}{$pages[] = '...'}{/if}
+                {for $i = $start; $i <= $end; $i++}
+                    {$pages[] = $i}
+                {/for}
+                {if $end < $totalPages - 1}{$pages[] = '...'}{/if}
+                {$pages[] = $totalPages}
+            {/if}
+            {foreach $pages as $p}
+                {if $p === '...'}
+                    <span class="disabled item" style="cursor: default;">...</span>
+                {else}
+                    <a class={$p === $currentPage ? "active item" : "item"} href="?page={$p}&limit={$limit}">{$p}</a>
+                {/if}
+            {/foreach}
+            <a class={$currentPage === $totalPages ? "disabled item" : "item"} href="?page={$currentPage + 1}&limit={$limit}">
+                Next
+                <i class="right chevron icon"></i>
+            </a>
+        </div>
+        {/if}
+{/if}
+
+<script n:syntax="off">
+function submitDelete(formData) {
+    fetch('/duplicates', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            alert(data.message);
+            if (data.errors && data.errors.length > 0) {
+                alert('Errors: ' + data.errors.join(', '));
+            }
+            location.reload();
+        } else if (data.error) {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting files.');
+    });
+}
+
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('verify-group')) {
+        const groupDiv = e.target.closest('.ui.styled.accordion');
+        const allCheckboxes = groupDiv.querySelectorAll('input[type="checkbox"][name="ids[]"]');
+        const ids = Array.from(allCheckboxes).map(cb => cb.value);
+        if (ids.length < 2) {
+            alert('Need at least 2 files to verify.');
+            return;
+        }
+        // Disable button
+        e.target.disabled = true;
+        e.target.innerHTML = '<i class="spinner loading icon"></i> Verifying...';
+
+        fetch('/duplicates/verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.identical_100kb) {
+                if (data.identical_full) {
+                    alert('Files are completely identical.');
+                } else {
+                    alert('Files have identical first 100KB but differ elsewhere.');
+                }
+            } else {
+                alert('Files are different (first 100KB do not match).');
+            }
+        })
+        .catch(error => {
+            console.error('Error verifying:', error);
+            alert('Error verifying files.');
+        })
+        .finally(() => {
+            e.target.disabled = false;
+            e.target.innerHTML = '<i class="search icon"></i> Verify Duplicates';
+        });
+    }
+
+    if (e.target.classList.contains('delete-group')) {
+        const groupDiv = e.target.closest('.ui.styled.accordion');
+        const allCheckboxes = groupDiv.querySelectorAll('input[type="checkbox"][name="ids[]"]');
+        const deleteIds = Array.from(allCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+        if (deleteIds.length === 0) {
+            alert('No files selected for deletion in this group.');
+            return;
+        }
+        if (!confirm(`Delete ${deleteIds.length} selected files in this group?`)) {
+            return;
+        }
+        const formData = new FormData();
+        deleteIds.forEach(id => formData.append('ids[]', id));
+        submitDelete(formData);
+    }
+});
+
+// Initialize Semantic UI components
+$('.ui.accordion').accordion();
+$('.ui.checkbox').checkbox();
+</script>
+
+{/block}

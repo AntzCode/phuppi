@@ -606,4 +606,240 @@ class FileController
 
         throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
     }
+
+    public function duplicates()
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            Flight::logger()->warning('duplicates: User not logged in');
+            Flight::redirect('/login');
+        }
+        // Vouchers not allowed
+        if ($this->getCurrentVoucher()) {
+            Flight::halt(403, 'Forbidden for vouchers');
+        }
+
+        $page = (int)(Flight::request()->query['page'] ?? 1);
+        $limit = (int)(Flight::request()->query['limit'] ?? 10);
+        $offset = ($page - 1) * $limit;
+
+        $result = $this->findDuplicates($user->id, $limit, $offset);
+        $total = $result['total'];
+        $totalPages = ceil($total / $limit);
+
+        Flight::render('duplicates.latte', [
+            'duplicates' => $result['duplicates'],
+            'user' => $user,
+            'total' => $total,
+            'totalPages' => $totalPages,
+            'currentPage' => $page,
+            'limit' => $limit,
+            'totalDuplicateSize' => $result['totalDuplicateSize'],
+            'totalSpaceSaved' => $result['totalSpaceSaved']
+        ]);
+    }
+
+    private function findDuplicates(int $userId, int $limit = 10, int $offset = 0): array
+    {
+        $db = Flight::db();
+        // Get all files for user
+        $stmt = $db->prepare('SELECT * FROM uploaded_files WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        $files = [];
+        while ($data = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $files[] = new UploadedFile($data);
+        }
+
+        // Filter out orphaned records (files not existing in storage)
+        $files = array_filter($files, function($file) {
+            return Flight::storage()->exists($file->getUsername() . '/' . $file->filename);
+        });
+
+        // Group by size and mimetype
+        $groups = [];
+        foreach ($files as $file) {
+            $key = $file->filesize . '|' . $file->mimetype;
+            if (!isset($groups[$key])) {
+                $groups[$key] = [];
+            }
+            $groups[$key][] = $file;
+        }
+
+        $duplicates = [];
+        foreach ($groups as $group) {
+            if (count($group) > 1) {
+                // Sort by filename length (shorter first, likely original), then by uploaded_at oldest first, then by id asc
+                usort($group, function($a, $b) {
+                    $lenA = strlen($a->display_filename);
+                    $lenB = strlen($b->display_filename);
+                    if ($lenA !== $lenB) {
+                        return $lenA <=> $lenB;
+                    }
+                    $timeA = strtotime($a->uploaded_at);
+                    $timeB = strtotime($b->uploaded_at);
+                    if ($timeA !== $timeB) {
+                        return $timeA <=> $timeB;
+                    }
+                    return $a->id <=> $b->id;
+                });
+                $duplicates[] = $group;
+            }
+        }
+
+        // Sort groups by total size descending (largest space savings first)
+        usort($duplicates, function($a, $b) {
+            $sizeA = count($a) * $a[0]->filesize;
+            $sizeB = count($b) * $b[0]->filesize;
+            return $sizeB <=> $sizeA;
+        });
+
+        $totalGroups = count($duplicates);
+        $totalDuplicateSize = 0;
+        $totalSpaceSaved = 0;
+        foreach ($duplicates as $group) {
+            $count = count($group);
+            $size = $group[0]->filesize;
+            $totalDuplicateSize += $count * $size;
+            $totalSpaceSaved += ($count - 1) * $size;
+        }
+
+        $paginated = array_slice($duplicates, $offset, $limit);
+
+        return [
+            'duplicates' => $paginated,
+            'total' => $totalGroups,
+            'totalDuplicateSize' => $totalDuplicateSize,
+            'totalSpaceSaved' => $totalSpaceSaved
+        ];
+    }
+
+    private function computeFileHash(UploadedFile $file, bool $full = false): string
+    {
+        $path = $file->getUsername() . '/' . $file->filename;
+        if (!Flight::storage()->exists($path)) {
+            return '';
+        }
+        $stream = Flight::storage()->getStream($path);
+        if (!$stream) {
+            return '';
+        }
+        $hash = hash_init('sha256');
+        $bytesRead = 0;
+        $maxBytes = $full ? PHP_INT_MAX : 100 * 1024; // 100KB or full
+        if (is_resource($stream)) {
+            // LocalStorage: resource
+            while (!feof($stream) && $bytesRead < $maxBytes) {
+                $chunkSize = min(8192, $maxBytes - $bytesRead);
+                $data = fread($stream, $chunkSize);
+                hash_update($hash, $data);
+                $bytesRead += strlen($data);
+            }
+            fclose($stream);
+        } elseif (method_exists($stream, 'read')) {
+            // S3: Psr7 Stream
+            while (!$stream->eof() && $bytesRead < $maxBytes) {
+                $chunkSize = min(8192, $maxBytes - $bytesRead);
+                $data = $stream->read($chunkSize);
+                hash_update($hash, $data);
+                $bytesRead += strlen($data);
+            }
+            $stream->close();
+        } else {
+            return '';
+        }
+        return hash_final($hash);
+    }
+
+    public function deleteDuplicates()
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            Flight::halt(403, 'Forbidden');
+        }
+        if ($this->getCurrentVoucher()) {
+            Flight::halt(403, 'Forbidden for vouchers');
+        }
+
+        $data = Flight::request()->data;
+        $idsToDelete = $data->ids ?? [];
+        if (empty($idsToDelete) || !is_array($idsToDelete)) {
+            Flight::json(['error' => 'Invalid file IDs'], 400);
+            return;
+        }
+
+        $deleted = 0;
+        $errors = [];
+        foreach ($idsToDelete as $id) {
+            $file = UploadedFile::findById($id);
+            if (!$file || $file->user_id !== $user->id) {
+                $errors[] = "File $id not found or not owned by user";
+                continue;
+            }
+            $storagePath = $file->getUsername() . '/' . $file->filename;
+            if (!Flight::storage()->delete($storagePath)) {
+                $errors[] = "Failed to delete file $id from storage";
+                continue;
+            }
+            if ($file->delete()) {
+                $deleted++;
+            } else {
+                $errors[] = "Failed to delete file $id from database";
+            }
+        }
+        Flight::json(['message' => "Deleted $deleted duplicate files", 'errors' => $errors]);
+    }
+
+    public function verifyDuplicates()
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            Flight::halt(403, 'Forbidden');
+        }
+        if ($this->getCurrentVoucher()) {
+            Flight::halt(403, 'Forbidden for vouchers');
+        }
+
+        $data = Flight::request()->data;
+        $ids = $data->ids ?? [];
+        if (empty($ids) || !is_array($ids)) {
+            Flight::json(['error' => 'Invalid file IDs'], 400);
+            return;
+        }
+
+        $files = [];
+        foreach ($ids as $id) {
+            $file = UploadedFile::findById($id);
+            if (!$file || $file->user_id !== $user->id) {
+                Flight::json(['error' => 'File not found or not owned'], 404);
+                return;
+            }
+            $files[] = $file;
+        }
+
+        // First check 100KB
+        $hashes100 = [];
+        foreach ($files as $file) {
+            $hash = $this->computeFileHash($file, false);
+            $hashes100[] = $hash;
+        }
+        $identical100 = count(array_unique($hashes100)) === 1;
+
+        $identicalFull = false;
+        $hashesFull = [];
+        if ($identical100) {
+            // If 100KB identical, check full
+            foreach ($files as $file) {
+                $hash = $this->computeFileHash($file, true);
+                $hashesFull[] = $hash;
+            }
+            $identicalFull = count(array_unique($hashesFull)) === 1;
+        }
+
+        Flight::json([
+            'identical_100kb' => $identical100,
+            'identical_full' => $identicalFull,
+            'hashes_100kb' => $hashes100,
+            'hashes_full' => $hashesFull
+        ]);
+    }
 }

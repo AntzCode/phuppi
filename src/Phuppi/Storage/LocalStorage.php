@@ -52,8 +52,15 @@ class LocalStorage implements StorageInterface
     {
         $path = $this->getFullPath($filename);
         if (file_exists($path)) {
-            return unlink($path);
+            if (unlink($path)) {
+                Flight::logger()->info('LocalStorage delete: Successfully deleted ' . $path);
+                return true;
+            } else {
+                Flight::logger()->error('LocalStorage delete: Failed to delete ' . $path);
+                return false;
+            }
         }
+        Flight::logger()->info('LocalStorage delete: File not found ' . $path);
         return true; // Already deleted
     }
 

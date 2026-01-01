@@ -45,6 +45,9 @@ if (!$usersTableExists) {
     Flight::route('GET /files/thumbnail/@id', [new \Phuppi\Controllers\FileController(), 'getThumbnail']);
     Flight::route('GET /files/preview/@id', [new \Phuppi\Controllers\FileController(), 'getPreview']);
 
+    Flight::route('GET /duplicates', [new \Phuppi\Controllers\FileController(), 'duplicates']);
+    Flight::route('POST /duplicates', [new \Phuppi\Controllers\FileController(), 'deleteDuplicates']);
+    Flight::route('POST /duplicates/verify', [new \Phuppi\Controllers\FileController(), 'verifyDuplicates']);
 
     Flight::route('POST /files', [new \Phuppi\Controllers\FileController(), 'uploadFile']);
     Flight::route('POST /files/register', [new \Phuppi\Controllers\FileController(), 'registerUploadedFile']);
