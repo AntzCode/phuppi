@@ -11,6 +11,7 @@
         <a class="item active" data-tab="active-connector">Active Connector</a>
         <a class="item" data-tab="manage-connectors">Manage Connectors</a>
         <a class="item" data-tab="migration">Migration</a>
+        <a class="item" data-tab="data-repair">Data Repair</a>
     </div>
 
     <!-- Active Connector Tab -->
@@ -88,6 +89,29 @@
             <div id="etaDisplay" style="margin-top: 10px;"></div>
             <button class="ui red button" id="abortMigrationBtn" style="margin-top: 10px;">Abort Migration</button>
         </div>
+    </div>
+
+    <!-- Data Repair Tab -->
+    <div class="ui bottom attached tab segment" data-tab="data-repair">
+        <div class="ui divider"></div>
+
+        <h3>Orphaned Records (Database records without files)</h3>
+        <p>These are files that have database records but the corresponding files do not exist in storage.</p>
+        <button class="ui blue button" id="scanOrphanedRecordsBtn">Scan for Orphaned Records</button>
+        <div id="orphanedRecordsList" style="display: none; margin-top: 10px;">
+            <div class="ui divided list" id="orphanedRecordsItems"></div>
+        </div>
+        <button class="ui red button" id="deleteOrphanedRecordsBtn" style="margin-top: 10px; display: none;">Delete Selected Records</button>
+
+        <div class="ui divider"></div>
+
+        <h3>Orphaned Files (Files in storage without database records)</h3>
+        <p>These are files that exist in storage but do not have corresponding database records.</p>
+        <button class="ui blue button" id="scanOrphanedFilesBtn">Scan for Orphaned Files</button>
+        <div id="orphanedFilesList" style="display: none; margin-top: 10px;">
+            <div class="ui divided list" id="orphanedFilesItems"></div>
+        </div>
+        <button class="ui green button" id="importOrphanedFilesBtn" style="margin-top: 10px; display: none;">Import Selected Files</button>
     </div>
 </div>
 
@@ -455,6 +479,245 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         });
     }
+
+    // Data Repair
+    let orphanedRecords = [];
+    let orphanedFiles = [];
+    let lastCheckedRecord = null;
+    let lastCheckedFile = null;
+
+    function handleCheckboxShiftClick(event, listId, lastChecked) {
+        const checkboxes = document.querySelectorAll(`#${listId} input[type="checkbox"]`);
+        if (event.shiftKey && lastChecked !== null) {
+            const currentIndex = Array.from(checkboxes).indexOf(event.target);
+            const lastIndex = Array.from(checkboxes).indexOf(lastChecked);
+            const start = Math.min(currentIndex, lastIndex);
+            const end = Math.max(currentIndex, lastIndex);
+
+            for (let i = start; i <= end; i++) {
+                checkboxes[i].checked = lastChecked.checked;
+            }
+        }
+        if (listId === 'orphanedRecordsItems') {
+            lastCheckedRecord = event.target;
+        } else {
+            lastCheckedFile = event.target;
+        }
+    }
+
+    document.getElementById('scanOrphanedRecordsBtn').addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = 'Scanning...';
+
+        try {
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: new URLSearchParams({ action: 'scan_orphaned_records' })
+            });
+            const data = await response.json();
+            if (data.orphaned_records) {
+                orphanedRecords = data.orphaned_records;
+                lastCheckedRecord = null;
+                displayOrphanedRecords();
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error scanning orphaned records');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Scan for Orphaned Records';
+        }
+    });
+
+    document.getElementById('deleteOrphanedRecordsBtn').addEventListener('click', async function() {
+        const selectedIds = Array.from(document.querySelectorAll('#orphanedRecordsItems input[type="checkbox"]:checked')).map(cb => cb.value);
+        if (selectedIds.length === 0) {
+            alert('No records selected');
+            return;
+        }
+        if (!confirm(`Are you sure you want to delete ${selectedIds.length} orphaned records?`)) return;
+
+        this.disabled = true;
+        this.textContent = 'Deleting...';
+
+        try {
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'delete_orphaned_records',
+                    ids: selectedIds
+                })
+            });
+            const data = await response.json();
+            if (data.message) {
+                alert(data.message);
+                if (data.errors && data.errors.length > 0) {
+                    alert('Errors: ' + data.errors.join(', '));
+                }
+                // Refresh the list
+                document.getElementById('scanOrphanedRecordsBtn').click();
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error deleting orphaned records');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Delete Selected Records';
+        }
+    });
+
+    document.getElementById('scanOrphanedFilesBtn').addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = 'Scanning...';
+
+        try {
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: new URLSearchParams({ action: 'scan_orphaned_files' })
+            });
+            const data = await response.json();
+            if (data.orphaned_files) {
+                orphanedFiles = data.orphaned_files;
+                lastCheckedFile = null;
+                displayOrphanedFiles();
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error scanning orphaned files');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Scan for Orphaned Files';
+        }
+    });
+
+    document.getElementById('importOrphanedFilesBtn').addEventListener('click', async function() {
+        const selectedFiles = Array.from(document.querySelectorAll('#orphanedFilesItems input[type="checkbox"]:checked')).map(cb => {
+            const index = cb.value;
+            return orphanedFiles[index];
+        });
+        if (selectedFiles.length === 0) {
+            alert('No files selected');
+            return;
+        }
+        if (!confirm(`Are you sure you want to import ${selectedFiles.length} orphaned files?`)) return;
+
+        this.disabled = true;
+        this.textContent = 'Importing...';
+
+        try {
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'import_orphaned_files',
+                    files: selectedFiles
+                })
+            });
+            const data = await response.json();
+            if (data.message) {
+                alert(data.message);
+                if (data.errors && data.errors.length > 0) {
+                    alert('Errors: ' + data.errors.join(', '));
+                }
+                // Refresh the list
+                document.getElementById('scanOrphanedFilesBtn').click();
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error importing orphaned files');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Import Selected Files';
+        }
+    });
+
+    function displayOrphanedRecords() {
+        const list = document.getElementById('orphanedRecordsItems');
+        const deleteBtn = document.getElementById('deleteOrphanedRecordsBtn');
+        list.innerHTML = '';
+        if (orphanedRecords.length === 0) {
+            list.innerHTML = '<div class="item">No orphaned records found.</div>';
+            deleteBtn.style.display = 'none';
+        } else {
+            orphanedRecords.forEach(record => {
+                const item = document.createElement('div');
+                item.className = 'item';
+                item.innerHTML = `
+                    <div class="right floated content">
+                        <div class="ui checkbox">
+                            <input type="checkbox" value="${record.id}" data-list="orphanedRecordsItems">
+                            <label></label>
+                        </div>
+                    </div>
+                    <div class="content">
+                        <div class="header">ID: ${record.id}</div>
+                        <div class="description">${record.display_filename} - ${record.path} - ${formatFileSize(record.filesize)}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+
+            // Add event listeners for shift-click
+            list.addEventListener('click', function(e) {
+                if (e.target.type === 'checkbox') {
+                    handleCheckboxShiftClick(e, 'orphanedRecordsItems', lastCheckedRecord);
+                }
+            });
+            deleteBtn.style.display = 'inline-block';
+        }
+        document.getElementById('orphanedRecordsList').style.display = 'block';
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function displayOrphanedFiles() {
+        const list = document.getElementById('orphanedFilesItems');
+        const importBtn = document.getElementById('importOrphanedFilesBtn');
+        list.innerHTML = '';
+        if (orphanedFiles.length === 0) {
+            list.innerHTML = '<div class="item">No orphaned files found.</div>';
+            importBtn.style.display = 'none';
+        } else {
+            orphanedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'item';
+                item.innerHTML = `
+                    <div class="right floated content">
+                        <div class="ui checkbox">
+                            <input type="checkbox" value="${index}" data-list="orphanedFilesItems">
+                            <label></label>
+                        </div>
+                    </div>
+                    <div class="content">
+                        <div class="header">${file.filename}</div>
+                        <div class="description">${file.path} - ${formatFileSize(file.size)}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+
+            // Add event listeners for shift-click
+            list.addEventListener('click', function(e) {
+                if (e.target.type === 'checkbox') {
+                    handleCheckboxShiftClick(e, 'orphanedFilesItems', lastCheckedFile);
+                }
+            });
+            importBtn.style.display = 'inline-block';
+        }
+        document.getElementById('orphanedFilesList').style.display = 'block';
+    }
+
 });
 </script>
 {/block}

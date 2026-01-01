@@ -134,4 +134,19 @@ class S3Storage implements StorageInterface
             return false;
         }
     }
+
+    public function getBucket(): string
+    {
+        return $this->bucket;
+    }
+
+    public function getPathPrefix(): string
+    {
+        return $this->pathPrefix;
+    }
+
+    public function getS3Client(): S3Client
+    {
+        return $this->s3Client;
+    }
 }

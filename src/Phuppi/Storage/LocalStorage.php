@@ -73,6 +73,16 @@ class LocalStorage implements StorageInterface
         return null;
     }
 
+    public function getBasePath(): string
+    {
+        return $this->basePath;
+    }
+
+    public function getPathPrefix(): string
+    {
+        return $this->pathPrefix;
+    }
+
     private function getFullPath(string $filename): string
     {
         return $this->basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $this->getRelativePath($filename));

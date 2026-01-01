@@ -64,6 +64,18 @@ class SettingsController
             case 'get_migration_files':
                 $this->getMigrationFiles($data);
                 return; // getMigrationFiles handles its own response
+            case 'scan_orphaned_records':
+                $this->scanOrphanedRecords($data);
+                return;
+            case 'delete_orphaned_records':
+                $this->deleteOrphanedRecords($data);
+                return;
+            case 'scan_orphaned_files':
+                $this->scanOrphanedFiles($data);
+                return;
+            case 'import_orphaned_files':
+                $this->importOrphanedFiles($data);
+                return;
             default:
                 Flight::json(['error' => 'Invalid action'], 400);
                 return;
@@ -293,6 +305,327 @@ class SettingsController
         }
 
         Flight::set('storage_connectors', $connectors);
+    }
+
+    private function scanOrphanedRecords($data)
+    {
+        $db = Flight::db();
+        $orphaned = [];
+
+        // First, get all existing files from storage
+        $existingFiles = $this->getAllExistingFiles();
+
+        // Then check each database record against the existing files
+        $stmt = $db->query('SELECT id, user_id, voucher_id, filename, display_filename, filesize FROM uploaded_files');
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $file = new \Phuppi\UploadedFile($row);
+            $path = $file->getUsername() . '/' . $file->filename;
+            if (!isset($existingFiles[$path])) {
+                $orphaned[] = [
+                    'id' => $file->id,
+                    'display_filename' => $file->display_filename,
+                    'path' => $path,
+                    'filesize' => $file->filesize
+                ];
+            }
+        }
+
+        Flight::json(['orphaned_records' => $orphaned]);
+    }
+
+    private function getAllExistingFiles(): array
+    {
+        $storage = Flight::storage();
+        $existingFiles = [];
+
+        if ($storage instanceof \Phuppi\Storage\LocalStorage) {
+            $basePath = $storage->getBasePath();
+            $pathPrefix = $storage->getPathPrefix();
+            $scanPath = $pathPrefix ? $basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pathPrefix) : $basePath;
+
+            if (is_dir($scanPath)) {
+                $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($scanPath, \RecursiveDirectoryIterator::SKIP_DOTS));
+                foreach ($iterator as $file) {
+                    if ($file->isFile()) {
+                        $relativePath = str_replace($basePath . DIRECTORY_SEPARATOR, '', $file->getPathname());
+                        $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
+                        if ($pathPrefix && str_starts_with($relativePath, $pathPrefix . '/')) {
+                            $relativePath = substr($relativePath, strlen($pathPrefix) + 1);
+                        }
+                        $existingFiles[$relativePath] = true;
+                    }
+                }
+            }
+        } elseif ($storage instanceof \Phuppi\Storage\S3Storage) {
+            $bucket = $storage->getBucket();
+            $pathPrefix = $storage->getPathPrefix();
+            $s3Client = $storage->getS3Client();
+
+            try {
+                $params = [
+                    'Bucket' => $bucket,
+                ];
+                if ($pathPrefix) {
+                    $params['Prefix'] = $pathPrefix . '/';
+                }
+
+                do {
+                    $result = $s3Client->listObjectsV2($params);
+                    if (isset($result['Contents'])) {
+                        foreach ($result['Contents'] as $object) {
+                            $key = $object['Key'];
+                            $relativePath = $pathPrefix ? substr($key, strlen($pathPrefix) + 1) : $key;
+                            $existingFiles[$relativePath] = true;
+                        }
+                    }
+                    $params['ContinuationToken'] = $result['NextContinuationToken'] ?? null;
+                } while (isset($result['NextContinuationToken']));
+            } catch (\Exception $e) {
+                Flight::logger()->error('Failed to list S3 objects: ' . $e->getMessage());
+                // Return empty array on error, so all records will be considered orphaned
+                return [];
+            }
+        }
+
+        return $existingFiles;
+    }
+
+    private function deleteOrphanedRecords($data)
+    {
+        $ids = $data->ids ?? [];
+        if (empty($ids) || !is_array($ids)) {
+            Flight::json(['error' => 'Invalid or missing file IDs'], 400);
+            return;
+        }
+
+        $db = Flight::db();
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($ids as $id) {
+            $file = \Phuppi\UploadedFile::findById($id);
+            if (!$file) {
+                $errors[] = "File $id not found";
+                continue;
+            }
+            if ($file->delete()) {
+                $deleted++;
+            } else {
+                $errors[] = "Failed to delete record for file $id";
+            }
+        }
+
+        Flight::json(['message' => "Deleted $deleted orphaned records", 'errors' => $errors]);
+    }
+
+    private function scanOrphanedFiles($data)
+    {
+        $orphaned = [];
+
+        // First, get all database files into a map for fast lookup
+        $dbFiles = $this->getAllDatabaseFiles();
+
+        // Then scan storage and check against DB files
+        $storage = Flight::storage();
+
+        if ($storage instanceof \Phuppi\Storage\LocalStorage) {
+            $basePath = $storage->getBasePath();
+            $pathPrefix = $storage->getPathPrefix();
+            $scanPath = $pathPrefix ? $basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pathPrefix) : $basePath;
+
+            if (is_dir($scanPath)) {
+                $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($scanPath, \RecursiveDirectoryIterator::SKIP_DOTS));
+                foreach ($iterator as $file) {
+                    if ($file->isFile()) {
+                        $relativePath = str_replace($basePath . DIRECTORY_SEPARATOR, '', $file->getPathname());
+                        $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
+                        if ($pathPrefix && str_starts_with($relativePath, $pathPrefix . '/')) {
+                            $relativePath = substr($relativePath, strlen($pathPrefix) + 1);
+                        }
+                        // Check if it's under a username dir
+                        $parts = explode('/', $relativePath);
+                        if (count($parts) >= 2) {
+                            $username = $parts[0];
+                            $filename = implode('/', array_slice($parts, 1));
+                            $key = $username . '/' . $filename;
+
+                            if (!isset($dbFiles[$key])) {
+                                $orphaned[] = [
+                                    'path' => $relativePath,
+                                    'size' => $file->getSize(),
+                                    'username' => $username,
+                                    'filename' => $filename
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        } elseif ($storage instanceof \Phuppi\Storage\S3Storage) {
+            $bucket = $storage->getBucket();
+            $pathPrefix = $storage->getPathPrefix();
+            $s3Client = $storage->getS3Client();
+
+            try {
+                $params = [
+                    'Bucket' => $bucket,
+                ];
+                if ($pathPrefix) {
+                    $params['Prefix'] = $pathPrefix . '/';
+                }
+
+                do {
+                    $result = $s3Client->listObjectsV2($params);
+                    if (isset($result['Contents'])) {
+                        foreach ($result['Contents'] as $object) {
+                            $key = $object['Key'];
+                            $relativePath = $pathPrefix ? substr($key, strlen($pathPrefix) + 1) : $key;
+
+                            // Check if it's under a username dir
+                            $parts = explode('/', $relativePath);
+                            if (count($parts) >= 2) {
+                                $username = $parts[0];
+                                $filename = implode('/', array_slice($parts, 1));
+                                $dbKey = $username . '/' . $filename;
+
+                                if (!isset($dbFiles[$dbKey])) {
+                                    $orphaned[] = [
+                                        'path' => $relativePath,
+                                        'size' => $object['Size'],
+                                        'username' => $username,
+                                        'filename' => $filename
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                    $params['ContinuationToken'] = $result['NextContinuationToken'] ?? null;
+                } while (isset($result['NextContinuationToken']));
+            } catch (\Exception $e) {
+                Flight::json(['error' => 'Failed to scan S3 bucket: ' . $e->getMessage()], 500);
+                return;
+            }
+        } else {
+            Flight::json(['error' => 'Unsupported storage type'], 400);
+            return;
+        }
+
+        Flight::json(['orphaned_files' => $orphaned]);
+    }
+
+    private function getAllDatabaseFiles(): array
+    {
+        $db = Flight::db();
+        $dbFiles = [];
+
+        $stmt = $db->query('SELECT user_id, voucher_id, filename FROM uploaded_files');
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $userId = $row['user_id'];
+            $voucherId = $row['voucher_id'];
+            $filename = $row['filename'];
+
+            $username = '';
+            if ($userId) {
+                $user = \Phuppi\User::findById($userId);
+                if ($user) {
+                    $username = $user->username;
+                }
+            } elseif ($voucherId) {
+                $voucher = new \Phuppi\Voucher();
+                if ($voucher->load($voucherId)) {
+                    $username = 'voucher_' . $voucher->voucher_code;
+                }
+            }
+
+            if ($username) {
+                $key = $username . '/' . $filename;
+                $dbFiles[$key] = true;
+            }
+        }
+
+        return $dbFiles;
+    }
+
+    private function importOrphanedFiles($data)
+    {
+        $files = $data->files ?? [];
+        if (empty($files) || !is_array($files)) {
+            Flight::json(['error' => 'Invalid or missing files'], 400);
+            return;
+        }
+
+        $imported = 0;
+        $errors = [];
+
+        foreach ($files as $fileData) {
+            $path = $fileData['path'] ?? '';
+            $username = $fileData['username'] ?? '';
+            $filename = $fileData['filename'] ?? '';
+            $size = $fileData['size'] ?? 0;
+
+            if (empty($path) || empty($username) || empty($filename)) {
+                $errors[] = 'Invalid file data';
+                continue;
+            }
+
+            // Determine user_id or voucher_id
+            $userId = null;
+            $voucherId = null;
+            if (str_starts_with($username, 'voucher_')) {
+                $voucherCode = substr($username, 8);
+                $voucher = \Phuppi\Voucher::findByCode($voucherCode);
+                if ($voucher) {
+                    $voucherId = $voucher->id;
+                } else {
+                    $errors[] = "Voucher not found for $username";
+                    continue;
+                }
+            } else {
+                $user = \Phuppi\User::findByUsername($username);
+                if ($user) {
+                    $userId = $user->id;
+                } else {
+                    $errors[] = "User not found for $username";
+                    continue;
+                }
+            }
+
+            // Get mimetype from extension or default
+            $extension = pathinfo($filename, PATHINFO_EXTENSION);
+            $mimetype = $this->getMimeTypeFromExtension($extension);
+
+            $file = new \Phuppi\UploadedFile();
+            $file->user_id = $userId;
+            $file->voucher_id = $voucherId;
+            $file->filename = $filename;
+            $file->display_filename = $filename; // Use filename as display
+            $file->filesize = $size;
+            $file->mimetype = $mimetype;
+            $file->extension = $extension;
+
+            if ($file->save()) {
+                $imported++;
+            } else {
+                $errors[] = "Failed to save record for $path";
+            }
+        }
+
+        Flight::json(['message' => "Imported $imported orphaned files", 'errors' => $errors]);
+    }
+
+    private function getMimeTypeFromExtension($extension)
+    {
+        $mimeTypes = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            'txt' => 'text/plain',
+            'zip' => 'application/zip',
+            // Add more as needed
+        ];
+        return $mimeTypes[strtolower($extension)] ?? 'application/octet-stream';
     }
 
 }
