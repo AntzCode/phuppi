@@ -6,6 +6,455 @@
         <i class="cog icon"></i>
         Application Settings
     </h2>
-    <!-- Settings form will be implemented here -->
+
+    <div class="ui top attached tabular menu">
+        <a class="item active" data-tab="active-connector">Active Connector</a>
+        <a class="item" data-tab="manage-connectors">Manage Connectors</a>
+        <a class="item" data-tab="migration">Migration</a>
+    </div>
+
+    <!-- Active Connector Tab -->
+    <div class="ui bottom attached tab segment active" data-tab="active-connector">
+        <form class="ui form" id="activeConnectorForm">
+            <div class="field">
+                <label>Select Active Connector</label>
+                <select name="connector_name" class="ui dropdown">
+                    {foreach $connectors as $name => $config}
+                    <option value="{$name}" {if $activeConnector == $name}selected{/if}>{$config['name']} ({$config['type']})</option>
+                    {/foreach}
+                </select>
+            </div>
+            <button class="ui primary button" type="submit">Set Active Connector</button>
+        </form>
+    </div>
+
+    <!-- Manage Connectors Tab -->
+    <div class="ui bottom attached tab segment" data-tab="manage-connectors">
+        <div class="ui relaxed divided list" id="connectorsList">
+            {foreach $connectors as $name => $config}
+            <div class="item connector-item" data-name="{$name}">
+                <div class="right floated content">
+                    {if $name != 'local-default'}
+                    <button class="ui mini red button delete-connector" data-name="{$name}">Delete</button>
+                    <button class="ui mini blue button edit-connector" data-name="{$name}">Edit</button>
+                    {/if}
+                </div>
+                <div class="content">
+                    <div class="header">{$config['name']}</div>
+                    <div class="description">Type: {$config['type']}</div>
+                </div>
+            </div>
+            {/foreach}
+        </div>
+
+        <button class="ui green button" id="addConnectorBtn">Add New Connector</button>
+    </div>
+
+    <!-- Migration Tab -->
+    <div class="ui bottom attached tab segment" data-tab="migration">
+        <form class="ui form" id="migrationForm">
+            <div class="two fields">
+                <div class="field">
+                    <label>From Connector</label>
+                    <select name="from_connector" class="ui dropdown">
+                        {foreach $connectors as $name => $config}
+                        <option value="{$name}">{$config['name']}</option>
+                        {/foreach}
+                    </select>
+                </div>
+                <div class="field">
+                    <label>To Connector</label>
+                    <select name="to_connector" class="ui dropdown">
+                        {foreach $connectors as $name => $config}
+                        <option value="{$name}">{$config['name']}</option>
+                        {/foreach}
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label>File IDs (optional - leave empty to migrate all)</label>
+                <input type="text" name="file_ids" placeholder="e.g. 1,2,3 or 1">
+            </div>
+            <button class="ui orange button" type="submit" id="startMigrationBtn">Start Migration</button>
+        </form>
+
+        <div id="migrationProgress" style="display: none;">
+            <div class="ui progress" id="progressBar">
+                <div class="bar">
+                    <div class="progress"></div>
+                </div>
+                <div class="label" id="progressLabel">Preparing migration...</div>
+            </div>
+            <div id="etaDisplay" style="margin-top: 10px;"></div>
+            <button class="ui red button" id="abortMigrationBtn" style="margin-top: 10px;">Abort Migration</button>
+        </div>
+    </div>
 </div>
+
+<!-- Connector Modal -->
+<div class="ui modal" id="connectorModal">
+    <div class="header" id="modalHeader">Add Storage Connector</div>
+    <div class="content">
+        <form class="ui form" id="connectorForm">
+            <input type="hidden" name="action" value="add_connector">
+            <input type="hidden" name="connector_name" id="connectorNameInput">
+
+            <div class="field">
+                <label>Display Name</label>
+                <input type="text" name="connector_display_name" required>
+            </div>
+
+            <div class="field">
+                <label>Path Prefix (optional)</label>
+                <input type="text" name="path_prefix" placeholder="e.g. myapp">
+                <small>Prefix added to all file paths in this connector</small>
+            </div>
+
+            <div class="field">
+                <label>Connector Type</label>
+                <select name="connector_type" class="ui dropdown" id="connectorTypeSelect">
+                    <option value="local">Local Storage</option>
+                    <option value="s3">Amazon S3</option>
+                </select>
+            </div>
+
+            <div class="local-fields">
+                <div class="field">
+                    <label>Local Path (optional)</label>
+                    <input type="text" name="local_path" placeholder="Leave empty for default data/uploads">
+                </div>
+            </div>
+
+            <div class="s3-fields" style="display: none;">
+                <div class="field">
+                    <label>S3 Bucket</label>
+                    <input type="text" name="s3_bucket" required>
+                </div>
+                <div class="field">
+                    <label>S3 Region</label>
+                    <input type="text" name="s3_region" value="us-east-1" required>
+                </div>
+                <div class="field">
+                    <label>S3 Endpoint (optional)</label>
+                    <input type="text" name="s3_endpoint" placeholder="e.g. https://s3.amazonaws.com">
+                </div>
+                <div class="field">
+                    <label>S3 Access Key</label>
+                    <input type="text" name="s3_key" required>
+                </div>
+                <div class="field">
+                    <label>S3 Secret Key</label>
+                    <input type="password" name="s3_secret" required>
+                </div>
+                <button class="ui blue button" id="testS3ConnectionBtn" type="button">Test Connection</button>
+            </div>
+
+        </form>
+    </div>
+    <div class="actions">
+        <div class="ui cancel button">Cancel</div>
+        <div class="ui primary approve button" id="saveConnectorBtn">Save</div>
+    </div>
+</div>
+<script>
+    const connectors = {$connectors};
+</script>
+<script n:syntax="off">
+document.addEventListener('DOMContentLoaded', function() {
+    // Tabs
+    $('.menu .item').tab();
+
+    // Active connector form
+    document.getElementById('activeConnectorForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('action', 'set_active');
+
+        submitForm(formData, 'Active connector updated!');
+    });
+
+    // Migration form
+    document.getElementById('migrationForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!confirm('Are you sure you want to migrate files? This may take some time.')) return;
+
+        const form = this;
+        const startBtn = document.getElementById('startMigrationBtn');
+        const progressDiv = document.getElementById('migrationProgress');
+        const progressLabel = document.getElementById('progressLabel');
+        const etaDisplay = document.getElementById('etaDisplay');
+        const abortBtn = document.getElementById('abortMigrationBtn');
+
+        let abortMigration = false;
+
+        startBtn.disabled = true;
+        startBtn.textContent = 'Migrating...';
+        progressDiv.style.display = 'block';
+        abortBtn.style.display = 'inline-block';
+        abortBtn.disabled = false;
+        abortBtn.textContent = 'Abort Migration';
+
+        abortBtn.addEventListener('click', function() {
+            abortMigration = true;
+            abortBtn.disabled = true;
+            abortBtn.textContent = 'Aborting...';
+        });
+
+        const formData = new FormData(form);
+        let fileIds = formData.get('file_ids');
+        if (!fileIds.trim()) {
+            // Get all file IDs
+            progressLabel.textContent = 'Getting file list...';
+            const getFilesData = new FormData();
+            getFilesData.append('action', 'get_migration_files');
+            getFilesData.append('from_connector', formData.get('from_connector'));
+            getFilesData.append('to_connector', formData.get('to_connector'));
+
+            try {
+                const response = await fetch('/admin/settings/storage', {
+                    method: 'POST',
+                    body: getFilesData
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error getting files: ' + data.error);
+                    resetMigrationForm();
+                    return;
+                }
+                fileIds = data.file_ids.join(',');
+            } catch (error) {
+                alert('Error getting files');
+                resetMigrationForm();
+                return;
+            }
+        }
+
+        const ids = fileIds.split(',').map(id => id.trim()).filter(id => id);
+        if (ids.length === 0) {
+            alert('No files to migrate');
+            resetMigrationForm();
+            return;
+        }
+
+        let migrated = 0;
+        let skipped = 0;
+        let errors = 0;
+        const total = ids.length;
+        const startTime = Date.now();
+        let lastUpdateTime = startTime;
+
+        $('#progressBar').progress({ percent: 0, total: total });
+
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const migrateData = new FormData();
+            migrateData.append('action', 'migrate');
+            migrateData.append('from_connector', formData.get('from_connector'));
+            migrateData.append('to_connector', formData.get('to_connector'));
+            migrateData.append('file_ids', id);
+
+            try {
+                const response = await fetch('/admin/settings/storage', {
+                    method: 'POST',
+                    body: migrateData
+                });
+                const data = await response.json();
+                if (data.results) {
+                    migrated += data.results.migrated || 0;
+                    skipped += data.results.skipped || 0;
+                    errors += data.results.errors ? data.results.errors.length : 0;
+                } else if (data.error) {
+                    errors++;
+                }
+            } catch (error) {
+                errors++;
+            }
+
+            const currentTime = Date.now();
+            const elapsed = (currentTime - startTime) / 1000;
+            const rate = (i + 1) / elapsed;
+            const remaining = total - (i + 1);
+            const eta = remaining / rate;
+
+            $('#progressBar').progress({ percent: ((i + 1) / total) * 100 });
+            progressLabel.textContent = `Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+            etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining`;
+
+            if (abortMigration) {
+                progressLabel.textContent = `Migration aborted. Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+                break;
+            }
+        }
+
+        if (!abortMigration) {
+            progressLabel.textContent = `Migration completed! Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+        }
+        etaDisplay.textContent = '';
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Migration';
+        abortBtn.style.display = 'none';
+
+        function resetMigrationForm() {
+            startBtn.disabled = false;
+            startBtn.textContent = 'Start Migration';
+            progressDiv.style.display = 'none';
+        }
+    });
+
+    // Add connector
+    document.getElementById('addConnectorBtn').addEventListener('click', function() {
+        document.getElementById('modalHeader').textContent = 'Add Storage Connector';
+        document.querySelector('input[name="action"]').value = 'add_connector';
+        document.getElementById('connectorNameInput').value = '';
+        document.getElementById('connectorForm').reset();
+        toggleConnectorFields();
+        $('#connectorModal').modal('show');
+    });
+
+    // Edit connector
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('edit-connector')) {
+            const name = e.target.dataset.name;
+            const config = connectors[name];
+
+            document.getElementById('modalHeader').textContent = 'Edit Storage Connector';
+            document.querySelector('input[name="action"]').value = 'update_connector';
+            document.getElementById('connectorNameInput').value = name;
+            document.querySelector('input[name="connector_display_name"]').value = config.name;
+            document.querySelector('input[name="path_prefix"]').value = config.path_prefix || '';
+            document.querySelector('select[name="connector_type"]').value = config.type;
+
+            if (config.type === 'local') {
+                document.querySelector('input[name="local_path"]').value = config.path || '';
+            } else if (config.type === 's3') {
+                document.querySelector('input[name="s3_bucket"]').value = config.bucket || '';
+                document.querySelector('input[name="s3_region"]').value = config.region || 'us-east-1';
+                document.querySelector('input[name="s3_endpoint"]').value = config.endpoint || '';
+                document.querySelector('input[name="s3_key"]').value = config.key || '';
+                document.querySelector('input[name="s3_secret"]').value = config.secret || '';
+            }
+
+            toggleConnectorFields();
+            $('#connectorModal').modal('show');
+        }
+    });
+
+    // Delete connector
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('delete-connector')) {
+            const name = e.target.dataset.name;
+            if (confirm(`Are you sure you want to delete the connector "${name}"?`)) {
+                const formData = new FormData();
+                formData.append('action', 'delete_connector');
+                formData.append('connector_name', name);
+                submitForm(formData, 'Connector deleted!').then(success => {
+                    if (success) {
+                        const item = document.querySelector(`.connector-item[data-name="${name}"]`);
+                        if (item) item.remove();
+                    }
+                });
+            }
+        }
+    });
+
+    // Connector type change
+    document.getElementById('connectorTypeSelect').addEventListener('change', toggleConnectorFields);
+
+    // Save connector
+    document.getElementById('saveConnectorBtn').addEventListener('click', function() {
+        const form = document.getElementById('connectorForm');
+        const formData = new FormData(form);
+
+        // Generate name for new connectors
+        if (formData.get('action') === 'add_connector' && !formData.get('connector_name')) {
+            const displayName = formData.get('connector_display_name');
+            const name = displayName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            formData.set('connector_name', name);
+        }
+
+        submitForm(formData, 'Connector saved!').then(success => {
+            if (success) {
+                $('#connectorModal').modal('hide');
+                location.reload(); // Refresh to show changes
+            }
+        });
+    });
+
+    // Test S3 connection
+    document.getElementById('testS3ConnectionBtn').addEventListener('click', function() {
+        const form = document.getElementById('connectorForm');
+        const formData = new FormData(form);
+        formData.set('action', 'test_connection');
+
+        this.disabled = true;
+        this.textContent = 'Testing...';
+
+        fetch('/admin/settings/storage', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                alert('Connection successful!');
+            } else if (data.error) {
+                alert('Connection failed: ' + data.error);
+            } else {
+                alert('Unexpected response');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error testing connection');
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.textContent = 'Test Connection';
+        });
+    });
+
+    function toggleConnectorFields() {
+        const type = document.getElementById('connectorTypeSelect').value;
+        const localFields = document.querySelector('.local-fields');
+        const s3Fields = document.querySelector('.s3-fields');
+        const testS3Btn = document.getElementById('testS3ConnectionBtn');
+
+        localFields.style.display = 'none';
+        s3Fields.style.display = 'none';
+        testS3Btn.style.display = 'none';
+
+        if (type === 'local') {
+            localFields.style.display = 'block';
+        } else if (type === 's3') {
+            s3Fields.style.display = 'block';
+            testS3Btn.style.display = 'inline-block';
+        }
+    }
+
+    function submitForm(formData, successMessage) {
+        return fetch('/admin/settings/storage', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                alert(successMessage);
+                return true;
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+                return false;
+            } else {
+                alert('Unexpected response');
+                return false;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error submitting form');
+            return false;
+        });
+    }
+});
+</script>
 {/block}

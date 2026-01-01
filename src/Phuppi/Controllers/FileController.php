@@ -8,6 +8,8 @@ use Phuppi\Voucher;
 use Phuppi\UploadedFile;
 use Phuppi\UploadedFileToken;
 use Phuppi\Permissions\FilePermission;
+use Phuppi\Storage\LocalStorage;
+use Phuppi\Storage\S3Storage;
 
 class FileController
 {
@@ -27,11 +29,8 @@ class FileController
             Flight::session()->clear();
             Flight::redirect('/login');
         }
-        Flight::logger()->info('FileController index called with session ID: ' . $sessionId . ', last activity: ' . ($lastActivity ? date('Y-m-d H:i:s', $lastActivity) : 'none'));
         $files = UploadedFile::findByUser($sessionId);
-        Flight::logger()->info('Files loaded: ' . count($files));
         Flight::render('home.latte', ['files' => $files, 'name' => 'Phuppi!', 'sessionId' => $sessionId]);
-        Flight::logger()->info('Render completed');
     }
 
     private function getCurrentUser(): ?User
@@ -58,7 +57,6 @@ class FileController
 
     public function listFiles()
     {
-        Flight::logger()->info('listFiles called with session ID: ' . (Flight::session()->get('id') ?? 'none'));
         
         if (!Flight::user()->can(FilePermission::LIST)) {
             Flight::logger()->warning('listFiles: Forbidden access');
@@ -86,7 +84,7 @@ class FileController
 
         $total = $result['total'];
         $totalPages = ceil($total / $limit);
-        Flight::logger()->info('listFiles: returning ' . count($result['files']) . ' files out of ' . $total . ' total');
+        
 
         $fileData = array_map(function ($file) {
             return [
@@ -111,32 +109,29 @@ class FileController
 
     public function getFile($id)
     {
-
-        // Check for token-based access
-        $token = Flight::request()->query['token'] ?? null;
-
-        if(!$token) {
-            Flight::halt(403, 'Token required');
-        }
-
-        if(strlen($token) > 255) {
-            Flight::halt(413, 'Invalid token');
-        }
-        
         $file = UploadedFile::findById($id);
-        if (!$file) {
-            Flight::halt(403, 'Invalid or expired token');
-        }
-        
-        $fileToken = UploadedFileToken::findByToken($token);
-        if (!$fileToken || $fileToken->uploaded_file_id != $id) {
-            Flight::halt(403, 'Invalid or expired token');
-        }
-        
 
-        $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-        if (!file_exists($filePath)) {
-            Flight::halt(404, 'File not found on disk');
+        if(!Flight::user()->hasRole('admin') && Flight::user()->id !== $file->user_id) {
+            // Only an admin or the file's owner can view their own file without a token
+
+            $token = Flight::request()->query['token'] ?? null;
+            if(!$token) {
+                Flight::halt(403, 'Token required');
+            }
+            if(strlen($token) > 255) {
+                Flight::halt(413, 'Invalid token');
+            }
+            if (!$file) {
+                Flight::halt(403, 'Invalid or expired token');
+            }
+            $fileToken = UploadedFileToken::findByToken($token);
+            if (!$fileToken || $fileToken->uploaded_file_id != $id) {
+                Flight::halt(403, 'Invalid or expired token');
+            }
+        }
+
+        if (!Flight::storage()->exists($file->getUsername() . '/' . $file->filename)) {
+            Flight::halt(404, 'File not found');
         }
 
         // Clear any output buffers to prevent memory issues
@@ -149,13 +144,36 @@ class FileController
         $forceDownload = Flight::request()->query['download'] ?? false;
         $disposition = $forceDownload || !(str_starts_with($file->mimetype, 'image/') || str_starts_with($file->mimetype, 'video/')) ? 'attachment' : 'inline';
         header('Content-Disposition: ' . $disposition . '; filename="' . $file->display_filename . '"');
-        header('Content-Length: ' . filesize($filePath));
-        
-        // Stream the file
-        $fp = fopen($filePath, 'rb');
-        fpassthru($fp);
-        fclose($fp);
-        exit;
+
+        if(Flight::storage() instanceof S3Storage) {
+            // calculate a token that expires after download - expect 1 GB per hour download speed
+            $expiresIn = ceil(3600 * ($file->filesize / 1024 / 1024 / 1024) );
+            
+            // min 15 seconds
+            $expiresIn = $expiresIn < 15 ? 15 : $expiresIn;
+
+            if($forceDownload) {
+                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename, $expiresIn, [
+                    'ResponseContentDisposition' => $disposition . '; filename="' . $file->display_filename . '"'
+                ]);
+            } else {
+                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename, $expiresIn);
+            }
+            Flight::redirect($presignedUrl, 301);
+            exit;
+        }
+
+        if(Flight::storage() instanceof LocalStorage) {
+            $response = Flight::response();
+            $response->header('Content-Type', $file->mimetype);
+            $response->header('Content-Length', $file->filesize);
+            $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
+            $response->send(fpassthru($stream));
+            fclose($stream);
+            exit;
+        }
+        throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+
     }
 
     public function uploadFile()
@@ -183,17 +201,44 @@ class FileController
                 $results[] = ['error' => 'Upload error for ' . $name];
                 continue;
             }
-            // Move file to uploads/
-            $filename = uniqid() . '_' . $name;
-            $path = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $filename;
-            if (!move_uploaded_file($uploads['tmp_name'][$index], $path)) {
-                $results[] = ['error' => 'Failed to save file ' . $name];
+            // Determine the path prefix based on user or voucher
+            $user = $this->getCurrentUser();
+            $voucher = $this->getCurrentVoucher();
+            // Store file using storage abstraction
+            $uniqueName = uniqid() . '_' . $name;
+            if(Flight::storage() instanceof S3Storage) {
+                $presignedUrl = Flight::storage()->getPresignedPutUrl($user->username . '/' . $uniqueName, $uploads['type'][$index]);
+                if (!$presignedUrl) {
+                    $results[] = ['error' => 'Failed to generate presigned URL for ' . $name];
+                    continue;
+                }
+                $results[] = [
+                    'presigned_url' => $presignedUrl,
+                    'filename' => $uniqueName,
+                    'display_filename' => $name,
+                    'filesize' => $uploads['size'][$index],
+                    'mimetype' => $uploads['type'][$index],
+                    'extension' => pathinfo($name, PATHINFO_EXTENSION),
+                    'user_id' => $user ? $user->id : null,
+                    'voucher_id' => $voucher ? $voucher->id : null
+                ];
                 continue;
             }
+
+            if(Flight::storage() instanceof LocalStorage) {
+                if (!Flight::storage()->put($user->username . '/' . $uniqueName, $uploads['tmp_name'][$index])) {
+                    Flight::logger()->error('FileController uploadFile: failed to save file ' . $name);
+                    $results[] = ['error' => 'Failed to save file ' . $name];
+                    continue;
+                }
+            }
+            
+            
+            
             $file = new UploadedFile();
-            $file->user_id = $this->getCurrentUser() ? $this->getCurrentUser()->id : null;
-            $file->voucher_id = $this->getCurrentVoucher() ? $this->getCurrentVoucher()->id : null;
-            $file->filename = $filename;
+            $file->user_id = $user ? $user->id : null;
+            $file->voucher_id = $voucher ? $voucher->id : null;
+            $file->filename = $uniqueName;
             $file->display_filename = $name;
             $file->filesize = $uploads['size'][$index];
             $file->mimetype = $uploads['type'][$index];
@@ -235,10 +280,7 @@ class FileController
         if (!Flight::user()->can(FilePermission::DELETE, $file)) {
             Flight::halt(403, 'Forbidden');
         }
-        $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-        if (file_exists($filePath)) {
-            unlink($filePath);
-        }
+        Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
         if ($file->delete()) {
             Flight::json(['message' => 'File deleted']);
         } else {
@@ -266,10 +308,7 @@ class FileController
                 $errors[] = "Forbidden to delete file $id";
                 continue;
             }
-            $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-            if (file_exists($filePath)) {
-                unlink($filePath);
-            }
+            Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
             if ($file->delete()) {
                 $deleted++;
             } else {
@@ -300,24 +339,85 @@ class FileController
             $files[] = $file;
         }
 
-        // Create zip
-        $zip = new \ZipArchive();
         $zipFilename = 'downloads_' . time() . '.zip';
         $zipPath = sys_get_temp_dir() . '/' . $zipFilename;
-        if ($zip->open($zipPath, \ZipArchive::CREATE) !== TRUE) {
+
+        $zipDir = dirname($zipPath);
+        if (!is_writable($zipDir)) {
+            Flight::logger()->error('Zip directory not writable: ' . $zipDir);
+            Flight::json(['error' => 'Zip directory not writable'], 500);
+            return;
+        }
+
+        // Create the zip
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            Flight::logger()->error('Failed to open zip at: ' . $zipPath);
             Flight::json(['error' => 'Failed to create zip file'], 500);
             return;
         }
 
+        $tempFiles = [];
+
         foreach ($files as $file) {
-            $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-            if (file_exists($filePath)) {
-                $zip->addFile($filePath, $file->display_filename);
+            $filePath = $file->getUsername() . '/' . $file->filename;
+            if (Flight::storage()->exists($filePath)) {
+                $stream = Flight::storage()->getStream($filePath);
+                if ($stream) {
+                    // Create temp file to avoid memory exhaustion
+                    $tempPath = tempnam(sys_get_temp_dir(), 'zip_download_');
+                    $tempHandle = fopen($tempPath, 'w');
+                    if (!$tempHandle) {
+                        Flight::logger()->error('Failed to create temp file for: ' . $filePath);
+                        continue;
+                    }
+                    if (is_resource($stream)) {
+                        stream_copy_to_stream($stream, $tempHandle);
+                        fclose($stream);
+                    } elseif (method_exists($stream, 'detach')) {
+                        // Psr7 stream, detach to get resource
+                        $resource = $stream->detach();
+                        if (is_resource($resource)) {
+                            stream_copy_to_stream($resource, $tempHandle);
+                            fclose($resource);
+                        } else {
+                            Flight::logger()->error('Could not detach stream for file: ' . $filePath);
+                            fclose($tempHandle);
+                            $tempFiles[] = $tempPath;
+                            continue;
+                        }
+                    } elseif (method_exists($stream, 'getContents')) {
+                        // Fallback, but may cause memory issues for large files
+                        fwrite($tempHandle, $stream->getContents());
+                    } else {
+                        Flight::logger()->error('Unsupported stream type for file: ' . $filePath);
+                        fclose($tempHandle);
+                        $tempFiles[] = $tempPath;
+                        continue;
+                    }
+                    fclose($tempHandle);
+
+                    $zip->addFile($tempPath, $file->display_filename);
+
+                    // Clean up temp file
+                    $tempFiles[] = $tempPath;
+                }
             }
         }
         if (!$zip->close()) {
+            Flight::logger()->error('Failed to finalize zip file');
+            foreach ($tempFiles as $tempFile) {
+                if (file_exists($tempFile)) {
+                    unlink($tempFile);
+                }
+            }
             Flight::json(['error' => 'Failed to finalize zip file'], 500);
             return;
+        }
+        foreach ($tempFiles as $tempFile) {
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
+            }
         }
 
         if (!file_exists($zipPath)) {
@@ -326,9 +426,18 @@ class FileController
         }
 
         // Stream the zip
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $zipFilename . '"');
         header('Content-Length: ' . filesize($zipPath));
+        $stream = fopen($zipPath, 'rb');
+        while (!feof($stream)) {
+            echo fread($stream, 65536); // Send chunks
+            flush();
+        }
+        fclose($stream);
         readfile($zipPath);
         unlink($zipPath); // Clean up
         exit;
@@ -399,21 +508,76 @@ class FileController
 
     public function getThumbnail($id)
     {
-        $file = UploadedFile::findById($id);
-        if (!$file) {
-            Flight::halt(404, 'File not found');
+        
+        try {
+            $file = UploadedFile::findById($id);
+            if (!$file) {
+                Flight::logger()->error('getThumbnail: File not found for ID: ' . $id);
+                Flight::halt(404, 'File not found');
+            }
+            if (!Flight::user()->can(FilePermission::VIEW, $file)) {
+                Flight::logger()->warning('getThumbnail: Forbidden access for file ID: ' . $id);
+                Flight::halt(403, 'Forbidden');
+            }
+            if(Flight::storage() instanceof S3Storage) {
+                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename);
+                Flight::redirect($presignedUrl, 301);
+            }
+            if(Flight::storage() instanceof LocalStorage) {
+                $response = Flight::response();
+                $response->header('Content-Type', $file->mimetype);
+                $response->header('Content-Length', $file->filesize);
+                $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
+                $response->send(fpassthru($stream));
+                fclose($stream);
+                exit;
+            }
+            throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+            
+        } catch (\Exception $e) {
+            Flight::logger()->error('getThumbnail: Exception: ' . $e->getMessage());
+            Flight::halt(500, 'Internal server error');
         }
-        if (!Flight::user()->can(FilePermission::VIEW, $file)) {
+    }
+    public function registerUploadedFile()
+    {
+        if (!Flight::user()->can(FilePermission::PUT)) {
             Flight::halt(403, 'Forbidden');
         }
-        $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-        if (!file_exists($filePath)) {
-            Flight::halt(404, 'File not found on disk: ' . $filePath);
+        $data = Flight::request()->data;
+        $filename = $data->filename ?? null;
+        $displayFilename = $data->display_filename ?? null;
+        $filesize = $data->filesize ?? null;
+        $mimetype = $data->mimetype ?? null;
+        $extension = $data->extension ?? null;
+        $userId = $data->user_id ?? null;
+        $voucherId = $data->voucher_id ?? null;
+
+        if (!$filename || !$displayFilename || !$filesize || !$mimetype) {
+            Flight::halt(400, 'Missing required fields');
         }
-        Flight::response()->header('Content-Type', $file->mimetype);
-        Flight::response()->header('Content-Disposition', 'attachment; filename="' . $file->display_filename . '"');
-        readfile($filePath);
+
+        // Verify the file exists in storage
+        if (!Flight::storage()->exists(Flight::user()->username . '/' . $filename)) {
+            Flight::halt(400, 'File not found in storage');
+        }
+
+        $file = new UploadedFile();
+        $file->user_id = $userId;
+        $file->voucher_id = $voucherId;
+        $file->filename = $filename;
+        $file->display_filename = $displayFilename;
+        $file->filesize = $filesize;
+        $file->mimetype = $mimetype;
+        $file->extension = $extension;
+
+        if ($file->save()) {
+            Flight::json(['id' => $file->id, 'message' => 'File registered: ' . $displayFilename]);
+        } else {
+            Flight::halt(500, 'Failed to register file');
+        }
     }
+
     public function getPreview($id)
     {
         $file = UploadedFile::findById($id);
@@ -423,12 +587,23 @@ class FileController
         if (!Flight::user()->can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
-        $filePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $file->filename;
-        if (!file_exists($filePath)) {
-            Flight::halt(404, 'File not found on disk: ' . $filePath);
+
+        if(Flight::storage() instanceof S3Storage) {
+            $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename);
+            Flight::redirect($presignedUrl, 301);
+            exit;
         }
-        Flight::response()->header('Content-Type', $file->mimetype);
-        Flight::response()->header('Content-Disposition', 'attachment; filename="' . $file->display_filename . '"');
-        readfile($filePath);
+
+        if(Flight::storage() instanceof LocalStorage) {
+            $response = Flight::response();
+            $response->header('Content-Type', $file->mimetype);
+            $response->header('Content-Length', $file->filesize);
+            $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
+            $response->send(fpassthru($stream));
+            fclose($stream);
+            exit;
+        }
+
+        throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
     }
 }

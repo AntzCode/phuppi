@@ -6,6 +6,12 @@ services:
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKETS: ${MINIO_BUCKETS:-phuppi-files}
+      MINIO_PATH_PREFIX: ${MINIO_PATH_PREFIX:-data/uploadedFiles}
     ports:
       - "80:80"
     volumes:
@@ -15,3 +21,49 @@ services:
       - ./docker/php/php.ini-development:/usr/local/etc/php/php.ini
       - ./docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf
     user: "${UID:-1000}:${GID:-1000}"
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    networks:
+      default:
+        aliases:
+          - phuppi-files.minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_SERVER_URL: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_LOG_LEVEL: debug
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio-init:
+    image: minio/mc:latest
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKETS: ${MINIO_BUCKETS:-phuppi-files} 
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set myminio http://minio:9000 \"$MINIO_ACCESS_KEY\" \"$MINIO_SECRET_KEY\"; do 
+        sleep 2; 
+      done;
+      mc mb -p myminio/$MINIO_BUCKETS;
+      mc anonymous set download myminio/$MINIO_BUCKETS;
+      exit 0;
+      "
+volumes:
+  minio_data:

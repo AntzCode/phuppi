@@ -19,6 +19,7 @@ register_shutdown_function(function() {
 // include Flight framework and session plugin
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'autoload.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR . 'permissions' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Permission.php');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'aws' . DIRECTORY_SEPARATOR . 'aws-autoloader.php');
 
 // PSR-4 Autoloader
 spl_autoload_register(function ($class) {
@@ -26,7 +27,7 @@ spl_autoload_register(function ($class) {
         'Phuppi\\' => __DIR__ . DIRECTORY_SEPARATOR . 'Phuppi' . DIRECTORY_SEPARATOR,
         'Latte\\' => __DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Latte' . DIRECTORY_SEPARATOR,
         'Valitron\\' => __DIR__ . DIRECTORY_SEPARATOR . 'valitron' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Valitron' . DIRECTORY_SEPARATOR,
-        'Psr\\Log\\' => __DIR__ . DIRECTORY_SEPARATOR . 'psr' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR
+        'Psr\\Log\\' => __DIR__ . DIRECTORY_SEPARATOR . 'psr' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR,
     ];
 
     foreach ($prefixes as $prefix => $base_dir) {
@@ -88,6 +89,81 @@ Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path')
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 });
 
+// Load storage connectors configuration from database
+$db = Flight::db();
+
+// Load connectors from storage_connectors table
+$connectors = [];
+$activeConnector = 'local-default';
+
+$connectorRows = $db->query("SELECT name, type, config FROM storage_connectors")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($connectorRows as $row) {
+    $connectors[$row['name']] = json_decode($row['config'], true);
+    $connectors[$row['name']]['type'] = $row['type'];
+}
+
+// Migrate existing connectors from settings to table
+$settingsConnectors = $db->query("SELECT name, value FROM settings WHERE name LIKE 'storage_connector_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
+foreach ($settingsConnectors as $settingName => $value) {
+    $connectorName = substr($settingName, strlen('storage_connector_'));
+    if (!isset($connectors[$connectorName])) {
+        $config = json_decode($value, true);
+        $type = $config['type'];
+        $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)')->execute([
+            $connectorName,
+            $type,
+            $value
+        ]);
+        $connectors[$connectorName] = $config;
+        // Remove old setting
+        $db->prepare('DELETE FROM settings WHERE name = ?')->execute([$settingName]);
+    }
+}
+
+// If no connectors, create default local
+if (empty($connectors)) {
+    $defaultConfig = [
+        'type' => 'local',
+        'path' => null, // Uses default data/uploads
+        'name' => 'Local Storage (Default)',
+    ];
+    $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)')->execute([
+        'local-default',
+        'local',
+        json_encode($defaultConfig)
+    ]);
+    $connectors['local-default'] = $defaultConfig;
+}
+
+// Load active connector from settings (for now, later move to table)
+$activeSetting = $db->query("SELECT value FROM settings WHERE name = 'active_storage_connector'")->fetchColumn();
+if ($activeSetting) {
+    $activeConnector = $activeSetting;
+}
+
+// Auto-create MinIO connector if it doesn't exist and we're in development/testing
+if (!isset($connectors['minio-default']) && getenv('MINIO_ACCESS_KEY')) {
+    $minioConfig = [
+        'type' => 's3',
+        'name' => 'MinIO Storage (Docker)',
+        'bucket' => getenv('MINIO_BUCKETS') ?: 'phuppi-files',
+        'region' => 'us-east-1',
+        'key' => getenv('MINIO_ACCESS_KEY'),
+        'secret' => getenv('MINIO_SECRET_KEY'),
+        'endpoint' => 'http://minio:9000',
+        'path_prefix' => getenv('MINIO_PATH_PREFIX') ?: 'data/uploadedFiles',
+    ];
+    $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)')->execute([
+        'minio-default',
+        's3',
+        json_encode($minioConfig)
+    ]);
+    $connectors['minio-default'] = $minioConfig;
+}
+
+Flight::set('storage_connectors', $connectors);
+Flight::set('active_storage_connector', $activeConnector);
+
 /**
  * register Framework plugins
  */
@@ -95,6 +171,9 @@ Flight::register('session', '\Phuppi\DatabaseSession', [Flight::db(), ['table' =
 Flight::register('messages', '\Phuppi\Messages');
 Flight::register('permissions', 'flight\Permission');
 Flight::register('user', 'Phuppi\User');
+Flight::map('storage', function() {
+    return \Phuppi\Storage\StorageFactory::create();
+});
 
 /**
  * Initialize migrations system

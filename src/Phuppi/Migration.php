@@ -28,5 +28,34 @@ class Migration
         // Create index on updated_at for garbage collection
         $db->exec("CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions (updated_at)");
 
+        // Run pending migrations
+        self::run();
+    }
+
+    public static function run(): void
+    {
+        $db = Flight::db();
+        $migrationsPath = __DIR__ . '/../migrations';
+
+        if (!is_dir($migrationsPath)) {
+            return;
+        }
+
+        // Get executed migrations
+        $executed = $db->query("SELECT name FROM migrations")->fetchAll(\PDO::FETCH_COLUMN, 0);
+        $executed = array_flip($executed);
+
+        // Get migration files
+        $files = glob($migrationsPath . '/*.php');
+        sort($files);
+
+        foreach ($files as $file) {
+            $name = basename($file, '.php');
+            if (!isset($executed[$name])) {
+                Flight::logger()->info("Running migration: $name");
+                require_once $file;
+                Flight::logger()->info("Migration completed: $name");
+            }
+        }
     }
 }

@@ -37,6 +37,7 @@ if (!$usersTableExists) {
 
     // Admin settings
     Flight::route('GET /admin/settings', [new \Phuppi\Controllers\SettingsController(), 'index']);
+    Flight::route('POST /admin/settings/storage', [new \Phuppi\Controllers\SettingsController(), 'updateStorage']);
 
     // File routes
     Flight::route('GET /files', [new \Phuppi\Controllers\FileController(), 'listFiles']);
@@ -46,6 +47,7 @@ if (!$usersTableExists) {
 
 
     Flight::route('POST /files', [new \Phuppi\Controllers\FileController(), 'uploadFile']);
+    Flight::route('POST /files/register', [new \Phuppi\Controllers\FileController(), 'registerUploadedFile']);
     Flight::route('PUT /files/@id', [new \Phuppi\Controllers\FileController(), 'updateFile']);
     Flight::route('DELETE /files/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile']);
     Flight::route('DELETE /files', [new \Phuppi\Controllers\FileController(), 'deleteMultipleFiles']);

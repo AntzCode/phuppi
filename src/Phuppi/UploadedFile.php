@@ -17,6 +17,8 @@ class UploadedFile
     public $uploaded_at;
     public $notes;
 
+    protected ?User $ownerUser = null;
+
     public function __construct(array $data = [])
     {
         $this->id = $data['id'] ?? null;
@@ -210,5 +212,29 @@ class UploadedFile
         $db = Flight::db();
         $stmt = $db->prepare('DELETE FROM uploaded_files WHERE id = ?');
         return $stmt->execute([$this->id]);
+    }
+
+    public function getUsername(): string
+    {
+        if ($this->user_id) {
+            if (!$this->ownerUser instanceof User) {
+                $this->ownerUser = User::findById($this->user_id);
+            }
+            if ($this->ownerUser) {
+                return $this->ownerUser->username;
+            } else {
+                Flight::logger()->warning('getUsername: User not found for user_id: ' . $this->user_id);
+                return '';
+            }
+        } elseif ($this->voucher_id) {
+            $voucher = new \Phuppi\Voucher();
+            if ($voucher->load($this->voucher_id)) {
+                return 'voucher_' . $voucher->voucher_code;
+            } else {
+                Flight::logger()->warning('getUsername: Voucher not found for voucher_id: ' . $this->voucher_id);
+                return '';
+            }
+        }
+        return '';
     }
 }
