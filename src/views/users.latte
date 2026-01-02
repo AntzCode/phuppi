@@ -1,5 +1,12 @@
 {parameters
-    array $can = [],
+    array $can = [
+        'user_list' => user_can('user_list'),
+        'user_create' => user_can('user_create'),
+        'user_delete' => user_can('user_delete'),
+        'user_view' => user_can('user_view'),
+        'user_update' => user_can('user_update'),
+        'user_permit' => user_can('user_permit'),
+    ],
     array $users = [],
     array $avatars = [],
     array $filePermissions = [],
@@ -138,12 +145,12 @@
                 ${can.user_list && users.map(user => {
             const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
             return html`
-                        <div class="ui item" style="position: relative;">
+                        <div class="ui item " style="position: relative;">
                             ${can.user_view && html`<div class="ui tiny raised image">
                                 <img src="/assets/images/default-avatars/${randomAvatar}" />
                             </div>`}
                             <div class="content">
-                                <h3 class="header ui label" style="width: 100%">${user.username}</h3>
+                                <h3 class="header">${user.username}</h3>
                                 <div class="description">
                                     <div class="ui grid container">
                                         <div class="ten wide column">

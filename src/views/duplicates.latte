@@ -70,7 +70,7 @@
                                             [{$file->id}] {$file->display_filename}
                                         </div>
                                         <div class="meta">
-                                            <p>{$file->notes}</p>
+                                            <p>{if $file->notes}{substr($file->notes, 0, 100)}{if strlen($file->notes) > 100}...{/if}{else}No notes{/if}</p>
                                             <span>Size: {include readableSize, size => $file->filesize} | Type: {$file->mimetype}</span><br>
                                             <span>Uploaded: {$file->uploaded_at}</span>
                                         </div>

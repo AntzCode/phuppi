@@ -16,6 +16,7 @@
 namespace Phuppi\Controllers;
 
 use Flight;
+use Phuppi\Helper;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\VoucherPermission;
@@ -29,15 +30,9 @@ class VoucherController
      */
     public function listVouchers(): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::redirect('/login');
-        }
 
         $user = Flight::user();
-        if (!$user || !$user->can(VoucherPermission::LIST)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
+        
         $vouchers = \Phuppi\Voucher::findAll();
         $voucherData = array_map(function ($voucher) {
             return [
@@ -80,15 +75,7 @@ class VoucherController
      */
     public function createVoucher(): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-
         $user = Flight::user();
-        if (!$user || !$user->can(VoucherPermission::CREATE)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         $data = Flight::request()->data;
         $voucherCode = trim($data->voucher_code ?? '');
         $notes = ''; // No notes field in form
@@ -142,22 +129,20 @@ class VoucherController
      */
     public function updateVoucher($id): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-
-        $user = Flight::user();
-        if (!$user) {
-            Flight::halt(403, 'Forbidden');
-        }
 
         $voucher = \Phuppi\Voucher::findById($id);
-        if (!$voucher || !$user->can(VoucherPermission::UPDATE, $voucher)) {
+        if (!Helper::can(VoucherPermission::UPDATE, $voucher)) {
             Flight::halt(403, 'Forbidden');
+        }
+
+        if(!$voucher) {
+            Flight::halt(404, 'Voucher not found');
         }
 
         $data = Flight::request()->data;
+        
         $voucher->notes = trim($data->notes ?? $voucher->notes);
+        
         if (isset($data->valid_for)) {
             $voucher->valid_for = $this->parseValidFor($data->valid_for);
             $voucher->expires_at = $voucher->valid_for ? date('Y-m-d H:i:s', strtotime("+$voucher->valid_for hours")) : null;
@@ -178,18 +163,15 @@ class VoucherController
      */
     public function deleteVoucher($id): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-
-        $user = Flight::user();
-        if (!$user) {
-            Flight::halt(403, 'Forbidden');
-        }
 
         $voucher = \Phuppi\Voucher::findById($id);
-        if (!$voucher || !$user->can(VoucherPermission::DELETE, $voucher)) {
+        
+        if (!Helper::can(VoucherPermission::DELETE, $voucher)) {
             Flight::halt(403, 'Forbidden');
+        }
+
+        if (!$voucher) {
+            Flight::halt(404, 'Voucher not found');
         }
 
         if ($voucher->delete()) {
@@ -207,18 +189,15 @@ class VoucherController
      */
     public function addPermission($id): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-
-        $user = Flight::user();
-        if (!$user) {
-            Flight::halt(403, 'Forbidden');
-        }
 
         $voucher = \Phuppi\Voucher::findById($id);
-        if (!$voucher || !$user->can(VoucherPermission::UPDATE, $voucher)) {
+
+        if (!Helper::can(VoucherPermission::UPDATE, $voucher)) {
             Flight::halt(403, 'Forbidden');
+        }
+
+        if (!$voucher) {
+            Flight::halt(404, 'Voucher not found');
         }
 
         $data = Flight::request()->data;
@@ -250,18 +229,14 @@ class VoucherController
      */
     public function removePermission($id): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-
-        $user = Flight::user();
-        if (!$user) {
-            Flight::halt(403, 'Forbidden');
-        }
 
         $voucher = \Phuppi\Voucher::findById($id);
-        if (!$voucher || !$user->can(VoucherPermission::UPDATE, $voucher)) {
+        if (!Helper::can(VoucherPermission::UPDATE, $voucher)) {
             Flight::halt(403, 'Forbidden');
+        }
+
+        if (!$voucher) {
+            Flight::halt(404, 'Voucher not found');
         }
 
         $data = Flight::request()->data;

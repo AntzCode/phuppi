@@ -111,10 +111,10 @@ class Note
         $query = 'SELECT * FROM notes WHERE user_id = ?';
         switch ($sort) {
             case 'date_desc':
-                $query .= ' ORDER BY updated_at DESC';
+                $query .= ' ORDER BY created_at DESC';
                 break;
             case 'date_asc':
-                $query .= ' ORDER BY updated_at ASC';
+                $query .= ' ORDER BY created_at ASC';
                 break;
         }
         if ($limit > 0) {
@@ -186,10 +186,10 @@ class Note
         $orderBy = 'ORDER BY ';
         switch ($sort) {
             case 'date_oldest':
-                $orderBy .= 'updated_at ASC';
+                $orderBy .= 'created_at ASC';
                 break;
             case 'date_newest':
-                $orderBy .= 'updated_at DESC';
+                $orderBy .= 'created_at DESC';
                 break;
             case 'filename_up':
                 $orderBy .= 'filename ASC';
@@ -198,7 +198,7 @@ class Note
                 $orderBy .= 'filename DESC';
                 break;
             default:
-                $orderBy .= 'updated_at DESC';
+                $orderBy .= 'created_at DESC';
         }
 
         // Get total count

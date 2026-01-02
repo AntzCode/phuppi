@@ -9,6 +9,7 @@ Serverless/*/node_modules/
 
 ROADMAP.md
 
+.env
 .phpdoc
 
 # Prevent accidentally committing the delete of html/install.php  

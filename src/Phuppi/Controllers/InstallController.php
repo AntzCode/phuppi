@@ -27,6 +27,14 @@ class InstallController
      */
     public function index(): void
     {
+        $db = Flight::db();
+        $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
+
+        if($usersTableExists) {
+            Flight::redirect('/');
+            exit;
+        }
+
         Flight::render('installer.latte', [
             'formUrl' => '/install',
             'username' => '',
@@ -41,6 +49,15 @@ class InstallController
      */
     public function install(): void
     {
+        $db = Flight::db();
+
+        $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
+
+        if($usersTableExists) {
+            Flight::redirect('/');
+            exit;
+        }
+
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['username', 'password']);
         $v->rule('lengthMin', 'password', 6);
@@ -64,7 +81,6 @@ class InstallController
         require_once(Flight::get('flight.root.path') . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'migrations'  . DIRECTORY_SEPARATOR . '001_install_migration.php');
 
         // Create superadmin with provided credentials
-        $db = Flight::db();
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
 
         $statement = $db->prepare('INSERT INTO users (username, password, created_at, updated_at, notes) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)');

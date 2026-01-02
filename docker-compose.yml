@@ -79,6 +79,8 @@ services:
 
   phpdoc:
     image: phpdoc/phpdoc:latest
+    profiles:
+      - docs
     volumes:
       - .:/data
     working_dir: /data

@@ -119,13 +119,13 @@ class Helper
      * @param null|Note|UploadedFile|User|Voucher $subject The subject of the action.
      * @return bool True if allowed, false otherwise.
      */
-    public static function userCan(NotePermission|UserPermission|VoucherPermission|FilePermission|string $permission, null|Note|UploadedFile|User|Voucher $subject = null): bool
+    public static function can(NotePermission|UserPermission|VoucherPermission|FilePermission|string $permission, null|Note|UploadedFile|User|Voucher $subject = null): bool
     {
         $user = Flight::user();
         $voucher = Flight::voucher();
-        if ($voucher && $voucher->id) {
+        if ($voucher->id) {
             return $voucher->can($permission, $subject);
-        } else if ($user && $user->id) {
+        } else if ($user->id) {
             return $user->can($permission, $subject);
         } else {
             return false;

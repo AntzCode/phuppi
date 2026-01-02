@@ -13,13 +13,36 @@
  * @since 2.0.0
  */
 
+use Phuppi\Controllers\InstallController;
+use Phuppi\Controllers\NoteController;
+use Phuppi\Controllers\UserController;
+use Phuppi\Controllers\FileController;
+use Phuppi\Controllers\VoucherController;
+use Phuppi\Controllers\SettingsController;
+
+use Phuppi\Helper;
+use Phuppi\Note;
+use Phuppi\NoteToken;
+use Phuppi\Permissions\Middleware\IsAdmin;
+use Phuppi\Permissions\Middleware\IsAuthenticated;
+use Phuppi\Permissions\Middleware\IsAuthenticatedUser;
+use Phuppi\Permissions\Middleware\IsAuthenticatedVoucher;
+use Phuppi\Permissions\FilePermission;
+use Phuppi\Permissions\NotePermission;
+use Phuppi\Permissions\UserPermission;
+use Phuppi\Permissions\VoucherPermission;
+use Phuppi\Permissions\Middleware\HasPermission;
+use Phuppi\Permissions\Middleware\RequireLogin;
+use Phuppi\UploadedFileToken;
+use Phuppi\UploadedFile;
+
 // Check if first migration has been run (users table exists)
 $db = Flight::db();
 $userCount = $db->query("SELECT count(*) as user_count FROM users")->fetchColumn();
 
 if ($userCount < 1) {
 
-    $usersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
+    $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
 
     if (!$usersTableExists) {
         // perform migration to v2
@@ -33,58 +56,171 @@ if ($userCount < 1) {
     }
 } else {
     // Normal routes
-    Flight::route('GET /', [new \Phuppi\Controllers\FileController(), 'index']);
+    Flight::route('GET /', [FileController::class, 'index'])->addMiddleware(RequireLogin::class);
 
-    Flight::route('GET /login', [new \Phuppi\Controllers\UserController(), 'login']);
-    Flight::route('POST /login', [new \Phuppi\Controllers\UserController(), 'login']);
-    Flight::route('GET /logout', [new \Phuppi\Controllers\UserController(), 'logout']);
-    Flight::route('GET /users', [new \Phuppi\Controllers\UserController(), 'listUsers']);
-    Flight::route('POST /users', [new \Phuppi\Controllers\UserController(), 'createUser']);
-    Flight::route('DELETE /users/@id', [new \Phuppi\Controllers\UserController(), 'deleteUser']);
-    Flight::route('POST /users/@id/add-permission', [new \Phuppi\Controllers\UserController(), 'addPermission']);
-    Flight::route('POST /users/@id/remove-permission', [new \Phuppi\Controllers\UserController(), 'removePermission']);
+    Flight::route('GET /login', [UserController::class, 'login']);
+    Flight::route('POST /login', [UserController::class, 'login']);
+    Flight::route('GET /logout', [UserController::class, 'logout']);
 
-    // Voucher routes
-    Flight::route('GET /vouchers', [new \Phuppi\Controllers\VoucherController(), 'listVouchers']);
-    Flight::route('POST /vouchers', [new \Phuppi\Controllers\VoucherController(), 'createVoucher']);
-    Flight::route('PUT /vouchers/@id', [new \Phuppi\Controllers\VoucherController(), 'updateVoucher']);
-    Flight::route('DELETE /vouchers/@id', [new \Phuppi\Controllers\VoucherController(), 'deleteVoucher']);
-    Flight::route('POST /vouchers/@id/add-permission', [new \Phuppi\Controllers\VoucherController(), 'addPermission']);
-    Flight::route('POST /vouchers/@id/remove-permission', [new \Phuppi\Controllers\VoucherController(), 'removePermission']);
+    Flight::router()->group('/users', function ($router) {
+        $router->get('/', [UserController::class, 'listUsers'])->addMiddleware(function () {
+            return Helper::can(UserPermission::LIST);
+        });
+        $router->post('/', [UserController::class, 'createUser'])->addMiddleware(function () {
+            return Helper::can(UserPermission::CREATE);
+        });
+        $router->delete('/@id', [UserController::class, 'deleteUser'])->addMiddleware(function () {
+            return Helper::can(UserPermission::DELETE);
+        });
+        $router->post('/@id/add-permission', [UserController::class, 'addPermission'])->addMiddleware(function () {
+            return Helper::can(UserPermission::PERMIT);
+        });
+        $router->post('/@id/remove-permission', [UserController::class, 'removePermission'])->addMiddleware(function () {
+            return Helper::can(UserPermission::PERMIT);
+        });
+    }, [IsAuthenticatedUser::class]);
+
+    // Voucher 
+    Flight::router()->group('/vouchers', function ($router) {
+        $router->get('/', [VoucherController::class, 'listVouchers'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::LIST);
+        });
+        $router->post('/', [VoucherController::class, 'createVoucher'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::CREATE);
+        });
+        $router->put('/@id', [VoucherController::class, 'updateVoucher'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::UPDATE);
+        });
+        $router->delete('/@id', [VoucherController::class, 'deleteVoucher'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::DELETE);
+        });
+        $router->post('/@id/add-permission', [VoucherController::class, 'addPermission'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::UPDATE);
+        });
+        $router->post('/@id/remove-permission', [VoucherController::class, 'removePermission'])->addMiddleware(function () {
+            return Helper::can(VoucherPermission::UPDATE);
+        });
+    }, [IsAuthenticatedUser::class]);
 
     // Admin settings
-    Flight::route('GET /admin/settings', [new \Phuppi\Controllers\SettingsController(), 'index']);
-    Flight::route('POST /admin/settings/storage', [new \Phuppi\Controllers\SettingsController(), 'updateStorage']);
+    Flight::router()->group('/admin', function ($router) {
+        $router->get('/settings', [SettingsController::class, 'index']);
+        $router->post('/settings/storage', [SettingsController::class, 'updateStorage']);
+    }, [IsAuthenticatedUser::class]);
 
     // File routes
-    Flight::route('GET /files', [new \Phuppi\Controllers\FileController(), 'listFiles']);
-    Flight::route('GET /files/@id', [new \Phuppi\Controllers\FileController(), 'getFile']);
-    Flight::route('GET /files/thumbnail/@id', [new \Phuppi\Controllers\FileController(), 'getThumbnail']);
-    Flight::route('GET /files/preview/@id', [new \Phuppi\Controllers\FileController(), 'getPreview']);
+    Flight::router()->group('/files', function ($router) {
+        $router->get('/', [FileController::class, 'listFiles'])->addMiddleware(function () {
+            return Helper::can(FilePermission::LIST);
+        });
+        $router->get('/thumbnail/@id', [FileController::class, 'getThumbnail'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET);
+        });
+        $router->get('/preview/@id', [FileController::class, 'getPreview'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET);
+        });
+        $router->post('/', [FileController::class, 'uploadFile'])->addMiddleware(function () {
+            return Helper::can(FilePermission::PUT);
+        });
+        $router->post('/presigned-url', [FileController::class, 'requestPresignedUrl'])->addMiddleware(function () {
+            return Helper::can(FilePermission::PUT);
+        });
+        $router->post('/register', [FileController::class, 'registerUploadedFile'])->addMiddleware(function () {
+            return Helper::can(FilePermission::CREATE);
+        });
+        $router->put('/@id', [FileController::class, 'updateFile'])->addMiddleware(function () {
+            return Helper::can(FilePermission::PUT);
+        });
+        $router->delete('/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile'])->addMiddleware(function () {
+            return Helper::can(FilePermission::DELETE);
+        });
+        $router->delete('/', [FileController::class, 'deleteMultipleFiles'])->addMiddleware(function () {
+            return Helper::can(FilePermission::DELETE);
+        });
+        $router->post('/download', [FileController::class, 'downloadMultipleFiles'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET);
+        });
+        $router->post('/@id/share', [FileController::class, 'generateShareToken'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET);
+        });
+    }, [IsAuthenticated::class]);
 
-    Flight::route('GET /duplicates', [new \Phuppi\Controllers\FileController(), 'duplicates']);
-    Flight::route('POST /duplicates', [new \Phuppi\Controllers\FileController(), 'deleteDuplicates']);
-    Flight::route('POST /duplicates/verify', [new \Phuppi\Controllers\FileController(), 'verifyDuplicates']);
+    Flight::router()->get('/files/@id', [FileController::class, 'getFile'])->addMiddleware(function ($args) {
+        // permitted user or token is allowed to access
 
-    Flight::route('POST /files', [new \Phuppi\Controllers\FileController(), 'uploadFile']);
-    Flight::route('POST /files/presigned-url', [new \Phuppi\Controllers\FileController(), 'requestPresignedUrl']);
-    Flight::route('POST /files/register', [new \Phuppi\Controllers\FileController(), 'registerUploadedFile']);
-    Flight::route('PUT /files/@id', [new \Phuppi\Controllers\FileController(), 'updateFile']);
-    Flight::route('DELETE /files/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile']);
-    Flight::route('DELETE /files', [new \Phuppi\Controllers\FileController(), 'deleteMultipleFiles']);
-    Flight::route('POST /files/download', [new \Phuppi\Controllers\FileController(), 'downloadMultipleFiles']);
-    Flight::route('POST /files/@id/share', [new \Phuppi\Controllers\FileController(), 'generateShareToken']);
+        $fileId = (int) $args['id'];
+
+        if(isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $fileToken = UploadedFileToken::findByToken($token);
+                if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+    
+    Flight::router()->group('/duplicates', function ($router) {
+        $router->get('/', [FileController::class, 'duplicates'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET)
+                && Helper::can(FilePermission::LIST)
+                && Helper::can(FilePermission::VIEW);
+        });
+        $router->post('/', [FileController::class, 'deleteDuplicates'])->addMiddleware(function () {
+            return Helper::can(FilePermission::DELETE);
+        });
+        $router->post('/verify', [FileController::class, 'verifyDuplicates'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET)
+                && Helper::can(FilePermission::VIEW);
+        });
+    }, [IsAuthenticatedUser::class]);
 
     // Note routes
-    Flight::route('GET /notes', [new \Phuppi\Controllers\NoteController(), 'index']);
-    Flight::route('GET /notes/@id/shared', [new \Phuppi\Controllers\NoteController(), 'showSharedNote']);
-    Flight::route('GET /api/notes', [new \Phuppi\Controllers\NoteController(), 'listNotes']);
-    Flight::route('GET /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'getNote']);
-    Flight::route('POST /api/notes', [new \Phuppi\Controllers\NoteController(), 'createNote']);
-    Flight::route('PUT /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'updateNote']);
-    Flight::route('DELETE /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'deleteNote']);
-    Flight::route('POST /api/notes/@id/share', [new \Phuppi\Controllers\NoteController(), 'generateShareToken']);
+    Flight::router()->group('/notes', function ($router) {
+        $router->get('/', [NoteController::class, 'index'])->addMiddleware(function () {
+            return Helper::can(NotePermission::LIST);
+        });
+        $router->get('/list', [NoteController::class, 'listNotes'])->addMiddleware(function () {
+            return Helper::can(NotePermission::LIST);
+        });
+        $router->get('/@id', [NoteController::class, 'getNote'])->addMiddleware(function () {
+            return Helper::can(NotePermission::VIEW);
+        });
+        $router->post('/', [NoteController::class, 'createNote'])->addMiddleware(function () {
+            return Helper::can(NotePermission::CREATE);
+        });
+        $router->put('/@id', [NoteController::class, 'updateNote'])->addMiddleware(function () {
+            return Helper::can(NotePermission::UPDATE);
+        });
+        $router->delete('/@id', [NoteController::class, 'deleteNote'])->addMiddleware(function () {
+            return Helper::can(NotePermission::DELETE);
+        });
+        $router->post('/@id/share', [NoteController::class, 'generateShareToken'])->addMiddleware(function () {
+            return Helper::can(NotePermission::VIEW);
+        });
+    }, [IsAuthenticated::class]);
 
+    Flight::router()->get('/notes/@id/shared', [NoteController::class, 'showSharedNote'])->addMiddleware(function ($args) {
+        // permitted user or token is allowed to access
+
+        $noteId = (int) $args['id'];
+
+        if(isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $noteToken = NoteToken::findByToken($token);
+                if ($noteToken && $noteToken->note_id === $noteId) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(NotePermission::VIEW, Note::findById($noteId));
+    });
+    
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
     });

@@ -16,6 +16,7 @@
 namespace Phuppi\Controllers;
 
 use Flight;
+use Phuppi\Helper;
 use Phuppi\User;
 
 class SettingsController
@@ -27,16 +28,6 @@ class SettingsController
      */
     public function index(): void
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
-            Flight::redirect('/login');
-        }
-
-        $user = User::findById($sessionId);
-        if (!$user || !$user->hasRole('admin')) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         $connectors = Flight::get('storage_connectors') ?? [];
         $activeConnector = Flight::get('active_storage_connector') ?? 'local-default';
         Flight::render('settings.latte', [
@@ -52,16 +43,6 @@ class SettingsController
      */
     public function updateStorage(): void
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
-            Flight::redirect('/login');
-        }
-
-        $user = User::findById($sessionId);
-        if (!$user || !$user->hasRole('admin')) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         $data = Flight::request()->data;
         $action = $data->action ?? 'update_active';
 

@@ -225,37 +225,49 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const formData = new FormData(form);
-        let fileIds = formData.get('file_ids');
-        if (!fileIds.trim()) {
-            // Get all file IDs
-            progressLabel.textContent = 'Getting file list...';
-            const getFilesData = new FormData();
-            getFilesData.append('action', 'get_migration_files');
-            getFilesData.append('from_connector', formData.get('from_connector'));
-            getFilesData.append('to_connector', formData.get('to_connector'));
+        let fileIds = formData.get('file_ids').trim();
+        let userProvidedIds = fileIds !== '';
 
-            try {
-                const response = await fetch('/admin/settings/storage', {
-                    method: 'POST',
-                    body: getFilesData
-                });
-                const data = await response.json();
-                if (data.error) {
-                    alert('Error getting files: ' + data.error);
-                    resetMigrationForm();
-                    return;
-                }
-                fileIds = data.file_ids.join(',');
-                fileList = data.files;
-                totalSize = fileList.reduce((sum, f) => sum + f.filesize, 0);
-            } catch (error) {
-                alert('Error getting files');
+        // Always get the full file list for progress tracking
+        progressLabel.textContent = 'Getting file list...';
+        const getFilesData = new FormData();
+        getFilesData.append('action', 'get_migration_files');
+        getFilesData.append('from_connector', formData.get('from_connector'));
+        getFilesData.append('to_connector', formData.get('to_connector'));
+
+        try {
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: getFilesData
+            });
+            const data = await response.json();
+            if (data.error) {
+                alert('Error getting files: ' + data.error);
                 resetMigrationForm();
                 return;
             }
+            fileList = data.files;
+            totalSize = fileList.reduce((sum, f) => sum + f.filesize, 0);
+        } catch (error) {
+            alert('Error getting files');
+            resetMigrationForm();
+            return;
         }
 
-        const ids = fileIds.split(',').map(id => id.trim()).filter(id => id);
+        let ids;
+        if (userProvidedIds) {
+            // Filter to user-provided IDs that exist in the file list
+            const providedIds = fileIds.split(',').map(id => id.trim()).filter(id => id);
+            ids = providedIds.filter(id => fileList.some(f => f.id == id));
+            if (ids.length === 0) {
+                alert('No valid files found for the provided IDs');
+                resetMigrationForm();
+                return;
+            }
+        } else {
+            // Migrate all files
+            ids = fileList.map(f => f.id);
+        }
         if (ids.length === 0) {
             alert('No files to migrate');
             resetMigrationForm();

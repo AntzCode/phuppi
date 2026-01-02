@@ -16,11 +16,10 @@
 namespace Phuppi\Controllers;
 
 use Flight;
+use Phuppi\Helper;
 use Phuppi\Note;
 use Phuppi\NoteToken;
 use Phuppi\Permissions\NotePermission;
-use Phuppi\User;
-use Phuppi\Voucher;
 
 class NoteController
 {
@@ -32,24 +31,12 @@ class NoteController
      */
     public function index(): void
     {
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
-            Flight::halt(403, 'Forbidden');
-        }
         $lastActivity = Flight::session()->get('last_activity');
-
-        // Check for session expiration (30 minutes)
-        $sessionTimeout = 30 * 60; // 30 minutes
-        if ($lastActivity && (time() - $lastActivity) > $sessionTimeout) {
-            Flight::logger()->warning('Session expired due to inactivity, destroying session. Last activity: ' . date('Y-m-d H:i:s', $lastActivity));
-            Flight::session()->clear();
-            Flight::redirect('/login');
-        }
 
         $user = Flight::user();
         $voucher = Flight::voucher();
 
-        if ($voucher && $voucher->id) {
+        if ($voucher->id) {
             $notes = Note::findByVoucher($voucher->id);
         } elseif ($user) {
             $notes = Note::findByUser($user->id);
@@ -61,68 +48,12 @@ class NoteController
     }
 
     /**
-     * Gets the current user.
-     *
-     * @return ?User The current user or null.
-     */
-    private function getCurrentUser(): ?User
-    {
-        $sessionId = Flight::session()->get('id');
-        if ($sessionId) {
-            return User::findById($sessionId);
-        }
-        return null;
-    }
-
-    /**
-     * Gets the current voucher.
-     *
-     * @return ?Voucher The current voucher or null.
-     */
-    private function getCurrentVoucher(): ?Voucher
-    {
-        // Assume voucher code is passed in header or param
-        $voucher = Flight::voucher();
-        if ($voucher && $voucher->id) {
-            $voucher = Voucher::findById($voucher->id);
-            if ($voucher && !$voucher->isExpired() && !$voucher->isDeleted()) {
-                return $voucher;
-            }
-        }
-        return null;
-    }
-
-
-    /**
-     * Gets the current permission checker.
-     *
-     * @return ?\Phuppi\PermissionChecker The permission checker or null.
-     */
-    private function getCurrentPermissionChecker(): ?\Phuppi\PermissionChecker
-    {
-        $user = $this->getCurrentUser();
-        $voucher = $this->getCurrentVoucher();
-
-        if ($voucher && $voucher->id) {
-            return \Phuppi\PermissionChecker::forVoucher($voucher);
-        } elseif ($user) {
-            return \Phuppi\PermissionChecker::forUser($user);
-        }
-        return null;
-    }
-
-    /**
      * Lists notes with filtering and pagination.
      *
      * @return void
      */
     public function listNotes(): void
     {
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         // Get query parameters
         $keyword = Flight::request()->query['keyword'] ?? '';
         $sort = Flight::request()->query['sort'] ?? 'date_newest';
@@ -130,8 +61,8 @@ class NoteController
         $limit = (int)(Flight::request()->query['limit'] ?? 10);
         $offset = ($page - 1) * $limit;
 
-        $user = $this->getCurrentUser();
-        $voucher = $this->getCurrentVoucher();
+        $user = Flight::user();
+        $voucher = Flight::voucher();
 
         $result = Note::findFiltered(
             $user ? $user->id : null,
@@ -186,8 +117,7 @@ class NoteController
                 Flight::halt(403, 'Invalid or expired token');
             }
         } else {
-            $permissionChecker = $this->getCurrentPermissionChecker();
-            if (!$permissionChecker || !$permissionChecker->can(NotePermission::VIEW, $note)) {
+            if (!Helper::can(NotePermission::VIEW, $note)) {
                 Flight::halt(403, 'Forbidden');
             }
         }
@@ -208,11 +138,6 @@ class NoteController
      */
     public function createNote(): void
     {
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::CREATE)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         $data = Flight::request()->data;
         $filename = trim($data->filename ?? '');
         $content = $data->content ?? '';
@@ -221,8 +146,8 @@ class NoteController
             Flight::halt(400, 'Filename is required');
         }
 
-        $voucher = $this->getCurrentVoucher();
-        $user = $this->getCurrentUser();
+        $voucher = Flight::voucher();
+        $user = Flight::user();
 
         $note = new Note();
         $note->user_id = $user->id ?? $voucher->user_id;
@@ -247,8 +172,7 @@ class NoteController
     {
         $note = Note::findById($id);
 
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::UPDATE, $note)) {
+        if (!Helper::can(NotePermission::UPDATE, $note)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -277,8 +201,7 @@ class NoteController
     {
         $note = Note::findById($id);
 
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::DELETE, $note)) {
+        if (!Helper::can(NotePermission::DELETE, $note)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -306,8 +229,7 @@ class NoteController
             Flight::halt(404, 'Note not found');
         }
         
-        $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->can(NotePermission::VIEW, $note)) {
+        if (!Helper::can(NotePermission::VIEW, $note)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -351,9 +273,11 @@ class NoteController
         // Generate unique token
         $token = bin2hex(random_bytes(32));
 
+        $voucher = Flight::voucher();
+
         $noteToken = new NoteToken();
         $noteToken->note_id = $note->id;
-        $noteToken->voucher_id = $this->getCurrentVoucher() ? $this->getCurrentVoucher()->id : null;
+        $noteToken->voucher_id = $voucher->id ?? null;
         $noteToken->token = $token;
         $noteToken->expires_at = $expiresAt;
 
@@ -373,26 +297,8 @@ class NoteController
      */
     public function showSharedNote($id): void
     {
-
-        $token = Flight::request()->query['token'] ?? null;
-        if (!$token) {
-            Flight::halt(403, 'Token required');
-        }
-
-        if (strlen($token) > 255) {
-            Flight::halt(413, 'Invalid token');
-        }
-
+        $noteToken = NoteToken::findByToken(Flight::request()->query['token']);
         $note = Note::findById($id);
-        if (!$note) {
-            Flight::halt(403, 'Invalid or expired token');
-        }
-
-        $noteToken = NoteToken::findByToken($token);
-        if (!$noteToken || $noteToken->note_id != $id) {
-            Flight::halt(403, 'Invalid or expired token');
-        }
-
         Flight::render('shared_note.latte', ['note' => $note, 'expires_at' => $noteToken->expires_at]);
     }
 }

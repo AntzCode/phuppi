@@ -16,6 +16,7 @@
 namespace Phuppi\Controllers;
 
 use Flight;
+use Phuppi\Helper;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\UserPermission;
@@ -225,15 +226,6 @@ class UserController
      */
     public function listUsers(): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::redirect('/login');
-        }
-
-        $user = Flight::user();
-        if (!$user || !$user->can(UserPermission::LIST)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
         $users = \Phuppi\User::findAll();
         // read the filenames from the avatars directory
         $avatars = scandir(Flight::get('flight.public.path') . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'default-avatars');
@@ -257,13 +249,6 @@ class UserController
         }, $users);
 
         Flight::render('users.latte', [
-            'can' => [
-                'user_list' => $user->can(UserPermission::LIST),
-                'user_view' => $user->can(UserPermission::VIEW),
-                'user_permit' => $user->can(UserPermission::PERMIT),
-                'user_create' => $user->can(UserPermission::CREATE),
-                'user_delete' => $user->can(UserPermission::DELETE),
-            ],
             'users' => $userData,
             'avatars' => $avatars,
             'filePermissions' => $filePermissions,
@@ -281,17 +266,10 @@ class UserController
      */
     public function addPermission($userId): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-        $currentUser = Flight::user();
-        if (!$currentUser) {
-            Flight::halt(403, 'Forbidden');
-        }
-
+        $user = Flight::user();
         $targetUser = \Phuppi\User::findById($userId);
 
-        if (!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
+        if (!Helper::can(UserPermission::PERMIT, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -299,7 +277,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if ($currentUser->id === $targetUser->id) {
+        if ($user->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -335,17 +313,11 @@ class UserController
      */
     public function removePermission($userId): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-        $currentUser = Flight::user();
-        if (!$currentUser) {
-            Flight::halt(403, 'Forbidden');
-        }
-
+        $user = Flight::user();
+        
         $targetUser = \Phuppi\User::findById($userId);
 
-        if (!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
+        if (!Helper::can(UserPermission::PERMIT, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -353,7 +325,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if ($currentUser->id === $targetUser->id) {
+        if ($user->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -389,17 +361,11 @@ class UserController
      */
     public function deleteUser($userId): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
-        $currentUser = Flight::user();
-        if (!$currentUser) {
-            Flight::halt(403, 'Forbidden');
-        }
-
+        $user = Flight::user();
+        
         $targetUser = \Phuppi\User::findById($userId);
 
-        if (!$currentUser->can(UserPermission::DELETE, $targetUser)) {
+        if (!Helper::can(UserPermission::DELETE, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -407,7 +373,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if ($currentUser->id === $targetUser->id) {
+        if ($user->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -425,17 +391,10 @@ class UserController
      */
     public function createUser(): void
     {
-        if (!\Phuppi\Helper::isAuthenticated()) {
-            Flight::halt(401, 'Unauthorized');
-        }
 
-        $currentUser = Flight::user();
-        if (!$currentUser || !$currentUser->can(UserPermission::CREATE)) {
+        $user = Flight::user();
+        if (!Helper::can(UserPermission::CREATE)) {
             Flight::halt(403, 'Forbidden');
-        }
-
-        if (Flight::request()->method !== 'POST') {
-            Flight::halt(405, 'Method not allowed');
         }
 
         $data = Flight::request()->data;

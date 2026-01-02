@@ -1,8 +1,6 @@
-# 🚀 Phuppi: Share Files & Notes Like a Boss!
+# 🚀 Phuppi 2.0: Share Like a Boss!
 
-**Phuppi** the PHP file-uppie thingy! It lets you share files and notes with friends or others and all locked down tight with top-notch security: passwords, vouchers and tokens. 
-
-No fuss, just fun file sharing! 🎉
+The PHP file-uppie thingy so you can share files and notes with top-notch security. Keep your data safe and accessible with passwords, vouchers and tokens. 
 
 ![Preview of Phuppi file uploader](./assets/screenshots/preview.png)
 
@@ -12,18 +10,19 @@ No fuss, just fun file sharing! 🎉
 2️⃣ Unzip and upload to your server: [cPanel - how to upload files with FTP](https://docs.cpanel.net/knowledge-base/ftp/how-to-upload-files-with-ftp/)  
 3️⃣ Open your website in your browser and set a username/password for the admin account  [(↗️ screenshot)](./assets/screenshots/installation.png)  
 
-No database needed! (uses [SQLite](https://sqlite.org/))
+No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 
 ## 🎯 Share in Seconds
 
 1. Login.
-2. Upload file or write note.
-3. Generate token (add expiry if you want).
+2. Upload files or write notes.
+3. Generate a unique link to the download (choose an expiry if you want).
 4. Share the link!
 
 ## 🔥 Why Phuppi Rocks
 
-- **Zero-setup magic** – Docker does the heavy lifting.
+- **Seamless integration with S3** - makes connecting to cloud storage easy.
+- **Zero-setup magic** – Database is automatically created using SQLite.
 - **Fort Knox security** – bcrypt passwords, one-time vouchers, expiring tokens.
 - **Dead simple** – Upload, share, done. No tutorials needed.
 - **All-in-one party** – Files, notes, auth, storage – bundled!
@@ -45,11 +44,11 @@ No database needed! (uses [SQLite](https://sqlite.org/))
 Phuppi is intended for easy development and deployment, so it has a lean file structure and avoids bloated libraries and complicated build tools.
 
 - **Framework:** [Flight micro-framework for PHP](https://docs.flightphp.com/en/v3/)
-- **DB:** [SQLite](https://sqlite.org/) (configuration not required)
-- **Storage:** Local or [S3-compatible](https://aws.amazon.com/s3/) API connector
+- **Database:** [SQLite](https://sqlite.org/) (configuration not required)
+- **Storage:** Local files or [S3-Compatible](https://aws.amazon.com/s3/) Cloud Storage
 - **Security:** bcrypt, sessions, tokens
 - **Templating:** [Latte templates for PHP](https://latte.nette.org/en/)
-- **Frontend:** [Preact standalone](https://preactjs.com/)
+- **Frontend:** [Preact standalone edition](https://preactjs.com/)
 
 ## ⚡ Run on Docker for local development (takes just 5 Minutes)
 

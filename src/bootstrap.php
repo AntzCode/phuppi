@@ -31,7 +31,6 @@ register_shutdown_function(function () {
 
 // include Flight framework and session plugin
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'autoload.php');
-require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR . 'permissions' . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Permission.php');
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'aws' . DIRECTORY_SEPARATOR . 'aws-autoloader.php');
 
 // PSR-4 Autoloader
@@ -87,7 +86,7 @@ $latte->addFunction('phuppi_version', [Phuppi\Helper::class, 'getPhuppiVersion']
 $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages']);
 $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
 $latte->addFunction('voucher_id', [Phuppi\Helper::class, 'getVoucherId']);
-$latte->addFunction('user_can', [Phuppi\Helper::class, 'userCan']);
+$latte->addFunction('user_can', [Phuppi\Helper::class, 'can']);
 
 Flight::map('render', function (string $template, array $data = [], ?string $block = null): void {
     $latte = Flight::latte();
@@ -111,7 +110,6 @@ $db = Flight::db();
  */
 Flight::register('session', '\Phuppi\DatabaseSession', [Flight::db(), ['table' => 'sessions']]);
 Flight::register('messages', '\Phuppi\Messages');
-Flight::register('permissions', 'flight\Permission');
 Flight::register('user', 'Phuppi\User');
 Flight::register('voucher', 'Phuppi\Voucher');
 Flight::map('storage', function () {
@@ -180,6 +178,18 @@ Flight::set('active_storage_connector', $activeConnector);
 
 Flight::session();
 
+
+// Check for session expiration (30 minutes)
+// this will log the user out after 30 minutes of inactivity to prevent session hijacking if user has left the computer unattended
+// @TODO: have a "keep me logged in" option or configuration in user settings
+$lastActivity = Flight::session()->get('last_activity');
+$sessionTimeout = 30 * 60; // 30 minutes
+if ($lastActivity && (time() - $lastActivity) > $sessionTimeout) {
+    Flight::logger()->warning('Session expired due to inactivity, destroying session. Last activity: ' . date('Y-m-d H:i:s', $lastActivity));
+    Flight::session()->clear();
+    Flight::redirect('/login');
+}
+
 /**
  * Initialize User or Voucher
  */
@@ -194,3 +204,6 @@ if (!Flight::voucher()->id && Flight::session()->get('id')) {
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());
 }
+
+
+
