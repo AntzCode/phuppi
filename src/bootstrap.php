@@ -93,6 +93,24 @@ Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path')
 // Load storage connectors configuration from database
 $db = Flight::db();
 
+/**
+ * register Framework plugins
+ */
+Flight::register('session', '\Phuppi\DatabaseSession', [Flight::db(), ['table' => 'sessions']]);
+Flight::register('messages', '\Phuppi\Messages');
+Flight::register('permissions', 'flight\Permission');
+Flight::register('user', 'Phuppi\User');
+Flight::register('voucher', 'Phuppi\Voucher');
+Flight::map('storage', function() {
+    return \Phuppi\Storage\StorageFactory::create();
+});
+
+/**
+ * Initialize migrations system
+ */
+Phuppi\Migration::init();
+
+
 // Load connectors from storage_connectors table
 $connectors = [];
 $activeConnector = 'local-default';
@@ -101,24 +119,6 @@ $connectorRows = $db->query("SELECT name, type, config FROM storage_connectors")
 foreach ($connectorRows as $row) {
     $connectors[$row['name']] = json_decode($row['config'], true);
     $connectors[$row['name']]['type'] = $row['type'];
-}
-
-// Migrate existing connectors from settings to table
-$settingsConnectors = $db->query("SELECT name, value FROM settings WHERE name LIKE 'storage_connector_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
-foreach ($settingsConnectors as $settingName => $value) {
-    $connectorName = substr($settingName, strlen('storage_connector_'));
-    if (!isset($connectors[$connectorName])) {
-        $config = json_decode($value, true);
-        $type = $config['type'];
-        $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)')->execute([
-            $connectorName,
-            $type,
-            $value
-        ]);
-        $connectors[$connectorName] = $config;
-        // Remove old setting
-        $db->prepare('DELETE FROM settings WHERE name = ?')->execute([$settingName]);
-    }
 }
 
 // If no connectors, create default local
@@ -164,23 +164,6 @@ if (!isset($connectors['minio-default']) && getenv('MINIO_ACCESS_KEY')) {
 
 Flight::set('storage_connectors', $connectors);
 Flight::set('active_storage_connector', $activeConnector);
-
-/**
- * register Framework plugins
- */
-Flight::register('session', '\Phuppi\DatabaseSession', [Flight::db(), ['table' => 'sessions']]);
-Flight::register('messages', '\Phuppi\Messages');
-Flight::register('permissions', 'flight\Permission');
-Flight::register('user', 'Phuppi\User');
-Flight::register('voucher', 'Phuppi\Voucher');
-Flight::map('storage', function() {
-    return \Phuppi\Storage\StorageFactory::create();
-});
-
-/**
- * Initialize migrations system
- */
-Phuppi\Migration::init();
 
 Flight::session();
 

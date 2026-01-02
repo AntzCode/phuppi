@@ -44,6 +44,15 @@ $db->exec("CREATE TABLE settings (
     value TEXT NOT NULL DEFAULT ''
 )");
 
+$db->exec("CREATE TABLE storage_connectors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    type VARCHAR(50) NOT NULL,
+    config TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)");
+
 // Vouchers table
 $db->exec("CREATE TABLE vouchers (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -210,23 +219,25 @@ $db->exec("CREATE TABLE voucher_permissions (
 Flight::logger()->info('V2 tables created.');
 
 // Set default settings
-$defaultSettings = [
-    'file_storage_type' => '',
-    'remote_files_region' => '',
-    'remote_files_endpoint' => '',
-    'remote_files_container' => '',
-    'remote_files_access_key' => '',
-    'remote_files_secret' => '',
-    'remote_files_token_lifetime_seconds' => '',
-    'aws_lambda_multiple_zip_function_name' => '',
-    'do_functions_multiple_zip_endpoint' => '',
-    'do_functions_multiple_zip_api_token' => '',
-];
+$defaultSettings = [];
 
 $statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
 foreach ($defaultSettings as $name => $value) {
     $statement->execute([$name, $value]);
 }
+$statement = null;
+
+// create the default local filesystem connector
+$statement = $db->prepare('INSERT OR IGNORE INTO storage_connectors (name, type, config) VALUES (?, ?,?)');
+$statement->execute(['local-default', 'local', json_encode([
+    'type' => 'local',
+    'path' => null,
+    'name' => 'Local Storage (Default)'
+])]);
+$statement = null;
+
+$statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
+$statement->execute(['active_storage_connector', 'local-default']);
 $statement = null;
 
 Flight::logger()->info('Default settings set.');
@@ -435,9 +446,59 @@ if ($v1Exists) {
 
     // Migrate settings
     $settings = $db->query('SELECT * FROM fuppi_settings')->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($settings as $setting) {
+    $settingsFlat = [];
+    foreach($settings as $setting) {
+        $settingsFlat[$setting['name']] = $setting['value'];
+    }
+
+    if(!empty($settingsFlat['remote_files_access_key']) && !empty($settingsFlat['remote_files_secret'])) {
+        // create an s3 connector
+        $statement = $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)');
+        $connectorName = $settingsFlat['file_storage_type'] === 'do_spaces' ? 'do-spaces' : 'aws-s3';
+        $statement->execute([
+            $connectorName,
+            's3',
+            json_encode([
+                'type' => "s3", 
+                'name' => $settingsFlat['file_storage_type'] === 'do_spaces' ? 'DigitalOcean Spaces' : 'AWS S3',
+                'bucket' => $settingsFlat['remote_files_container'],
+                'region' => $settingsFlat['remote_files_region'],
+                'key' => $settingsFlat['remote_files_access_key'],
+                'secret' => $settingsFlat['remote_files_secret'],
+                'endpoint' => $settingsFlat['remote_files_endpoint'],
+                'path_prefix' => "data/uploadedFiles"
+            ])
+        ]);
+        $statement = null;
+        
+        if($settingsFlat['file_storage_type'] === 'do_spaces' || $settingsFlat['file_storage_type'] === 'aws_s3') {
+            // update the settings to use the aws connector
+            $statement = $db->prepare('UPDATE settings SET value = ? WHERE name = ?');
+            $statement->execute([$connectorName, 'active_storage_connector']);
+            $statement = null;
+        }
+
+    }
+
+    // remove connector settings from settings table
+    unset($settingsFlat['file_storage_type']);
+    unset($settingsFlat['remote_files_container']);
+    unset($settingsFlat['remote_files_region']);
+    unset($settingsFlat['remote_files_access_key']);
+    unset($settingsFlat['remote_files_secret']);
+    unset($settingsFlat['remote_files_endpoint']);
+    unset($settingsFlat['s3_bucket']);
+    unset($settingsFlat['s3_region']);
+    unset($settingsFlat['s3_secret']);
+    unset($settingsFlat['s3_key']);
+    unset($settingsFlat['remote_files_token_lifetime_seconds']);
+    unset($settingsFlat['do_functions_multiple_zip_endpoint']);
+    unset($settingsFlat['do_functions_multiple_zip_api_token']);
+    unset($settingsFlat['aws_lambda_multiple_zip_function_name']);
+
+    foreach ($settingFlat as $settingName => $settingValue) {
         $statement = $db->prepare('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)');
-        $statement->execute([$setting['name'], $setting['value']]);
+        $statement->execute([$settingName, $settingValue]);
         $statement = null;
     }
     $settings = null;
