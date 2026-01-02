@@ -52,9 +52,9 @@ class PermissionChecker
 
     }
 
-    public function userCan(NotePermission|UserPermission|VoucherPermission|FilePermission $permission, null|Note|UploadedFile|User|Voucher $subject = null): bool
+    public function can(NotePermission|UserPermission|VoucherPermission|FilePermission $permission, null|Note|UploadedFile|User|Voucher $subject = null): bool
     {
-        if($this->user->hasRole('admin')) {
+        if(!$this->voucher && $this->user->hasRole('admin')) {
             // admin can do anything
             return true;
         }
@@ -75,6 +75,8 @@ class PermissionChecker
             if($hasPermission && $subject instanceof UploadedFile) {
                 return $subject->voucher_id === $this->voucher->id;
             }
+
+            return $hasPermission;
 
         } else if($this->user) {
             // users can interact with all of their notes

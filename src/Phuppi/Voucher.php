@@ -3,9 +3,10 @@
 namespace Phuppi;
 
 use Flight;
+use Phuppi\Permissions\FilePermission;
+use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\UserPermission;
 use Phuppi\Permissions\VoucherPermission;
-use Phuppi\Permissions\FilePermission;
 
 class Voucher
 {
@@ -66,6 +67,23 @@ class Voucher
         $stmt->execute([$code]);
         $data = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $data ? new self($data) : null;
+    }
+
+    public static function findById(int $id): ?self
+    {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT * FROM vouchers WHERE id = ?');
+        $stmt->execute([$id]);
+        $data = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $data ? new self($data) : null;
+    }
+
+    public static function findAll(): array
+    {
+        $db = Flight::db();
+        $stmt = $db->query('SELECT * FROM vouchers WHERE deleted_at IS NULL ORDER BY created_at DESC');
+        $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        return array_map(fn($row) => new self($row), $data);
     }
 
     public function getPermissions(): array
@@ -158,5 +176,80 @@ class Voucher
         foreach ($permissions as $name => $value) {
             $stmt->execute([$this->id, $name, $value]);
         }
+    }
+
+    public function getFileStats() {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT COUNT(*) as file_count, SUM(filesize) as total_size FROM uploaded_files WHERE voucher_id = ?');
+        $stmt->execute([$this->id]);
+        $stats = $stmt->fetch(\PDO::FETCH_OBJ);
+        return (object) [
+            'file_count' => (int) $stats->file_count,
+            'total_size' => (int) $stats->total_size
+        ];
+    }
+
+    public function delete(): bool
+    {
+        if (!$this->id) {
+            return false;
+        }
+
+        $db = Flight::db();
+
+        // Delete voucher permissions
+        $stmt = $db->prepare('DELETE FROM voucher_permissions WHERE voucher_id = ?');
+        $stmt->execute([$this->id]);
+
+        // Delete voucher roles
+        $stmt = $db->prepare('DELETE FROM voucher_roles WHERE voucher_id = ?');
+        $stmt->execute([$this->id]);
+
+        // Delete voucher
+        $stmt = $db->prepare('UPDATE vouchers SET deleted_at = ? WHERE id = ?');
+        return $stmt->execute([date('Y-m-d H:i:s'), $this->id]);
+    }
+
+    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|Note|UploadedFile|User|Voucher $subject=null) :bool {
+        if(is_string($permission)) {
+            if($permission === 'admin') {
+                // voucher can never admin
+                return false;
+            }
+            if(null === $permission = $this->permissionFromString($permission)) {
+                return false;
+            };
+        }
+        if($permission === UserPermission::DELETE && $subject instanceof User && $subject->hasRole('admin')) {
+            // cannot delete admin user
+            return false;
+        }
+        $permissionChecker = PermissionChecker::forVoucher($this);
+        return $permissionChecker->can($permission, $subject);
+    }
+
+    public function permissionFromString($permissionString) {
+        switch(substr($permissionString, 0, strpos($permissionString, '_'))) {
+            case 'file':
+                return FilePermission::fromString($permissionString);
+            case 'note':
+                return NotePermission::fromString($permissionString);
+            case 'user':
+                return UserPermission::fromString($permissionString);
+            case 'voucher':
+                return VoucherPermission::fromString($permissionString);
+        }
+    }
+
+    public function getUsername(): ?string
+    {
+        if(!$this->user_id) {
+            return null;
+        }
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT username FROM users WHERE id = ?');
+        $stmt->execute([$this->user_id]);
+        $user = $stmt->fetch(\PDO::FETCH_OBJ);
+        return $user->username;
     }
 }

@@ -73,6 +73,7 @@ $latte->setLoader(new \Latte\Loaders\FileLoader(Flight::get('flight.views.path')
 $latte->addFunction('phuppi_version', [Phuppi\Helper::class, 'getPhuppiVersion']);
 $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages']);
 $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
+$latte->addFunction('voucher_id', [Phuppi\Helper::class, 'getVoucherId']);
 $latte->addFunction('user_can', [Phuppi\Helper::class, 'userCan']);
 
 Flight::map('render', function(string $template, array $data=[], ?string $block=null) : void {
@@ -171,6 +172,7 @@ Flight::register('session', '\Phuppi\DatabaseSession', [Flight::db(), ['table' =
 Flight::register('messages', '\Phuppi\Messages');
 Flight::register('permissions', 'flight\Permission');
 Flight::register('user', 'Phuppi\User');
+Flight::register('voucher', 'Phuppi\Voucher');
 Flight::map('storage', function() {
     return \Phuppi\Storage\StorageFactory::create();
 });
@@ -183,9 +185,15 @@ Phuppi\Migration::init();
 Flight::session();
 
 /**
- * Initialize User
+ * Initialize User or Voucher
  */
-if(Flight::session()->get('id')) {
+if(Flight::session()->get('voucher_id')) {
+    Flight::voucher()->load(Flight::session()->get('voucher_id'));
+    // Update session activity to prevent premature expiration
+    Flight::session()->set('last_activity', time());
+}
+
+if(!Flight::voucher()->id && Flight::session()->get('id')) {
     Flight::user()->load(Flight::session()->get('id'));
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());

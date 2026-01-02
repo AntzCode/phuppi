@@ -1,0 +1,257 @@
+{parameters
+    array $can = [],
+    array $vouchers = [],
+    array $filePermissions = [],
+    array $notePermissions = [],
+    ?int $user_id = user_id()
+}
+
+{layout 'layout.latte'}
+
+{block content}
+<div id="voucher-list"></div>
+<script>
+    const can = {$can};
+    const userId = {$user_id};
+    const vouchers = {$vouchers};
+    const filePermissions = {$filePermissions};
+    const notePermissions = {$notePermissions};
+</script>
+<script type="module" n:syntax="off">
+    import { html, render, useState } from '/assets/preact/htm-standalone.mjs';
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatValidFor(hours) {
+        if (!hours) return 'Forever';
+        if (hours < 1) return 'Less than 1 hour';
+        if (hours < 24) return hours + ' hours';
+        const days = Math.floor(hours / 24);
+        if (days < 7) return days + ' days';
+        const weeks = Math.floor(days / 7);
+        if (weeks < 4) return weeks + ' weeks';
+        const months = Math.floor(days / 30);
+        if (months < 12) return months + ' months';
+        const years = Math.floor(days / 365);
+        return years + ' years';
+    }
+
+    function VoucherList({ _vouchers }) {
+        const [vouchers, setVouchers] = useState(_vouchers);
+        const [createForm, setCreateForm] = useState({
+            notes: '',
+            valid_for: '1h',
+            errors: {}
+        });
+
+        const validForOptions = {
+            'Hours': [
+                { value: '15m', label: '15 minutes' },
+                { value: '1h', label: '1 hour' },
+                { value: '3h', label: '3 hours' },
+                { value: '6h', label: '6 hours' },
+                { value: '12h', label: '12 hours' }
+            ],
+            'Days': [
+                { value: '24h', label: '1 day' },
+                { value: '2d', label: '2 days' },
+                { value: '3d', label: '3 days' }
+            ],
+            'Weeks': [
+                { value: '1w', label: '1 week' },
+                { value: '2w', label: '2 weeks' },
+                { value: '3w', label: '3 weeks' }
+            ],
+            'Months': [
+                { value: '1M', label: '1 month' },
+                { value: '3M', label: '3 months' },
+                { value: '6M', label: '6 months' }
+            ],
+            'Years': [
+                { value: '1y', label: '1 year' },
+                { value: '2y', label: '2 years' },
+                { value: '3y', label: '3 years' },
+                { value: 'forever', label: 'Forever' }
+            ]
+        };
+
+        const animals = ['Bear', 'Cat', 'Cheetah', 'Chicken', 'Crocodile', 'Doe', 'Duck', 'Elephant', 'Fox', 'Frog', 'Horse', 'Lemur', 'Lion', 'Llama', 'Mouse', 'Otter', 'Owl', 'Panda', 'Penguin', 'Pig', 'Raccoon', 'Rhino', 'Sheep', 'Sloth', 'Snake', 'Tiger', 'Yak', 'Zebra'];
+        const emotions = ['Happy', 'Sad', 'Angry', 'Sleepy', 'Excited', 'Calm', 'Playful', 'Grumpy', 'Cheerful', 'Lazy'];
+
+        const generateName = () => {
+            const emotion = emotions[Math.floor(Math.random() * emotions.length)];
+            const animal = animals[Math.floor(Math.random() * animals.length)];
+            const number = Math.floor(Math.random() * 900) + 100; // 100-999
+            setCreateForm(prev => ({ ...prev, notes: emotion + animal + number }));
+        };
+
+        const handleCreateSubmit = function (e) {
+            e.preventDefault();
+            createVoucher(createForm.notes, createForm.valid_for).then(data => {
+                if (data.success) {
+                    setVouchers(prev => [...prev, data.voucher]);
+                    setCreateForm({ notes: '', valid_for: '1h', errors: {} });
+                } else {
+                    setCreateForm(prev => ({ ...prev, errors: data.errors || {} }));
+                }
+            });
+        };
+
+        const removePermission = function (voucher, permission) {
+            fetch(`/vouchers/${voucher.id}/remove-permission`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ permission: permission.value })
+            }).then(response => {
+                if (response.ok) {
+                    setVouchers(prev => prev.map(v => v.id === voucher.id ? { ...v, allowedPermissions: v.allowedPermissions.filter(p => p !== permission.value) } : v));
+                }
+            });
+        }
+
+        const handleDeleteVoucher = function (voucher) {
+            if (confirm('Are you sure you want to delete this voucher?')) {
+                deleteVoucher(voucher.id).then(data => {
+                    if (data.success) {
+                        setVouchers(prev => prev.filter(v => v.id !== voucher.id));
+                    }
+                }).catch(() => { });
+            }
+        }
+
+        const addPermission = function (voucher, permission) {
+            fetch(`/vouchers/${voucher.id}/add-permission`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ permission: permission.value })
+            }).then(response => {
+                if (response.ok) {
+                    setVouchers(prev => prev.map(v => v.id === voucher.id ? { ...v, allowedPermissions: [...v.allowedPermissions, permission.value] } : v));
+                }
+            });
+        }
+
+        const createVoucher = function (notes, validFor) {
+            return fetch('/vouchers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: notes,
+                    valid_for: validFor
+                })
+            }).then(response => response.json());
+        }
+
+        const deleteVoucher = function (voucherId) {
+            return fetch(`/vouchers/${voucherId}`, {
+                method: 'DELETE'
+            }).then(response => response.json());
+        }
+
+        return html`
+        <div class="ui segment">
+            <h2 class="ui top attached header">
+                <i class="ticket icon"></i>
+                Voucher Management
+            </h2>
+            ${can.voucher_create ? html`
+                <div class="ui segment">
+                    <h3>Create New Voucher</h3>
+                    <form class="ui form" onSubmit=${handleCreateSubmit}>
+                        <div class="field">
+                            <label>Voucher Name</label>
+                            <div class="ui action input">
+                                <input type="text" value=${createForm.notes} onInput=${e => setCreateForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Enter voucher name" />
+                                <button class="ui button" type="button" onClick=${generateName} title="Generate random name">
+                                    <i class="random icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>Valid For</label>
+                            <select value=${createForm.valid_for} onChange=${e => setCreateForm(prev => ({ ...prev, valid_for: e.target.value }))}>
+                                ${Object.entries(validForOptions).map(([group, options]) => html`
+                                    <optgroup label=${group}>
+                                        ${options.map(option => html`
+                                            <option value=${option.value}>${option.label}</option>
+                                        `)}
+                                    </optgroup>
+                                `)}
+                            </select>
+                        </div>
+                        <button class="ui primary button" type="submit">Create Voucher</button>
+                    </form>
+                </div>
+            ` : ''}
+            <div class="ui divided items">
+                ${!can.voucher_list && html`<p>No permission to list vouchers</p>`}
+                ${can.voucher_list && vouchers.map(voucher => html`
+                        <div class="ui item" style="position: relative;">
+                            ${can.voucher_delete && !voucher.is_deleted && html`
+                                <button class="red ui top right attached round label raised clickable" onClick=${() => handleDeleteVoucher(voucher)}>
+                                    <i class="trash icon"></i>
+                                    Delete
+                                </button>
+                            `}
+                            <div class="content">
+                                <div class="header">
+                                    ${voucher.voucher_code}
+                                </div>
+                                <div class="meta">
+                                    ${can.voucher_view && html`
+                                        <span>${formatBytes(voucher.fileStats.total_size)}, ${voucher.fileStats.file_count} uploaded files</span>
+                                        <span>Created at ${voucher.created_at}</span>
+                                        <span>Valid for: ${formatValidFor(voucher.valid_for)}</span>
+                                    `}
+                                </div>
+                                <div class="description">
+                                    ${!can.voucher_view && html`<p>No permission to view voucher</p>`}
+                                    ${can.voucher_view && html`
+                                        ${voucher.notes && html`<p>${voucher.notes}</p>`}
+                                        ${voucher.is_expired && html`<div class="ui red label">Expired</div>`}
+                                        ${voucher.is_redeemed && html`<div class="ui yellow label">Redeemed</div>`}
+                                        ${voucher.is_deleted && html`<div class="ui black label">Deleted</div>`}
+                                    `}
+                                </div>
+                                ${can.voucher_view && html`<div class="extra">
+                                    <h3>Allowed Permissions: </h3>
+                                    ${voucher.allowedPermissions.length === 0 && html`<div>- No Permissions Granted -</div>`}
+                                    <div class="ui labels">
+                                        ${[...filePermissions, ...notePermissions].filter(permission => voucher.allowedPermissions.includes(permission.value)).map(permission => html`
+                                            <div class="ui green right icon label">${permission.label}
+                                                ${can.voucher_update && html`<i class="close icon clickable" title="Remove Permission" onClick=${() => removePermission(voucher, permission)}></i>`}
+                                            </div>
+                                        `)}
+                                    </div>
+                                    <h3>Available Permissions:</h3>
+                                    <div class="ui labels">
+                                        ${[...filePermissions, ...notePermissions].filter(permission => !voucher.allowedPermissions.includes(permission.value)).map(permission => html`
+                                            <div class="ui gray right icon label">${permission.label}
+                                                ${can.voucher_update && html`<i class="check icon clickable" title="Add Permission" onClick=${() => addPermission(voucher, permission)}></i>`}
+                                            </div>
+                                        `)}
+                                    </div>
+                                </div>`}
+                            </div>
+                        </div>
+                    `)}
+            </div>
+        </div>
+    `;
+    }
+
+    render(html`<${VoucherList} _vouchers=${vouchers} />`, document.getElementById('voucher-list'));
+</script>
+{/block}

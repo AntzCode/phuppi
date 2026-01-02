@@ -7,11 +7,8 @@
 {layout 'layout.latte'}
 
 {block content}
-<div class="ui segment">
-    <h2 class="ui header">Welcome to {$name}, {Flight::user()->username}</h2>
-    <p>This is the home page using the reusable layout with Semantic UI styles imported from phuppi-v1.</p>
-    <p>Session Id: {$sessionId}</p>
-</div>
+<h2 class="ui header">Welcome to {$name}, {Flight::voucher()->voucher_code ? Flight::voucher()->voucher_code : Flight::user()->username}</h2>
+<p>Here you can manage your shared files.</p>
 
 {if count($files) == 0}
     <p>- Empty -</p>

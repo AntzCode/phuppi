@@ -237,4 +237,15 @@ class UploadedFile
         }
         return '';
     }
+
+    public function getVoucherCode(): ?string
+    {
+        if ($this->voucher_id) {
+            $voucher = new \Phuppi\Voucher();
+            if ($voucher->load($this->voucher_id)) {
+                return $voucher->voucher_code;
+            }
+        }
+        return null;
+    }
 }

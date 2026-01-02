@@ -16,12 +16,11 @@ class FileController
 
     public function index()
     {
-        $sessionId = Flight::session()->get('id');
-        $lastActivity = Flight::session()->get('last_activity');
-        if (!$sessionId) {
-            Flight::logger()->warning('Session ID missing, redirecting to login');
+        if (!\Phuppi\Helper::isAuthenticated()) {
+            Flight::logger()->warning('Not authenticated, redirecting to login');
             Flight::redirect('/login');
         }
+        $lastActivity = Flight::session()->get('last_activity');
         // Check for session expiration (30 minutes)
         $sessionTimeout = 30 * 60; // 30 minutes
         if ($lastActivity && (time() - $lastActivity) > $sessionTimeout) {
@@ -29,8 +28,16 @@ class FileController
             Flight::session()->clear();
             Flight::redirect('/login');
         }
-        $files = UploadedFile::findByUser($sessionId);
-        Flight::render('home.latte', ['files' => $files, 'name' => 'Phuppi!', 'sessionId' => $sessionId]);
+        $user = Flight::user();
+        $voucher = Flight::voucher();
+        if ($voucher && $voucher->id) {
+            $files = UploadedFile::findByVoucher($voucher->id);
+        } elseif ($user) {
+            $files = UploadedFile::findByUser($user->id);
+        }  else {
+            $files = [];
+        }
+        Flight::render('home.latte', ['files' => $files, 'name' => 'Phuppi!', 'sessionId' => $user ? $user->id : null]);
     }
 
     private function getCurrentUser(): ?User
@@ -45,9 +52,9 @@ class FileController
     private function getCurrentVoucher(): ?Voucher
     {
         // Assume voucher code is passed in header or param
-        $voucherCode = Flight::request()->headers['X-Voucher-Code'] ?? Flight::request()->query['voucher'];
-        if ($voucherCode) {
-            $voucher = Voucher::findByCode($voucherCode);
+        $voucher = Flight::voucher();
+        if ($voucher && $voucher->id) {
+            $voucher = Voucher::findById($voucher->id);
             if ($voucher && !$voucher->isExpired() && !$voucher->isDeleted()) {
                 return $voucher;
             }
@@ -55,10 +62,23 @@ class FileController
         return null;
     }
 
+    private function getCurrentPermissionChecker(): ?\Phuppi\PermissionChecker
+    {
+        $user = $this->getCurrentUser();
+        $voucher = $this->getCurrentVoucher();
+
+        if ($voucher && $voucher->id) {
+            return \Phuppi\PermissionChecker::forVoucher($voucher);
+        } elseif ($user) {
+            return \Phuppi\PermissionChecker::forUser($user);
+        }
+        return null;
+    }
+
     public function listFiles()
     {
-        
-        if (!Flight::user()->can(FilePermission::LIST)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::LIST)) {
             Flight::logger()->warning('listFiles: Forbidden access');
             Flight::halt(403, 'Forbidden');
         }
@@ -85,7 +105,6 @@ class FileController
         $total = $result['total'];
         $totalPages = ceil($total / $limit);
         
-
         $fileData = array_map(function ($file) {
             return [
                 'id' => $file->id,
@@ -94,7 +113,9 @@ class FileController
                 'mimetype' => $file->mimetype,
                 'filesize' => $file->filesize,
                 'uploaded_at' => $file->uploaded_at,
-                'notes' => $file->notes
+                'notes' => $file->notes,
+                'voucher_id' => $file->voucher_id,
+                'voucher_code' => $file->voucher_id ? $file->getVoucherCode() : null,
             ];
         }, $result['files']);
 
@@ -110,10 +131,19 @@ class FileController
     public function getFile($id)
     {
         $file = UploadedFile::findById($id);
+        if (!$file) {
+            Flight::halt(404, 'File not found');
+        }
 
-        if(!Flight::user()->hasRole('admin') && Flight::user()->id !== $file->user_id) {
-            // Only an admin or the file's owner can view their own file without a token
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        $canAccess = false;
 
+        if ($permissionChecker) {
+            $canAccess = $permissionChecker->can(FilePermission::VIEW, $file);
+        }
+
+        if (!$canAccess) {
+            // Check for token access
             $token = Flight::request()->query['token'] ?? null;
             if(!$token) {
                 Flight::halt(403, 'Token required');
@@ -121,13 +151,11 @@ class FileController
             if(strlen($token) > 255) {
                 Flight::halt(413, 'Invalid token');
             }
-            if (!$file) {
-                Flight::halt(403, 'Invalid or expired token');
-            }
             $fileToken = UploadedFileToken::findByToken($token);
             if (!$fileToken || $fileToken->uploaded_file_id != $id) {
                 Flight::halt(403, 'Invalid or expired token');
             }
+            $canAccess = true;
         }
 
         if (!Flight::storage()->exists($file->getUsername() . '/' . $file->filename)) {
@@ -178,7 +206,8 @@ class FileController
 
     public function uploadFile()
     {
-        if (!Flight::user()->can(FilePermission::PUT)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::PUT)) {
             Flight::halt(403, 'Forbidden');
         }
         $uploads = Flight::request()->files['file'] ?? null;
@@ -206,8 +235,9 @@ class FileController
             $voucher = $this->getCurrentVoucher();
             // Store file using storage abstraction
             $uniqueName = uniqid() . '_' . $name;
+            $pathPrefix = $user ? $user->username : $voucher->getUsername();
             if(Flight::storage() instanceof S3Storage) {
-                $presignedUrl = Flight::storage()->getPresignedPutUrl($user->username . '/' . $uniqueName, $uploads['type'][$index]);
+                $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $uploads['type'][$index]);
                 if (!$presignedUrl) {
                     $results[] = ['error' => 'Failed to generate presigned URL for ' . $name];
                     continue;
@@ -219,14 +249,14 @@ class FileController
                     'filesize' => $uploads['size'][$index],
                     'mimetype' => $uploads['type'][$index],
                     'extension' => pathinfo($name, PATHINFO_EXTENSION),
-                    'user_id' => $user ? $user->id : null,
+                    'user_id' => $user->id ?? $voucher->user_id,
                     'voucher_id' => $voucher ? $voucher->id : null
                 ];
                 continue;
             }
 
             if(Flight::storage() instanceof LocalStorage) {
-                if (!Flight::storage()->put($user->username . '/' . $uniqueName, $uploads['tmp_name'][$index])) {
+                if (!Flight::storage()->put($pathPrefix . '/' . $uniqueName, $uploads['tmp_name'][$index])) {
                     Flight::logger()->error('FileController uploadFile: failed to save file ' . $name);
                     $results[] = ['error' => 'Failed to save file ' . $name];
                     continue;
@@ -236,7 +266,7 @@ class FileController
             
             
             $file = new UploadedFile();
-            $file->user_id = $user ? $user->id : null;
+            $file->user_id = $user->id ?? $voucher->user_id;
             $file->voucher_id = $voucher ? $voucher->id : null;
             $file->filename = $uniqueName;
             $file->display_filename = $name;
@@ -258,7 +288,8 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        if (!Flight::user()->can(FilePermission::UPDATE, $file)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::UPDATE, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $data = Flight::request()->data;
@@ -277,7 +308,8 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        if (!Flight::user()->can(FilePermission::DELETE, $file)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::DELETE, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
@@ -304,7 +336,8 @@ class FileController
                 $errors[] = "File $id not found";
                 continue;
             }
-            if (!Flight::user()->can(FilePermission::DELETE, $file)) {
+            $permissionChecker = $this->getCurrentPermissionChecker();
+            if (!$permissionChecker || !$permissionChecker->can(FilePermission::DELETE, $file)) {
                 $errors[] = "Forbidden to delete file $id";
                 continue;
             }
@@ -332,7 +365,8 @@ class FileController
                 Flight::json(['error' => "File $id not found"], 404);
                 return;
             }
-            if (!Flight::user()->can(FilePermission::GET, $file)) {
+            $permissionChecker = $this->getCurrentPermissionChecker();
+            if (!$permissionChecker || !$permissionChecker->can(FilePermission::GET, $file)) {
                 Flight::json(['error' => "Forbidden to access file $id"], 403);
                 return;
             }
@@ -449,7 +483,8 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        if (!Flight::user()->can(FilePermission::GET, $file)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::GET, $file)) {
             Flight::halt(403, 'Forbidden');
         }
         $data = Flight::request()->data;
@@ -515,7 +550,8 @@ class FileController
                 Flight::logger()->error('getThumbnail: File not found for ID: ' . $id);
                 Flight::halt(404, 'File not found');
             }
-            if (!Flight::user()->can(FilePermission::VIEW, $file)) {
+            $permissionChecker = $this->getCurrentPermissionChecker();
+            if (!$permissionChecker || !$permissionChecker->can(FilePermission::VIEW, $file)) {
                 Flight::logger()->warning('getThumbnail: Forbidden access for file ID: ' . $id);
                 Flight::halt(403, 'Forbidden');
             }
@@ -541,7 +577,8 @@ class FileController
     }
     public function registerUploadedFile()
     {
-        if (!Flight::user()->can(FilePermission::PUT)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::PUT)) {
             Flight::halt(403, 'Forbidden');
         }
         $data = Flight::request()->data;
@@ -550,21 +587,23 @@ class FileController
         $filesize = $data->filesize ?? null;
         $mimetype = $data->mimetype ?? null;
         $extension = $data->extension ?? null;
-        $userId = $data->user_id ?? null;
-        $voucherId = $data->voucher_id ?? null;
 
         if (!$filename || !$displayFilename || !$filesize || !$mimetype) {
             Flight::halt(400, 'Missing required fields');
         }
 
+        $user = $this->getCurrentUser();
+        $voucher = $this->getCurrentVoucher();
+        $pathPrefix = $user ? $user->username : $voucher->getUsername();
+
         // Verify the file exists in storage
-        if (!Flight::storage()->exists(Flight::user()->username . '/' . $filename)) {
+        if (!Flight::storage()->exists($pathPrefix . '/' . $filename)) {
             Flight::halt(400, 'File not found in storage');
         }
 
         $file = new UploadedFile();
-        $file->user_id = $userId;
-        $file->voucher_id = $voucherId;
+        $file->user_id = $user->id ?? $voucher->user_id;
+        $file->voucher_id = $voucher->id;
         $file->filename = $filename;
         $file->display_filename = $displayFilename;
         $file->filesize = $filesize;
@@ -584,7 +623,8 @@ class FileController
         if (!$file) {
             Flight::halt(404, 'File not found');
         }
-        if (!Flight::user()->can(FilePermission::VIEW, $file)) {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
 

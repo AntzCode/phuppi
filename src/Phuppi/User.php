@@ -207,7 +207,7 @@ class User
             return false;
         }
         $permissionChecker = PermissionChecker::forUser($this);
-        return $permissionChecker->userCan($permission, $subject);
+        return $permissionChecker->can($permission, $subject);
     }
 
     public function permissionFromString($permissionString) {

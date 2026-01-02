@@ -1,12 +1,21 @@
-{parameters
-string $name = '',
-string $sessionId = ''
+{parameters 
+    ?array $notes = [],
+    ?array $userCan = [
+        'note_create' => user_can('note_create'),
+        'note_delete' => user_can('note_delete'),
+        'note_view' => user_can('note_view'),
+        'note_update' => user_can('note_update'),
+    ]
 }
 
 {layout 'layout.latte'}
 
 {block content}
 <div id="notes-container"></div>
+
+<script>
+    const userCan = {$userCan};
+</script>
 
 <script type="module" n:syntax="off">
 
@@ -246,9 +255,9 @@ string $sessionId = ''
             <h3 class="header"><i class="sticky note icon"></i> Your Notes</h3>
             <div class="ui stackable menu">
                 <div class="item">
-                    <button class="ui primary button" onClick=${createNote}>
+                    ${userCan.note_create && html`<button class="ui primary button" onClick=${createNote}>
                         <i class="plus icon"></i> Create New Note
-                    </button>
+                    </button>`}
                 </div>
                 <div class="right menu">
                     <div class="item">
@@ -325,35 +334,35 @@ string $sessionId = ''
                     <i class="sticky note outline icon"></i>
                     No Notes Yet
                 </div>
-                <div class="inline">
+                ${userCan.note_create && html`<div class="inline">
                     <div class="ui primary button" onClick=${createNote}>Create Your First Note</div>
-                </div>
+                </div>`}
             </div>
             ` : html`
             <div class="ui doubling stackable three cards">
                 ${notes.map(note => html`
                 <div class="fluid card">
                     <div class="ui header attached">${note.filename}</div>
-                    <div class="content">
+                    ${userCan.note_view && html`<div class="content">
                         <div class="description">
                             ${note.content.length > 150 ? note.content.substring(0, 150) + '...' : note.content}
                         </div>
                         <div class="meta">${note.updated_at ? `Updated: ${note.updated_at}` : `Created: ${note.created_at}`}</div>
-                    </div>
+                    </div>`}
                     <div class="extra content">
-                        <button class="ui positive right labeled icon button clickable" onClick=${() => openViewModal(note)}>
+                        ${userCan.note_view && html`<button class="ui positive right labeled icon button clickable" onClick=${() => openViewModal(note)}>
                             <i class="glasses icon"></i> View
-                        </button>
-                        <button class="ui positive right labeled icon button clickable" onClick=${() => editNote(note)}>
+                        </button>`}
+                        ${userCan.note_update && html`<button class="ui positive right labeled icon button clickable" onClick=${() => editNote(note)}>
                             <i class="edit icon"></i> Edit
-                        </button>
-                        <button class="ui positive right labeled icon button clickable" onClick=${() => shareNote(note)}>
+                        </button>`}
+                        ${userCan.note_view && html`<button class="ui positive right labeled icon button clickable" onClick=${() => shareNote(note)}>
                             Share
                             <i class="share icon"></i>
-                        </button>
-                        <button class="ui red right rounded icon button clickable" onClick=${() => deleteNote(note)}>
+                        </button>`}
+                        ${userCan.note_delete && html`<button class="ui red right rounded icon button clickable" onClick=${() => deleteNote(note)}>
                             <i class="trash icon"></i>
-                        </button>
+                        </button>`}
                     </div>
                 </div>
                 `)}

@@ -3,7 +3,10 @@
     ?string $username = "",
     ?string $error = "",
     ?string $errorUsername = "",
-    ?string $errorPassword = ""
+    ?string $errorPassword = "",
+    ?string $voucherCode = "",
+    ?string $errorVoucher = "",
+    ?string $activeTab = "login"
 }
 {layout 'layout.latte'}
 
@@ -12,9 +15,15 @@
 
         <h1 class="header">Login to Phuppi</h1>
 
-        <div class="ui bottom attached segment">
+        <div class="ui top attached tabular menu">
+            <a class="item {if $activeTab === 'login'}active{/if}" data-tab="login">Login</a>
+            <a class="item {if $activeTab === 'voucher'}active{/if}" data-tab="voucher">Voucher</a>
+        </div>
+
+        <div class="ui bottom attached tab segment {if $activeTab === 'login'}active{/if}" data-tab="login">
 
             <form class="ui large form" action="{$formUrl}" method="POST">
+                <input type="hidden" name="login_type" value="user" />
                 <div class="field {$errorUsername ? 'error'}">
                     <label for="username"><i class="user icon"></i>Username: </label>
                     <input id="username" type="text" name="username" value="{$username}" />
@@ -40,5 +49,31 @@
             </form>
         </div>
 
+        <div class="ui bottom attached tab segment {if $activeTab === 'voucher'}active{/if}" data-tab="voucher">
+
+            <form class="ui large form" action="{$formUrl}" method="POST">
+                <input type="hidden" name="login_type" value="voucher" />
+                <div class="field {$errorVoucher ? 'error'}">
+                    <label for="voucher_code"><i class="ticket icon"></i>Voucher Code: </label>
+                    <input id="voucher_code" type="text" name="voucher_code" value="{$voucherCode}" />
+                    {if $errorVoucher}
+                        <div><small><span class="ui red text"><strong>{$errorVoucher}</strong></span></small></div>
+                    {/if}
+                </div>
+                {if $error}
+                    <div class="ui error message">
+                        <p>{$error}</p>
+                    </div>
+                {/if}
+
+                <button class="ui right labeled icon green button" type="submit"><i class="sign-in icon left"></i> Login with Voucher</button>
+
+            </form>
+        </div>
+
     </div>
+
+    <script>
+        $('.menu .item').tab();
+    </script>
 {/block}

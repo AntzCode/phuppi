@@ -62,9 +62,25 @@ class Helper {
     public static function getUserId() {
         return Flight::user()?->id ?? null;
     }
+    
+    public static function getVoucherId() {
+        return Flight::voucher()?->id ?? null;
+    }
+
+    public static function isAuthenticated() {
+        return Flight::session()->get('id') || Flight::session()->get('voucher_id');
+    }
 
     public static function userCan(NotePermission|UserPermission|VoucherPermission|FilePermission|string $permission, null|Note|UploadedFile|User|Voucher $subject = null) {
-        return Flight::user()?->can($permission, $subject) ?? false;
+        $user = Flight::user();
+        $voucher = Flight::voucher();
+        if ($voucher && $voucher->id) {
+            return $voucher->can($permission, $subject);
+        } else if ($user && $user->id) {
+            return $user->can($permission, $subject);
+        } else {
+            return false;
+        }
     }
 
 

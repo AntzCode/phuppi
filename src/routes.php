@@ -35,6 +35,14 @@ if (!$usersTableExists) {
     Flight::route('POST /users/@id/add-permission', [new \Phuppi\Controllers\UserController(), 'addPermission']);
     Flight::route('POST /users/@id/remove-permission', [new \Phuppi\Controllers\UserController(), 'removePermission']);
 
+    // Voucher routes
+    Flight::route('GET /vouchers', [new \Phuppi\Controllers\VoucherController(), 'listVouchers']);
+    Flight::route('POST /vouchers', [new \Phuppi\Controllers\VoucherController(), 'createVoucher']);
+    Flight::route('PUT /vouchers/@id', [new \Phuppi\Controllers\VoucherController(), 'updateVoucher']);
+    Flight::route('DELETE /vouchers/@id', [new \Phuppi\Controllers\VoucherController(), 'deleteVoucher']);
+    Flight::route('POST /vouchers/@id/add-permission', [new \Phuppi\Controllers\VoucherController(), 'addPermission']);
+    Flight::route('POST /vouchers/@id/remove-permission', [new \Phuppi\Controllers\VoucherController(), 'removePermission']);
+
     // Admin settings
     Flight::route('GET /admin/settings', [new \Phuppi\Controllers\SettingsController(), 'index']);
     Flight::route('POST /admin/settings/storage', [new \Phuppi\Controllers\SettingsController(), 'updateStorage']);

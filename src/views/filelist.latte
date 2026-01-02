@@ -1,9 +1,20 @@
 {parameters
-    ?array $files = []
+    ?array $files = [],
+    $userCan = [
+        'file_create' => user_can('file_create'),
+        'file_delete' => user_can('file_delete'),
+        'file_view' => user_can('file_view'),
+        'file_put' => user_can('file_put'),
+        'file_get' => user_can('file_get'),
+        'file_update' => user_can('file_update'),
+    ]
 }
 
 <div id="file-list-container"></div>
 
+<script>
+    const userCan = {$userCan};
+</script>
 
 <script type="module" n:syntax="off">
 
@@ -170,7 +181,7 @@
                         // For manage tags, open modal
                         manageTags(ids);
                     } else {
-                        console.log('Unknown action:', action);
+                        // Unknown action, do nothing
                     }
             }
         };
@@ -461,7 +472,7 @@
 
         return html`
 
-        <div class="ui form segment">
+        ${userCan.file_create && userCan.file_put && html`<div class="ui form segment">
             <h3 class="header"><i class="upload icon"></i> Upload Some Files</h3>
             <div class="ui one cards">
                 <div class="card">
@@ -493,35 +504,35 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </div>`}
         <div class="ui segment">
             <h3 class="header">
                 <i class="list icon"></i>
                 <label> Your Uploaded Files ${files.length} of ${total}</label>
             </h3>
             <div class="ui stackable menu">
-                <div class="clickable item" onClick=${handleSelectAll}>
+                ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="clickable item" onClick=${handleSelectAll}>
                     <i class=${selectedFiles.length === files.length && files.length > 0 ? "check square large primary icon" : "square outline large primary icon"}></i>
                     <label>Select All</label>
-                </div>
-                <div class="ui dropdown bulk-actions item clickable">
+                </div>`}
+                ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="ui dropdown bulk-actions item clickable">
                     <label>With ${selectedFiles.length} Selected (<span>${readableSize(totalSize)}</span>)</label>
                     <i class="dropdown icon"></i>
                     <div class="ui labeled icon menu">
-                        <div class="item" data-value="download">
+                        ${userCan.file_get && html`<div class="item" data-value="download">
                             <i class="download icon"></i>
                             <label>Zip & Download</label>
-                        </div>
-                        <div class="item" data-value="manage">
+                        </div>`}
+                        ${userCan.file_update && html`<div class="item" data-value="manage">
                             <i class="tag icon"></i>
                             <label>Manage Notes</label>
-                        </div>
-                        <div class="item" data-value="delete">
+                        </div>`}
+                        ${userCan.file_delete && html`<div class="item" data-value="delete">
                             <i class="trash icon"></i>
                             <label>Delete Selected</label>
-                        </div>
+                        </div>`}
                     </div>
-                </div>
+                </div>`}
                 <div class="right menu">
                     <div class="item">
                         <div class="ui icon input">
@@ -608,37 +619,38 @@
 
             <div class="ui  divided items">
                 ${files.map(file => html`<div class="ui item" style="position: relative">
-                    <button class="red ui top right attached round label raised clickable" onClick=${() => deleteFile(file)}>
+                    ${userCan.file_delete && html`<button class="red ui top right attached round label raised clickable" onClick=${() => deleteFile(file)}>
                         <i class="trash icon"></i>
                         Delete
-                    </button>
-                    <div class="ui image uploaded-file" style="padding: 1em; align-self: center;">
+                    </button>`}
+                    ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="ui image uploaded-file" style="padding: 1em; align-self: center;">
                         <i class=${selectedFiles.includes(file.id) ? "clickable large primary check square icon" : "clickable large primary square outline icon"} onClick=${() => toggleSelection(file.id)}></i>
-                    </div>
-                    <div class="ui tiny rounded image clickable raised" onClick=${() => previewFile(file)}>
+                    </div>`}
+                    ${userCan.file_get && html`<div class="ui tiny rounded image clickable raised" onClick=${() => previewFile(file)}>
                         ${['png', 'jpg', 'gif'].includes(file.extension.toLowerCase())
                             ? html`<img src="/files/thumbnail/${file.id}" />`
                             : html`<img src="/assets/images/filetype-icons/${file.extension}.png" />`
                         }
-                    </div>
+                    </div>`}
                     <div class="content">
                         <div class="header">
                             <span>[${file.id}] ${file.display_filename}</span>
                         </div>
                         <div class="meta">
-                            <p>${file.notes}</p>
+                            ${userCan.file_view && html`<p>${file.notes}</p>
                             <span>${readableSize(file.filesize)} ${file.mimetype}</span>
-                            <span>Uploaded at ${file.uploaded_at}</span>
+                            <span>Uploaded at ${file.uploaded_at}</span>`}
+                            ${file.voucher_code && html`<p>Voucher: ${file.voucher_code}</p>`}
                         </div>
                         <div class="ui extra">
-                            <a class="ui labeled icon button" href="/files/${file.id}?download=true">
+                            ${userCan.file_get && html`<a class="ui labeled icon button" href="/files/${file.id}?download=true">
                                 <i class="download icon"></i>
                                 Download
                             </a>
                             <button class="ui positive right labeled icon button clickable" onClick=${() => shareFile(file)}>
                                 Share
                                 <i class="share icon"></i>
-                            </button>
+                            </button>`}
                         </div>
                     </div>
                 </div>`)}

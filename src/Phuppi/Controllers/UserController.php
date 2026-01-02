@@ -26,27 +26,40 @@ class UserController
         Flight::render('login.latte', [
             'formUrl' => '/login',
             'username' => '',
-            'error' => ''
+            'error' => '',
+            'voucherCode' => '',
+            'errorUsername' => '',
+            'errorPassword' => '',
+            'errorVoucher' => '',
+            'activeTab' => 'login'
         ]);
     }
 
     private function handleLogin()
     {
+        $loginType = Flight::request()->data->login_type ?? 'user';
+
+        if ($loginType === 'voucher') {
+            $this->handleVoucherLogin();
+        } else {
+            $this->handleUserLogin();
+        }
+    }
+
+    private function handleUserLogin()
+    {
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['username', 'password']);
 
         if (!$v->validate()) {
-            if($v->errors('username')) {
-                Flight::messages()->addError($v->errors('username')[0], 'Invalid credentials');
-            }
-            if($v->errors('password')) {
-                Flight::messages()->addError($v->errors('password')[0], 'Invalid credentials');
-            }
             Flight::render('login.latte', [
                 'formUrl' => '/login',
                 'username' => Flight::request()->data->username ?? '',
                 'errorUsername' => $v->errors('username')[0] ?? '',
                 'errorPassword' => $v->errors('password')[0] ?? '',
+                'voucherCode' => '',
+                'errorVoucher' => '',
+                'activeTab' => 'login'
             ]);
             return;
         }
@@ -60,11 +73,14 @@ class UserController
         $user = $stmt->fetch();
 
         if($user === false) {
-            Flight::messages()->addError('Wrong username', 'Invalid credentials');
             Flight::render('login.latte', [
                 'formUrl' => '/login',
                 'username' => $username,
-                'errorUsername' => 'Invalid username'
+                'errorUsername' => 'Invalid username',
+                'errorPassword' => '',
+                'voucherCode' => '',
+                'errorVoucher' => '',
+                'activeTab' => 'login'
             ]);
             return;
         }
@@ -73,13 +89,72 @@ class UserController
             Flight::session()->set('id', $user['id']);
             Flight::redirect('/');
         } else {
-            Flight::messages()->addError('Wrong password', 'Invalid credentials');
             Flight::render('login.latte', [
                 'formUrl' => '/login',
                 'username' => $username,
-                'errorPassword' => 'Invalid password'
+                'errorUsername' => '',
+                'errorPassword' => 'Invalid password',
+                'voucherCode' => '',
+                'errorVoucher' => '',
+                'activeTab' => 'login'
             ]);
         }
+    }
+
+    private function handleVoucherLogin()
+    {
+        $v = new Validator(Flight::request()->data);
+        $v->rule('required', ['voucher_code']);
+
+        if (!$v->validate()) {
+            Flight::render('login.latte', [
+                'formUrl' => '/login',
+                'username' => '',
+                'errorUsername' => '',
+                'errorPassword' => '',
+                'voucherCode' => Flight::request()->data->voucher_code ?? '',
+                'errorVoucher' => $v->errors('voucher_code')[0] ?? '',
+                'activeTab' => 'voucher'
+            ]);
+            return;
+        }
+
+        $voucherCode = Flight::request()->data->voucher_code;
+        $voucher = \Phuppi\Voucher::findByCode($voucherCode);
+
+        if (!$voucher) {
+            Flight::render('login.latte', [
+                'formUrl' => '/login',
+                'username' => '',
+                'errorUsername' => '',
+                'errorPassword' => '',
+                'voucherCode' => $voucherCode,
+                'errorVoucher' => 'Invalid voucher code',
+                'activeTab' => 'voucher'
+            ]);
+            return;
+        }
+
+        if ($voucher->isExpired() || $voucher->isDeleted()) {
+            Flight::render('login.latte', [
+                'formUrl' => '/login',
+                'username' => '',
+                'errorUsername' => '',
+                'errorPassword' => '',
+                'voucherCode' => $voucherCode,
+                'errorVoucher' => 'Voucher is not valid',
+                'activeTab' => 'voucher'
+            ]);
+            return;
+        }
+
+        // Redeem the voucher
+        $voucher->redeemed_at = date('Y-m-d H:i:s');
+        $voucher->save();
+
+        Flight::session()->set('voucher_id', $voucher->id);
+        // Flight::session()->set('id', $voucher->user_id);
+        Flight::redirect('/');
     }
 
     public function logout()
@@ -90,12 +165,11 @@ class UserController
 
     public function listUsers()
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
+        if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::redirect('/login');
         }
 
-        $user = \Phuppi\User::findById($sessionId);
+        $user = Flight::user();
         if (!$user || !$user->can(UserPermission::LIST)) {
             Flight::halt(403, 'Forbidden');
         }
@@ -141,11 +215,10 @@ class UserController
 
     public function addPermission($userId)
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
+        if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
         }
-        $currentUser = \Phuppi\User::findById($sessionId);
+        $currentUser = Flight::user();
         if (!$currentUser) {
             Flight::halt(403, 'Forbidden');
         }
@@ -190,11 +263,10 @@ class UserController
 
     public function removePermission($userId)
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
+        if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
         }
-        $currentUser = \Phuppi\User::findById($sessionId);
+        $currentUser = Flight::user();
         if (!$currentUser) {
             Flight::halt(403, 'Forbidden');
         }
@@ -239,11 +311,10 @@ class UserController
 
     public function deleteUser($userId)
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
+        if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
         }
-        $currentUser = \Phuppi\User::findById($sessionId);
+        $currentUser = Flight::user();
         if (!$currentUser) {
             Flight::halt(403, 'Forbidden');
         }
@@ -271,12 +342,11 @@ class UserController
 
     public function createUser()
     {
-        $sessionId = Flight::session()->get('id');
-        if (!$sessionId) {
+        if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
         }
 
-        $currentUser = \Phuppi\User::findById($sessionId);
+        $currentUser = Flight::user();
         if (!$currentUser || !$currentUser->can(UserPermission::CREATE)) {
             Flight::halt(403, 'Forbidden');
         }
