@@ -1,3 +1,14 @@
+# docker-compose.yml
+#
+# Docker Compose configuration for the Phuppi application and MinIO storage service.
+#
+# @package Phuppi
+# @author Anthony Gallon
+# @copyright AntzCode Ltd
+# @license GPLv3
+# @link https://github.com/AntzCode/phuppi/
+# @since 2.0.0
+
 services:
   phuppi:
     build:
@@ -65,5 +76,12 @@ services:
       mc anonymous set download myminio/$MINIO_BUCKETS;
       exit 0;
       "
+
+  phpdoc:
+    image: phpdoc/phpdoc:latest
+    volumes:
+      - .:/data
+    working_dir: /data
+
 volumes:
   minio_data:

@@ -1,11 +1,24 @@
 <?php
 
+/**
+ * DatabaseSession.php
+ *
+ * DatabaseSession class for database-backed session handling in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 declare(strict_types=1);
 
 namespace Phuppi;
 
-use SessionHandlerInterface;
 use PDO;
+use SessionHandlerInterface;
 
 /**
  * A database-backed session handler for the Flight framework.
@@ -13,14 +26,29 @@ use PDO;
  */
 class DatabaseSession implements SessionHandlerInterface
 {
+    /** @var PDO */
     private PDO $db;
+
+    /** @var string */
     private string $table;
+
+    /** @var array */
     private array $data = [];
+
+    /** @var bool */
     private bool $changed = false;
+
+    /** @var ?string */
     private ?string $sessionId = null;
+
+    /** @var bool */
     private bool $autoCommit = true;
+
+    /** @var bool */
     private bool $testMode = false;
-    private ?string $serialization = null; // 'json' (default) or 'php'
+
+    /** @var ?string 'json' (default) or 'php' */
+    private ?string $serialization = null;
 
     /**
      * Constructor to initialize the database session handler.
@@ -79,6 +107,10 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Open a session.
+     *
+     * @param string $savePath The path to save the session.
+     * @param string $sessionName The name of the session.
+     * @return bool Always returns true.
      */
     public function open($savePath, $sessionName): bool
     {
@@ -87,6 +119,8 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Closes the current session.
+     *
+     * @return bool Always returns true.
      */
     public function close(): bool
     {
@@ -95,6 +129,9 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Reads the session data associated with the given session ID.
+     *
+     * @param string $id The session ID.
+     * @return string The session data.
      */
     #[\ReturnTypeWillChange]
     public function read($id): string
@@ -130,6 +167,10 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Writes the session data.
+     *
+     * @param string $id The session ID.
+     * @param string $data The session data.
+     * @return bool True if written successfully, false otherwise.
      */
     public function write($id, $data): bool
     {
@@ -156,6 +197,9 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Destroys the session with the given ID.
+     *
+     * @param string $id The session ID.
+     * @return bool True if destroyed successfully, false otherwise.
      */
     public function destroy($id): bool
     {
@@ -178,6 +222,9 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Garbage collector for session data.
+     *
+     * @param int $maxLifetime The maximum lifetime of a session.
+     * @return int The number of deleted sessions.
      */
     #[\ReturnTypeWillChange]
     public function gc($maxLifetime)
@@ -188,6 +235,10 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Sets a session variable.
+     *
+     * @param string $key The key.
+     * @param mixed $value The value.
+     * @return self
      */
     public function set(string $key, $value): self
     {
@@ -198,14 +249,21 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Retrieve a value from the session.
+     *
+     * @param string $key The key.
+     * @param mixed $default The default value.
+     * @return mixed The value or default.
      */
-    public function get(string $key, $default = null)
+    public function get(string $key, $default = null): mixed
     {
         return $this->data[$key] ?? $default;
     }
 
     /**
      * Deletes a session variable.
+     *
+     * @param string $key The key.
+     * @return self
      */
     public function delete(string $key): self
     {
@@ -216,6 +274,8 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Clears all session data.
+     *
+     * @return self
      */
     public function clear(): self
     {
@@ -226,6 +286,8 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Retrieve all session data.
+     *
+     * @return array The session data.
      */
     public function getAll(): array
     {
@@ -234,6 +296,8 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Commits the current session data.
+     *
+     * @return void
      */
     public function commit(): void
     {
@@ -245,6 +309,8 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Get the current session ID.
+     *
+     * @return ?string The session ID.
      */
     public function id(): ?string
     {
@@ -253,6 +319,9 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Regenerates the session ID.
+     *
+     * @param bool $deleteOldFile Whether to delete the old session file.
+     * @return self
      */
     public function regenerate(bool $deleteOldFile = false): self
     {
@@ -278,6 +347,10 @@ class DatabaseSession implements SessionHandlerInterface
 
     /**
      * Recursively check for objects in data (for JSON safety).
+     *
+     * @param mixed $data The data to check.
+     * @return void
+     * @throws \InvalidArgumentException If objects are found.
      */
     private function assertNoObjects($data): void
     {

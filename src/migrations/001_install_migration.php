@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * 001_install_migration.php
+ *
+ * Migration script for setting up the v2 database structure and migrating data from v1 in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 // V2 Migration: Creates the full v2 database structure.
 // If a v1 database is detected, migrates data from v1 to v2.
 

@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * InstallController.php
+ *
+ * InstallController class for handling the initial installation and setup of the Phuppi application.
+ *
+ * @package Phuppi\Controllers
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Controllers;
 
 use Flight;
@@ -7,7 +20,12 @@ use Valitron\Validator;
 
 class InstallController
 {
-    public function index()
+    /**
+     * Displays the installer form.
+     *
+     * @return void
+     */
+    public function index(): void
     {
         Flight::render('installer.latte', [
             'formUrl' => '/install',
@@ -16,7 +34,12 @@ class InstallController
         ]);
     }
 
-    public function install()
+    /**
+     * Performs the installation.
+     *
+     * @return void
+     */
+    public function install(): void
     {
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['username', 'password']);

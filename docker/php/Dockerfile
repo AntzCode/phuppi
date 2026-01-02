@@ -1,3 +1,14 @@
+# Dockerfile
+#
+# Dockerfile for building the PHP Apache container for the Phuppi application.
+#
+# @package Phuppi
+# @author Anthony Gallon
+# @copyright AntzCode Ltd
+# @license GPLv3
+# @link https://github.com/AntzCode/phuppi/
+# @since 2.0.0
+
 FROM php:8.2-apache
 
 ARG UID=1000

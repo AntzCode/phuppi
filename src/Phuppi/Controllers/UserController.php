@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * UserController.php
+ *
+ * UserController class for managing user authentication, sessions, and user-related operations in the Phuppi application.
+ *
+ * @package Phuppi\Controllers
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Controllers;
 
 use Flight;
@@ -7,12 +20,16 @@ use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\UserPermission;
 use Phuppi\Permissions\VoucherPermission;
-
 use Valitron\Validator;
 
 class UserController
 {
-    public function login()
+    /**
+     * Handles login requests.
+     *
+     * @return void
+     */
+    public function login(): void
     {
         if (Flight::request()->method == 'POST') {
             $this->handleLogin();
@@ -21,7 +38,12 @@ class UserController
         }
     }
 
-    private function showLoginForm()
+    /**
+     * Shows the login form.
+     *
+     * @return void
+     */
+    private function showLoginForm(): void
     {
         Flight::render('login.latte', [
             'formUrl' => '/login',
@@ -35,7 +57,12 @@ class UserController
         ]);
     }
 
-    private function handleLogin()
+    /**
+     * Handles the login process.
+     *
+     * @return void
+     */
+    private function handleLogin(): void
     {
         $loginType = Flight::request()->data->login_type ?? 'user';
 
@@ -46,7 +73,12 @@ class UserController
         }
     }
 
-    private function handleUserLogin()
+    /**
+     * Handles user login.
+     *
+     * @return void
+     */
+    private function handleUserLogin(): void
     {
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['username', 'password']);
@@ -72,7 +104,7 @@ class UserController
         $stmt->execute([$username]);
         $user = $stmt->fetch();
 
-        if($user === false) {
+        if ($user === false) {
             Flight::render('login.latte', [
                 'formUrl' => '/login',
                 'username' => $username,
@@ -101,7 +133,12 @@ class UserController
         }
     }
 
-    private function handleVoucherLogin()
+    /**
+     * Handles voucher login.
+     *
+     * @return void
+     */
+    private function handleVoucherLogin(): void
     {
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['voucher_code']);
@@ -157,7 +194,12 @@ class UserController
         Flight::redirect('/');
     }
 
-    public function logout()
+    /**
+     * Logs out the user.
+     *
+     * @return void
+     */
+    public function logout(): void
     {
         // Clear session data and destroy session
         Flight::session()->clear();
@@ -176,7 +218,12 @@ class UserController
         Flight::redirect('/login');
     }
 
-    public function listUsers()
+    /**
+     * Lists all users.
+     *
+     * @return void
+     */
+    public function listUsers(): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::redirect('/login');
@@ -196,8 +243,8 @@ class UserController
         $notePermissions = array_map(fn($permission) => ['value' => $permission->value, 'label' => $permission->label()], NotePermission::cases());
         $userPermissions = array_map(fn($permission) => ['value' => $permission->value, 'label' => $permission->label()], UserPermission::cases());
         $voucherPermissions = array_map(fn($permission) => ['value' => $permission->value, 'label' => $permission->label()], VoucherPermission::cases());
-        
-        $userData = array_map(function($user) {
+
+        $userData = array_map(function ($user) {
             return [
                 'id' => $user->id,
                 'username' => $user->username,
@@ -226,7 +273,13 @@ class UserController
         ]);
     }
 
-    public function addPermission($userId)
+    /**
+     * Adds a permission to a user.
+     *
+     * @param int $userId The user ID.
+     * @return void
+     */
+    public function addPermission($userId): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -238,7 +291,7 @@ class UserController
 
         $targetUser = \Phuppi\User::findById($userId);
 
-        if(!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
+        if (!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -246,7 +299,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if($currentUser->id === $targetUser->id) {
+        if ($currentUser->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -274,7 +327,13 @@ class UserController
         Flight::json(['success' => true]);
     }
 
-    public function removePermission($userId)
+    /**
+     * Removes a permission from a user.
+     *
+     * @param int $userId The user ID.
+     * @return void
+     */
+    public function removePermission($userId): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -286,7 +345,7 @@ class UserController
 
         $targetUser = \Phuppi\User::findById($userId);
 
-        if(!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
+        if (!$currentUser->can(UserPermission::PERMIT, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -294,7 +353,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if($currentUser->id === $targetUser->id) {
+        if ($currentUser->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -322,7 +381,13 @@ class UserController
         Flight::json(['success' => true]);
     }
 
-    public function deleteUser($userId)
+    /**
+     * Deletes a user.
+     *
+     * @param int $userId The user ID.
+     * @return void
+     */
+    public function deleteUser($userId): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -334,7 +399,7 @@ class UserController
 
         $targetUser = \Phuppi\User::findById($userId);
 
-        if(!$currentUser->can(UserPermission::DELETE, $targetUser)) {
+        if (!$currentUser->can(UserPermission::DELETE, $targetUser)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -342,7 +407,7 @@ class UserController
             Flight::halt(404, 'User not found');
         }
 
-        if($currentUser->id === $targetUser->id) {
+        if ($currentUser->id === $targetUser->id) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -353,7 +418,12 @@ class UserController
         }
     }
 
-    public function createUser()
+    /**
+     * Creates a new user.
+     *
+     * @return void
+     */
+    public function createUser(): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');

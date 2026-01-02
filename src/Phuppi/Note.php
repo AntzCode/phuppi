@@ -1,19 +1,50 @@
 <?php
 
+/**
+ * Note.php
+ *
+ * Note class for managing notes in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi;
 
 use Flight;
 
 class Note
 {
+    /** @var int|null The unique identifier for the note. */
     public $id;
+
+    /** @var int|null The user ID associated with the note. */
     public $user_id;
+
+    /** @var int|null The voucher ID associated with the note. */
     public $voucher_id;
+
+    /** @var string The filename of the note. */
     public $filename;
+
+    /** @var string The content of the note. */
     public $content;
+
+    /** @var string|null The creation timestamp of the note. */
     public $created_at;
+
+    /** @var string|null The last update timestamp of the note. */
     public $updated_at;
 
+    /**
+     * Constructs a Note object with optional data.
+     * 
+     * @param array $data Optional data to initialize the note.
+     */
     public function __construct(array $data = [])
     {
         $this->id = $data['id'] ?? null;
@@ -25,6 +56,12 @@ class Note
         $this->updated_at = $data['updated_at'] ?? null;
     }
 
+    /**
+     * Loads a note from the database by ID.
+     * 
+     * @param int $id The note ID.
+     * @return bool True if the note was loaded, false otherwise.
+     */
     public function load(int $id): bool
     {
         $db = Flight::db();
@@ -44,6 +81,12 @@ class Note
         return false;
     }
 
+    /**
+     * Finds a note by ID.
+     * 
+     * @param int $id The note ID.
+     * @return self|null The note object or null if not found.
+     */
     public static function findById(int $id): ?self
     {
         $db = Flight::db();
@@ -53,11 +96,20 @@ class Note
         return $data ? new self($data) : null;
     }
 
-    public static function findByUser(int $userId, $sort='date_desc', $limit=20, $offset=0): array
+    /**
+     * Finds notes by user ID with sorting and pagination.
+     * 
+     * @param int $userId The user ID.
+     * @param string $sort The sort order ('date_desc' or 'date_asc').
+     * @param int $limit The number of notes to return.
+     * @param int $offset The offset for pagination.
+     * @return array Array of Note objects.
+     */
+    public static function findByUser(int $userId, $sort = 'date_desc', $limit = 20, $offset = 0): array
     {
         $db = Flight::db();
         $query = 'SELECT * FROM notes WHERE user_id = ?';
-        switch($sort) {
+        switch ($sort) {
             case 'date_desc':
                 $query .= ' ORDER BY updated_at DESC';
                 break;
@@ -65,9 +117,9 @@ class Note
                 $query .= ' ORDER BY updated_at ASC';
                 break;
         }
-        if($limit > 0) {
+        if ($limit > 0) {
             $query .= ' LIMIT ' . $limit;
-            if($offset > 0) {
+            if ($offset > 0) {
                 $query .= ' OFFSET ' . $offset;
             }
         }
@@ -80,6 +132,12 @@ class Note
         return $notes;
     }
 
+    /**
+     * Finds notes by voucher ID.
+     * 
+     * @param int $voucherId The voucher ID.
+     * @return array Array of Note objects.
+     */
     public static function findByVoucher(int $voucherId): array
     {
         $db = Flight::db();
@@ -92,6 +150,17 @@ class Note
         return $notes;
     }
 
+    /**
+     * Finds notes with filtering, sorting, and pagination.
+     * 
+     * @param int|null $userId The user ID to filter by.
+     * @param int|null $voucherId The voucher ID to filter by.
+     * @param string $keyword Keyword to search in filename or content.
+     * @param string $sort The sort order.
+     * @param int $limit The number of notes to return.
+     * @param int $offset The offset for pagination.
+     * @return array Array with 'notes' and 'total' keys.
+     */
     public static function findFiltered(?int $userId, ?int $voucherId, string $keyword = '', string $sort = 'date_newest', int $limit = 10, int $offset = 0): array
     {
         $db = Flight::db();
@@ -150,6 +219,11 @@ class Note
         return ['notes' => $notes, 'total' => $total];
     }
 
+    /**
+     * Saves the note to the database.
+     * 
+     * @return bool True if saved successfully, false otherwise.
+     */
     public function save(): bool
     {
         $db = Flight::db();
@@ -185,6 +259,11 @@ class Note
         }
     }
 
+    /**
+     * Deletes the note from the database.
+     *  
+     * @return bool True if deleted successfully, false otherwise.
+     */
     public function delete(): bool
     {
         $db = Flight::db();

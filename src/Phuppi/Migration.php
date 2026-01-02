@@ -1,11 +1,29 @@
 <?php
 
+/**
+ * Migration.php
+ *
+ * Migration class for managing database schema migrations and session storage in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi;
 
 use Flight;
 
 class Migration
 {
+    /**
+     * Initializes the database migrations and runs them.
+     *
+     * @return void
+     */
     public static function init(): void
     {
         $db = Flight::db();
@@ -32,6 +50,11 @@ class Migration
         self::run();
     }
 
+    /**
+     * Runs pending migrations.
+     *
+     * @return void
+     */
     public static function run(): void
     {
         $db = Flight::db();

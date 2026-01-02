@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * FileLogger.php
+ *
+ * FileLogger class for logging messages to a file in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi;
 
 use Flight;
@@ -8,9 +21,14 @@ use Psr\Log\LoggerTrait;
 
 class FileLogger extends AbstractLogger
 {
-    private $logFile;
     use LoggerTrait;
 
+    /** @var string Path to the log file */
+    private $logFile;
+
+    /**
+     * Constructor to initialize the log file path and create directory if needed.
+     */
     public function __construct()
     {
         $this->logFile = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'phuppi.log';
@@ -22,8 +40,10 @@ class FileLogger extends AbstractLogger
     /**
      * Logs with an arbitrary level.
      *
-     * @param mixed $level
-     *
+     * @param mixed $level The log level
+     * @param string|\Stringable $message The message to log
+     * @param array $context Context data for interpolation
+     * @return void
      * @throws \Psr\Log\InvalidArgumentException
      */
     public function log($level, string|\Stringable $message, array $context = []): void
@@ -34,7 +54,14 @@ class FileLogger extends AbstractLogger
         file_put_contents($this->logFile, $logEntry, FILE_APPEND | LOCK_EX);
     }
 
-    private function interpolate($message, array $context = [])
+    /**
+     * Interpolates context values into the message string.
+     *
+     * @param mixed $message The message string or object
+     * @param array $context Array of context key-value pairs
+     * @return string The interpolated message
+     */
+    private function interpolate($message, array $context = []): string
     {
         $replace = [];
         foreach ($context as $key => $val) {

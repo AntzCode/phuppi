@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * SettingsController.php
+ *
+ * SettingsController class for managing application settings in the Phuppi application.
+ *
+ * @package Phuppi\Controllers
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Controllers;
 
 use Flight;
@@ -7,7 +20,12 @@ use Phuppi\User;
 
 class SettingsController
 {
-    public function index()
+    /**
+     * Displays the settings page.
+     *
+     * @return void
+     */
+    public function index(): void
     {
         $sessionId = Flight::session()->get('id');
         if (!$sessionId) {
@@ -27,7 +45,12 @@ class SettingsController
         ]);
     }
 
-    public function updateStorage()
+    /**
+     * Updates storage settings.
+     *
+     * @return void
+     */
+    public function updateStorage(): void
     {
         $sessionId = Flight::session()->get('id');
         if (!$sessionId) {
@@ -84,7 +107,13 @@ class SettingsController
         Flight::json(['message' => 'Storage settings updated']);
     }
 
-    private function setActiveConnector(string $connectorName)
+    /**
+     * Sets the active storage connector.
+     *
+     * @param string $connectorName The connector name.
+     * @return void
+     */
+    private function setActiveConnector(string $connectorName): void
     {
         $connectors = Flight::get('storage_connectors') ?? [];
         if (!isset($connectors[$connectorName])) {
@@ -97,7 +126,13 @@ class SettingsController
         Flight::set('active_storage_connector', $connectorName);
     }
 
-    private function addConnector($data)
+    /**
+     * Adds a new storage connector.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function addConnector($data): void
     {
         $name = trim($data->connector_name ?? '');
         $type = $data->connector_type ?? '';
@@ -149,7 +184,13 @@ class SettingsController
         $this->reloadConnectors();
     }
 
-    private function updateConnector($data)
+    /**
+     * Updates an existing storage connector.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function updateConnector($data): void
     {
         $name = $data->connector_name ?? '';
         $db = Flight::db();
@@ -190,7 +231,13 @@ class SettingsController
         $this->reloadConnectors();
     }
 
-    private function deleteConnector(string $connectorName)
+    /**
+     * Deletes a storage connector.
+     *
+     * @param string $connectorName The connector name.
+     * @return void
+     */
+    private function deleteConnector(string $connectorName): void
     {
         $db = Flight::db();
         $activeConnector = Flight::get('active_storage_connector');
@@ -199,6 +246,7 @@ class SettingsController
         $stmt = $db->prepare('SELECT id FROM storage_connectors WHERE name = ?');
         $stmt->execute([$connectorName]);
         $existing = $stmt->fetchColumn();
+
         if (!$existing) {
             Flight::json(['error' => 'Connector not found'], 404);
             return;
@@ -220,11 +268,18 @@ class SettingsController
         $this->reloadConnectors();
     }
 
-    private function migrateFiles($data)
+    /**
+     * Migrates files between connectors.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function migrateFiles($data): void
     {
         $fromConnector = $data->from_connector ?? '';
         $toConnector = $data->to_connector ?? '';
         $fileIds = null;
+
         if (!empty($data->file_ids)) {
             $ids = array_map('intval', array_filter(array_map('trim', explode(',', $data->file_ids))));
             $fileIds = $ids;
@@ -243,7 +298,13 @@ class SettingsController
         }
     }
 
-    private function getMigrationFiles($data)
+    /**
+     * Gets files for migration.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function getMigrationFiles($data): void
     {
         $fromConnector = $data->from_connector ?? '';
         $toConnector = $data->to_connector ?? '';
@@ -263,12 +324,19 @@ class SettingsController
                 'filesize' => $file->filesize
             ], $files);
             Flight::json(['file_ids' => $fileIds, 'files' => $fileData]);
+
         } catch (\Exception $e) {
             Flight::json(['error' => 'Failed to get files: ' . $e->getMessage()], 500);
         }
     }
 
-    private function testConnection($data)
+    /**
+     * Tests the connection to a storage connector.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function testConnection($data): void
     {
         $type = $data->connector_type ?? '';
         if ($type !== 's3') {
@@ -286,8 +354,10 @@ class SettingsController
         ];
 
         try {
+
             $storage = new \Phuppi\Storage\S3Storage($config);
             $success = $storage->testConnection();
+
             if ($success) {
                 Flight::json(['message' => 'Connection successful']);
             } else {
@@ -298,7 +368,12 @@ class SettingsController
         }
     }
 
-    private function reloadConnectors()
+    /**
+     * Reloads storage connectors from the database.
+     *
+     * @return void
+     */
+    private function reloadConnectors(): void
     {
         $db = Flight::db();
         $connectors = [];
@@ -312,7 +387,13 @@ class SettingsController
         Flight::set('storage_connectors', $connectors);
     }
 
-    private function scanOrphanedRecords($data)
+    /**
+     * Scans for orphaned database records.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function scanOrphanedRecords($data): void
     {
         $db = Flight::db();
         $orphaned = [];
@@ -338,6 +419,11 @@ class SettingsController
         Flight::json(['orphaned_records' => $orphaned]);
     }
 
+    /**
+     * Gets all existing files from storage.
+     *
+     * @return array Array of existing files.
+     */
     private function getAllExistingFiles(): array
     {
         $storage = Flight::storage();
@@ -349,19 +435,26 @@ class SettingsController
             $scanPath = $pathPrefix ? $basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pathPrefix) : $basePath;
 
             if (is_dir($scanPath)) {
+                
                 $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($scanPath, \RecursiveDirectoryIterator::SKIP_DOTS));
+                
                 foreach ($iterator as $file) {
+
                     if ($file->isFile()) {
                         $relativePath = str_replace($basePath . DIRECTORY_SEPARATOR, '', $file->getPathname());
                         $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
+                        
                         if ($pathPrefix && str_starts_with($relativePath, $pathPrefix . '/')) {
                             $relativePath = substr($relativePath, strlen($pathPrefix) + 1);
                         }
+
                         $existingFiles[$relativePath] = true;
                     }
                 }
             }
+
         } elseif ($storage instanceof \Phuppi\Storage\S3Storage) {
+
             $bucket = $storage->getBucket();
             $pathPrefix = $storage->getPathPrefix();
             $s3Client = $storage->getS3Client();
@@ -383,8 +476,11 @@ class SettingsController
                             $existingFiles[$relativePath] = true;
                         }
                     }
+
                     $params['ContinuationToken'] = $result['NextContinuationToken'] ?? null;
+
                 } while (isset($result['NextContinuationToken']));
+
             } catch (\Exception $e) {
                 Flight::logger()->error('Failed to list S3 objects: ' . $e->getMessage());
                 // Return empty array on error, so all records will be considered orphaned
@@ -395,7 +491,13 @@ class SettingsController
         return $existingFiles;
     }
 
-    private function deleteOrphanedRecords($data)
+    /**
+     * Deletes orphaned database records.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function deleteOrphanedRecords($data): void
     {
         $ids = $data->ids ?? [];
         if (empty($ids) || !is_array($ids)) {
@@ -423,7 +525,13 @@ class SettingsController
         Flight::json(['message' => "Deleted $deleted orphaned records", 'errors' => $errors]);
     }
 
-    private function scanOrphanedFiles($data)
+    /**
+     * Scans for orphaned files in storage.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function scanOrphanedFiles($data): void
     {
         $orphaned = [];
 
@@ -434,22 +542,29 @@ class SettingsController
         $storage = Flight::storage();
 
         if ($storage instanceof \Phuppi\Storage\LocalStorage) {
+
             $basePath = $storage->getBasePath();
             $pathPrefix = $storage->getPathPrefix();
             $scanPath = $pathPrefix ? $basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pathPrefix) : $basePath;
 
             if (is_dir($scanPath)) {
+                
                 $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($scanPath, \RecursiveDirectoryIterator::SKIP_DOTS));
+               
                 foreach ($iterator as $file) {
                     if ($file->isFile()) {
                         $relativePath = str_replace($basePath . DIRECTORY_SEPARATOR, '', $file->getPathname());
                         $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', $relativePath);
+                        
                         if ($pathPrefix && str_starts_with($relativePath, $pathPrefix . '/')) {
                             $relativePath = substr($relativePath, strlen($pathPrefix) + 1);
                         }
+
                         // Check if it's under a username dir
                         $parts = explode('/', $relativePath);
+
                         if (count($parts) >= 2) {
+
                             $username = $parts[0];
                             $filename = implode('/', array_slice($parts, 1));
                             $key = $username . '/' . $filename;
@@ -466,7 +581,9 @@ class SettingsController
                     }
                 }
             }
+
         } elseif ($storage instanceof \Phuppi\Storage\S3Storage) {
+
             $bucket = $storage->getBucket();
             $pathPrefix = $storage->getPathPrefix();
             $s3Client = $storage->getS3Client();
@@ -480,14 +597,19 @@ class SettingsController
                 }
 
                 do {
+
                     $result = $s3Client->listObjectsV2($params);
+
                     if (isset($result['Contents'])) {
+
                         foreach ($result['Contents'] as $object) {
+
                             $key = $object['Key'];
                             $relativePath = $pathPrefix ? substr($key, strlen($pathPrefix) + 1) : $key;
 
                             // Check if it's under a username dir
                             $parts = explode('/', $relativePath);
+
                             if (count($parts) >= 2) {
                                 $username = $parts[0];
                                 $filename = implode('/', array_slice($parts, 1));
@@ -504,8 +626,11 @@ class SettingsController
                             }
                         }
                     }
+
                     $params['ContinuationToken'] = $result['NextContinuationToken'] ?? null;
+
                 } while (isset($result['NextContinuationToken']));
+                
             } catch (\Exception $e) {
                 Flight::json(['error' => 'Failed to scan S3 bucket: ' . $e->getMessage()], 500);
                 return;
@@ -518,6 +643,11 @@ class SettingsController
         Flight::json(['orphaned_files' => $orphaned]);
     }
 
+    /**
+     * Gets all files from the database.
+     *
+     * @return array Array of database files.
+     */
     private function getAllDatabaseFiles(): array
     {
         $db = Flight::db();
@@ -551,7 +681,13 @@ class SettingsController
         return $dbFiles;
     }
 
-    private function importOrphanedFiles($data)
+    /**
+     * Imports orphaned files into the database.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function importOrphanedFiles($data): void
     {
         $files = $data->files ?? [];
         if (empty($files) || !is_array($files)) {
@@ -618,7 +754,13 @@ class SettingsController
         Flight::json(['message' => "Imported $imported orphaned files", 'errors' => $errors]);
     }
 
-    private function getMimeTypeFromExtension($extension)
+    /**
+     * Gets the MIME type from file extension.
+     *
+     * @param string $extension The file extension.
+     * @return string The MIME type.
+     */
+    private function getMimeTypeFromExtension($extension): string
     {
         $mimeTypes = [
             'jpg' => 'image/jpeg',
@@ -632,5 +774,4 @@ class SettingsController
         ];
         return $mimeTypes[strtolower($extension)] ?? 'application/octet-stream';
     }
-
 }

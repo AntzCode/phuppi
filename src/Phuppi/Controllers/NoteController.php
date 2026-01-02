@@ -1,24 +1,43 @@
 <?php
 
+/**
+ * NoteController.php
+ *
+ * NoteController class for handling note creation, retrieval, updates, and sharing in the Phuppi application.
+ *
+ * @package Phuppi\Controllers
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Controllers;
 
 use Flight;
-use Phuppi\User;
-use Phuppi\Voucher;
 use Phuppi\Note;
 use Phuppi\NoteToken;
 use Phuppi\Permissions\NotePermission;
+use Phuppi\User;
+use Phuppi\Voucher;
 
 class NoteController
 {
 
-    public function index()
+    /**
+     * Displays the notes index page.
+     *
+     * @return void
+     */
+    public function index(): void
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
-        if(!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
+        if (!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
             Flight::halt(403, 'Forbidden');
         }
         $lastActivity = Flight::session()->get('last_activity');
+
         // Check for session expiration (30 minutes)
         $sessionTimeout = 30 * 60; // 30 minutes
         if ($lastActivity && (time() - $lastActivity) > $sessionTimeout) {
@@ -26,18 +45,26 @@ class NoteController
             Flight::session()->clear();
             Flight::redirect('/login');
         }
+
         $user = Flight::user();
         $voucher = Flight::voucher();
+
         if ($voucher && $voucher->id) {
             $notes = Note::findByVoucher($voucher->id);
         } elseif ($user) {
             $notes = Note::findByUser($user->id);
-        }  else {
+        } else {
             $notes = [];
         }
+
         Flight::render('notes.latte', ['notes' => $notes, 'name' => 'Notes']);
     }
 
+    /**
+     * Gets the current user.
+     *
+     * @return ?User The current user or null.
+     */
     private function getCurrentUser(): ?User
     {
         $sessionId = Flight::session()->get('id');
@@ -47,6 +74,11 @@ class NoteController
         return null;
     }
 
+    /**
+     * Gets the current voucher.
+     *
+     * @return ?Voucher The current voucher or null.
+     */
     private function getCurrentVoucher(): ?Voucher
     {
         // Assume voucher code is passed in header or param
@@ -61,6 +93,11 @@ class NoteController
     }
 
 
+    /**
+     * Gets the current permission checker.
+     *
+     * @return ?\Phuppi\PermissionChecker The permission checker or null.
+     */
     private function getCurrentPermissionChecker(): ?\Phuppi\PermissionChecker
     {
         $user = $this->getCurrentUser();
@@ -74,7 +111,12 @@ class NoteController
         return null;
     }
 
-    public function listNotes()
+    /**
+     * Lists notes with filtering and pagination.
+     *
+     * @return void
+     */
+    public function listNotes(): void
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
         if (!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
@@ -122,7 +164,13 @@ class NoteController
         ]);
     }
 
-    public function getNote($id)
+    /**
+     * Gets a note by ID.
+     *
+     * @param int $id The note ID.
+     * @return void
+     */
+    public function getNote($id): void
     {
         $note = Note::findById($id);
 
@@ -153,7 +201,12 @@ class NoteController
         ]);
     }
 
-    public function createNote()
+    /**
+     * Creates a new note.
+     *
+     * @return void
+     */
+    public function createNote(): void
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
         if (!$permissionChecker || !$permissionChecker->can(NotePermission::CREATE)) {
@@ -184,7 +237,13 @@ class NoteController
         }
     }
 
-    public function updateNote($id)
+    /**
+     * Updates a note.
+     *
+     * @param int $id The note ID.
+     * @return void
+     */
+    public function updateNote($id): void
     {
         $note = Note::findById($id);
 
@@ -208,7 +267,13 @@ class NoteController
         }
     }
 
-    public function deleteNote($id)
+    /**
+     * Deletes a note.
+     *
+     * @param int $id The note ID.
+     * @return void
+     */
+    public function deleteNote($id): void
     {
         $note = Note::findById($id);
 
@@ -228,16 +293,24 @@ class NoteController
         }
     }
 
-    public function generateShareToken($id)
+    /**
+     * Generates a share token for a note.
+     *
+     * @param int $id The note ID.
+     * @return void
+     */
+    public function generateShareToken($id): void
     {
         $note = Note::findById($id);
         if (!$note) {
             Flight::halt(404, 'Note not found');
         }
+        
         $permissionChecker = $this->getCurrentPermissionChecker();
         if (!$permissionChecker || !$permissionChecker->can(NotePermission::VIEW, $note)) {
             Flight::halt(403, 'Forbidden');
         }
+
         $data = Flight::request()->data;
         $duration = $data->duration ?? '1h'; // default 1 hour
 
@@ -292,7 +365,13 @@ class NoteController
         }
     }
 
-    public function showSharedNote($id)
+    /**
+     * Shows a shared note.
+     *
+     * @param int $id The note ID.
+     * @return void
+     */
+    public function showSharedNote($id): void
     {
 
         $token = Flight::request()->query['token'] ?? null;
@@ -300,10 +379,10 @@ class NoteController
             Flight::halt(403, 'Token required');
         }
 
-        if(strlen($token) > 255) {
+        if (strlen($token) > 255) {
             Flight::halt(413, 'Invalid token');
         }
-        
+
         $note = Note::findById($id);
         if (!$note) {
             Flight::halt(403, 'Invalid or expired token');

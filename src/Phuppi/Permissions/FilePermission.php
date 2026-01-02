@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * FilePermission.php
+ *
+ * FilePermission enum for defining file-related permissions in the Phuppi application.
+ *
+ * @package Phuppi\Permissions
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Permissions;
 
 enum FilePermission: string
@@ -12,8 +25,14 @@ enum FilePermission: string
     case UPDATE = 'file_update';
     case DELETE = 'file_delete';
 
-    public function label() {
-        return match($this) {
+    /**
+     * Returns the human-readable label for the permission.
+     *
+     * @return string
+     */
+    public function label(): string
+    {
+        return match ($this) {
             self::LIST => 'List Files',
             self::VIEW => 'View File',
             self::PUT => 'Upload File',
@@ -25,8 +44,16 @@ enum FilePermission: string
         };
     }
 
-    public static function fromString(string $permission) {
-        return match($permission) {
+    /**
+     * Creates a FilePermission enum from a string value.
+     *
+     * @param string $permission The permission string
+     * @return self
+     * @throws \LogicException If the permission is undefined
+     */
+    public static function fromString(string $permission): self
+    {
+        return match ($permission) {
             'file_list' => self::LIST,
             'file_view' => self::VIEW,
             'file_put' => self::PUT,

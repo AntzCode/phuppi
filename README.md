@@ -47,6 +47,16 @@ No database needed! (uses [SQLite](https://sqlite.org/))
 - **Storage:** Local or S3
 - **Security:** bcrypt, sessions, tokens
 
+## 📚 Documentation
+
+To generate API documentation using phpDocumentor:
+
+```bash
+docker compose run --rm phpdoc phpdoc -d src -t docs
+```
+
+The generated documentation will be available in the `docs/` directory. Open `docs/index.html` in your browser to view it.
+
 ## ⚡ Run on Docker for local development (takes just 2 Minutes)
 
 ```bash

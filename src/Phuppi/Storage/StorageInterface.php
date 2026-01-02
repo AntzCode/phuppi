@@ -1,11 +1,25 @@
 <?php
 
+/**
+ * StorageInterface.php
+ *
+ * StorageInterface class for managing file storage in the Phuppi application.
+ *
+ * @package Phuppi\Storage
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Storage;
 
 interface StorageInterface
 {
     /**
      * Store a file from a local path (e.g., uploaded temp file)
+     * 
      * @param string $filename The filename to store as
      * @param string $sourcePath The local path of the file to store
      * @return bool Success
@@ -14,6 +28,7 @@ interface StorageInterface
 
     /**
      * Get the file content as a stream resource
+     * 
      * @param string $filename
      * @return resource|null File handle or null if not found
      */
@@ -21,6 +36,7 @@ interface StorageInterface
 
     /**
      * Check if file exists
+     * 
      * @param string $filename
      * @return bool
      */
@@ -28,6 +44,7 @@ interface StorageInterface
 
     /**
      * Delete a file
+     * 
      * @param string $filename
      * @return bool Success
      */
@@ -35,6 +52,7 @@ interface StorageInterface
 
     /**
      * Get file size
+     * 
      * @param string $filename
      * @return int|null Size in bytes or null if not found
      */
@@ -42,6 +60,7 @@ interface StorageInterface
 
     /**
      * Get a public URL for the file (if supported)
+     * 
      * @param string $filename
      * @return string|null URL or null if not supported
      */
@@ -49,6 +68,7 @@ interface StorageInterface
 
     /**
      * Get a relative path for the file
+     * 
      * @param string $filename
      * @return string|null Relative path
      */

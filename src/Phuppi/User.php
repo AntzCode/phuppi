@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * User.php
+ *
+ * User class for managing user accounts, authentication, and permissions in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi;
 
 use Flight;
@@ -10,15 +23,37 @@ use Phuppi\Permissions\VoucherPermission;
 
 class User
 {
+    /** @var int|null The unique identifier for the user. */
     public $id;
+
+    /** @var string The username of the user. */
     public $username;
+
+    /** @var string The hashed password of the user. */
     public $password;
+
+    /** @var string|null The creation timestamp of the user. */
     public $created_at;
+
+    /** @var string|null The last update timestamp of the user. */
     public $updated_at;
+
+    /** @var string|null The disabled timestamp of the user. */
     public $disabled_at;
+
+    /** @var string|null The session expiration timestamp of the user. */
     public $session_expires_at;
+
+    /** @var string Additional notes for the user. */
     public $notes;
 
+    /**
+     * Constructor for the User class.
+     *
+     * Initializes a User object with the provided data array.
+     *
+     * @param array $data An associative array of user data to initialize the object with.
+     */
     public function __construct(array $data = [])
     {
         $this->id = $data['id'] ?? null;
@@ -31,6 +66,12 @@ class User
         $this->notes = $data['notes'] ?? '';
     }
 
+    /**
+     * Loads user data from the database by ID.
+     *
+     * @param int $id The user ID to load.
+     * @return bool True if the user was found and loaded, false otherwise.
+     */
     public function load(int $id): bool
     {
         $db = Flight::db();
@@ -51,6 +92,12 @@ class User
         return false;
     }
 
+    /**
+     * Finds a user by username.
+     *
+     * @param string $username The username to search for.
+     * @return self|null The User object if found, null otherwise.
+     */
     public static function findByUsername(string $username): ?self
     {
         $db = Flight::db();
@@ -60,6 +107,12 @@ class User
         return $data ? new self($data) : null;
     }
 
+    /**
+     * Finds a user by ID.
+     *
+     * @param int $id The user ID to search for.
+     * @return self|null The User object if found, null otherwise.
+     */
     public static function findById(int $id): ?self
     {
         $db = Flight::db();
@@ -69,6 +122,11 @@ class User
         return $data ? new self($data) : null;
     }
 
+    /**
+     * Retrieves all users from the database, ordered by username.
+     *
+     * @return array An array of User objects.
+     */
     public static function findAll(): array
     {
         $db = Flight::db();
@@ -77,16 +135,35 @@ class User
         return array_map(fn($row) => new self($row), $data);
     }
 
+    /**
+     * Authenticates the user with the provided password.
+     *
+     * @param string $password The password to verify.
+     * @return bool True if the password is correct, false otherwise.
+     */
     public function authenticate(string $password): bool
     {
         return password_verify($password, $this->password);
     }
 
+    /**
+     * Checks if the user is disabled.
+     *
+     * @return bool True if the user is disabled, false otherwise.
+     */
     public function isDisabled(): bool
     {
         return $this->disabled_at !== null;
     }
 
+    /**
+     * Saves the user to the database.
+     *
+     * If the user has an ID, it updates the existing record; otherwise, it inserts a new one.
+     * Hashes the password if it's not already hashed.
+     *
+     * @return bool True if the save was successful, false otherwise.
+     */
     public function save(): bool
     {
         // Hash password if not already hashed
@@ -127,6 +204,13 @@ class User
         }
     }
 
+    /**
+     * Deletes the user from the database.
+     *
+     * Also deletes associated user permissions and roles.
+     *
+     * @return bool True if the deletion was successful, false otherwise.
+     */
     public function delete(): bool
     {
         if (!$this->id) {
@@ -150,6 +234,11 @@ class User
         // @TODO: Delete uploaded files - this should be handled by background job
     }
 
+    /**
+     * Retrieves the roles assigned to the user.
+     *
+     * @return array An array of role names.
+     */
     public function getRoles(): array
     {
         $db = Flight::db();
@@ -158,18 +247,36 @@ class User
         return $stmt->fetchAll(\PDO::FETCH_COLUMN);
     }
 
+    /**
+     * Checks if the user has a specific role.
+     *
+     * @param string $role The role name to check.
+     * @return bool True if the user has the role, false otherwise.
+     */
     public function hasRole(string $role): bool
     {
         return in_array($role, $this->getRoles());
     }
 
+    /**
+     * Checks if the user has a specific permission.
+     *
+     * @param FilePermission|NotePermission|UserPermission|VoucherPermission $permission The permission to check.
+     * @return bool True if the user has the permission, false otherwise.
+     */
     public function hasPermission(FilePermission|NotePermission|UserPermission|VoucherPermission $permission): bool
     {
         $permissionChecker = PermissionChecker::forUser($this);
         return $permissionChecker->hasPermission($permission);
     }
 
-    public function getFileStats() {
+    /**
+     * Retrieves file statistics for the user.
+     *
+     * @return object An object with 'file_count' and 'total_size' properties.
+     */
+    public function getFileStats(): object
+    {
         $db = Flight::db();
         $stmt = $db->prepare('SELECT COUNT(*) as file_count, SUM(filesize) as total_size FROM uploaded_files WHERE user_id = ?');
         $stmt->execute([$this->id]);
@@ -180,6 +287,11 @@ class User
         ];
     }
 
+    /**
+     * Retrieves the allowed permissions for the user.
+     *
+     * @return array An array of permission names that are allowed.
+     */
     public function allowedPermissions(): array
     {
         $db = Flight::db();
@@ -193,16 +305,24 @@ class User
         return $permissions;
     }
 
-    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|Note|UploadedFile|User|Voucher $subject=null) :bool {
-        if(is_string($permission)) {
-            if($permission === 'admin') {
+    /**
+     * Checks if the user can perform a specific action on a subject.
+     *
+     * @param FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission The permission or permission string to check.
+     * @param null|Note|UploadedFile|User|Voucher $subject The subject to check the permission against.
+     * @return bool True if the user can perform the action, false otherwise.
+     */
+    public function can(FilePermission|NotePermission|UserPermission|VoucherPermission|string $permission, null|Note|UploadedFile|User|Voucher $subject = null): bool
+    {
+        if (is_string($permission)) {
+            if ($permission === 'admin') {
                 return $this->hasRole('admin');
             }
-            if(null === $permission = $this->permissionFromString($permission)) {
+            if (null === $permission = $this->permissionFromString($permission)) {
                 return false;
             };
         }
-        if($permission === UserPermission::DELETE && $subject instanceof User && $subject->hasRole('admin')) {
+        if ($permission === UserPermission::DELETE && $subject instanceof User && $subject->hasRole('admin')) {
             // cannot delete admin user
             return false;
         }
@@ -210,8 +330,15 @@ class User
         return $permissionChecker->can($permission, $subject);
     }
 
-    public function permissionFromString($permissionString) {
-        switch(substr($permissionString, 0, strpos($permissionString, '_'))) {
+    /**
+     * Converts a permission string to a permission object.
+     *
+     * @param string $permissionString The permission string to convert.
+     * @return FilePermission|NotePermission|UserPermission|VoucherPermission|null The permission object or null if invalid.
+     */
+    public function permissionFromString($permissionString): FilePermission|NotePermission|UserPermission|VoucherPermission|null
+    {
+        switch (substr($permissionString, 0, strpos($permissionString, '_'))) {
             case 'file':
                 return FilePermission::fromString($permissionString);
             case 'note':
@@ -221,6 +348,6 @@ class User
             case 'voucher':
                 return VoucherPermission::fromString($permissionString);
         }
+        return null;
     }
-
 }

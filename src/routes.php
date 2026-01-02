@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * routes.php
+ *
+ * Routes configuration file for defining URL routes and handling installation checks in the Phuppi application.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 // Check if first migration has been run (users table exists)
 $db = Flight::db();
 $userCount = $db->query("SELECT count(*) as user_count FROM users")->fetchColumn();
@@ -8,7 +21,7 @@ if ($userCount < 1) {
 
     $usersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
 
-    if(!$usersTableExists) {
+    if (!$usersTableExists) {
         // perform migration to v2
         require_once __DIR__ . '/migrations/001_install_migration.php';
         Flight::redirect('/login');
@@ -72,9 +85,7 @@ if ($userCount < 1) {
     Flight::route('DELETE /api/notes/@id', [new \Phuppi\Controllers\NoteController(), 'deleteNote']);
     Flight::route('POST /api/notes/@id/share', [new \Phuppi\Controllers\NoteController(), 'generateShareToken']);
 
-    Flight::map('notFound', function(){
+    Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
     });
-
 }
-

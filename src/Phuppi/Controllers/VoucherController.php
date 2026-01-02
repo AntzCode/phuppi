@@ -1,16 +1,33 @@
 <?php
 
+/**
+ * VoucherController.php
+ *
+ * VoucherController class for handling voucher-related operations in the Phuppi application.
+ *
+ * @package Phuppi\Controllers
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 namespace Phuppi\Controllers;
 
 use Flight;
-use Phuppi\Permissions\VoucherPermission;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
-use Valitron\Validator;
+use Phuppi\Permissions\VoucherPermission;
 
 class VoucherController
 {
-    public function listVouchers()
+    /**
+     * Lists all vouchers for the authenticated user.
+     *
+     * @return void
+     */
+    public function listVouchers(): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::redirect('/login');
@@ -22,7 +39,7 @@ class VoucherController
         }
 
         $vouchers = \Phuppi\Voucher::findAll();
-        $voucherData = array_map(function($voucher) {
+        $voucherData = array_map(function ($voucher) {
             return [
                 'id' => $voucher->id,
                 'voucher_code' => $voucher->voucher_code,
@@ -56,7 +73,12 @@ class VoucherController
         ]);
     }
 
-    public function createVoucher()
+    /**
+     * Creates a new voucher.
+     *
+     * @return void
+     */
+    public function createVoucher(): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -107,7 +129,13 @@ class VoucherController
         }
     }
 
-    public function updateVoucher($id)
+    /**
+     * Updates a voucher.
+     *
+     * @param int $id The voucher ID.
+     * @return void
+     */
+    public function updateVoucher($id): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -137,7 +165,13 @@ class VoucherController
         }
     }
 
-    public function deleteVoucher($id)
+    /**
+     * Deletes a voucher.
+     *
+     * @param int $id The voucher ID.
+     * @return void
+     */
+    public function deleteVoucher($id): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -160,7 +194,13 @@ class VoucherController
         }
     }
 
-    public function addPermission($id)
+    /**
+     * Adds a permission to a voucher.
+     *
+     * @param int $id The voucher ID.
+     * @return void
+     */
+    public function addPermission($id): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -197,7 +237,13 @@ class VoucherController
         Flight::json(['success' => true]);
     }
 
-    public function removePermission($id)
+    /**
+     * Removes a permission from a voucher.
+     *
+     * @param int $id The voucher ID.
+     * @return void
+     */
+    public function removePermission($id): void
     {
         if (!\Phuppi\Helper::isAuthenticated()) {
             Flight::halt(401, 'Unauthorized');
@@ -226,31 +272,61 @@ class VoucherController
         Flight::json(['success' => true]);
     }
 
+    /**
+     * Parses the valid_for string into hours.
+     *
+     * @param string $validFor The valid_for string (e.g., '1h', '2d').
+     * @return ?int The number of hours or null for forever.
+     */
     private function parseValidFor(string $validFor): ?int
     {
         switch ($validFor) {
-            case '15m': return 0.25;
-            case '1h': return 1;
-            case '3h': return 3;
-            case '6h': return 6;
-            case '12h': return 12;
-            case '24h': return 24;
-            case '2d': return 48;
-            case '3d': return 72;
-            case '1w': return 168;
-            case '2w': return 336;
-            case '3w': return 504;
-            case '1M': return 720; // approx 30 days
-            case '3M': return 2160; // approx 90 days
-            case '6M': return 4320; // approx 180 days
-            case '1y': return 8760; // approx 365 days
-            case '2y': return 17520;
-            case '3y': return 26280;
-            case 'forever': return null;
-            default: return 1; // default 1 hour
+            case '15m':
+                return 0.25;
+            case '1h':
+                return 1;
+            case '3h':
+                return 3;
+            case '6h':
+                return 6;
+            case '12h':
+                return 12;
+            case '24h':
+                return 24;
+            case '2d':
+                return 48;
+            case '3d':
+                return 72;
+            case '1w':
+                return 168;
+            case '2w':
+                return 336;
+            case '3w':
+                return 504;
+            case '1M':
+                return 720; // approx 30 days
+            case '3M':
+                return 2160; // approx 90 days
+            case '6M':
+                return 4320; // approx 180 days
+            case '1y':
+                return 8760; // approx 365 days
+            case '2y':
+                return 17520;
+            case '3y':
+                return 26280;
+            case 'forever':
+                return null;
+            default:
+                return 1; // default 1 hour
         }
     }
 
+    /**
+     * Generates a unique voucher code.
+     *
+     * @return string The unique voucher code.
+     */
     private function generateVoucherCode(): string
     {
         do {

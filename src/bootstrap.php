@@ -1,7 +1,20 @@
 <?php
 
+/**
+ * bootstrap.php
+ *
+ * Bootstrap file for initializing the Phuppi application, setting up autoloading, framework configuration, and services.
+ *
+ * @package Phuppi
+ * @author Anthony Gallon
+ * @copyright AntzCode Ltd
+ * @license GPLv3
+ * @link https://github.com/AntzCode/phuppi/
+ * @since 2.0.0
+ */
+
 // Register shutdown function to catch fatal errors
-register_shutdown_function(function() {
+register_shutdown_function(function () {
     $error = error_get_last();
     if ($error !== null) {
         $message = sprintf(
@@ -52,8 +65,8 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'sr
  */
 Flight::set('flight.views.path', __DIR__ . DIRECTORY_SEPARATOR . 'views');
 Flight::set('flight.root.path', dirname(__DIR__));
-Flight::set('flight.data.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' );
-Flight::set('flight.public.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'html' );
+Flight::set('flight.data.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data');
+Flight::set('flight.public.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'html');
 Flight::set('flight.cache.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cache');
 
 // Ensure cache directory exists
@@ -76,7 +89,7 @@ $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
 $latte->addFunction('voucher_id', [Phuppi\Helper::class, 'getVoucherId']);
 $latte->addFunction('user_can', [Phuppi\Helper::class, 'userCan']);
 
-Flight::map('render', function(string $template, array $data=[], ?string $block=null) : void {
+Flight::map('render', function (string $template, array $data = [], ?string $block = null): void {
     $latte = Flight::latte();
     $latte->render($template, $data, $block);
 });
@@ -85,7 +98,7 @@ Flight::register('logger', 'Phuppi\FileLogger');
 /**
  * register Database plugin
  */
-Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite'), function($db) {
+Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite'), function ($db) {
     // Optional: Set PDO attributes for better error handling
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 });
@@ -101,7 +114,7 @@ Flight::register('messages', '\Phuppi\Messages');
 Flight::register('permissions', 'flight\Permission');
 Flight::register('user', 'Phuppi\User');
 Flight::register('voucher', 'Phuppi\Voucher');
-Flight::map('storage', function() {
+Flight::map('storage', function () {
     return \Phuppi\Storage\StorageFactory::create();
 });
 
@@ -170,13 +183,13 @@ Flight::session();
 /**
  * Initialize User or Voucher
  */
-if(Flight::session()->get('voucher_id')) {
+if (Flight::session()->get('voucher_id')) {
     Flight::voucher()->load(Flight::session()->get('voucher_id'));
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());
 }
 
-if(!Flight::voucher()->id && Flight::session()->get('id')) {
+if (!Flight::voucher()->id && Flight::session()->get('id')) {
     Flight::user()->load(Flight::session()->get('id'));
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());
