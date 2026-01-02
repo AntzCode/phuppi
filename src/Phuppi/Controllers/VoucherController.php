@@ -90,15 +90,20 @@ class VoucherController
         }
 
         $data = Flight::request()->data;
-        $notes = trim($data->notes ?? '');
+        $voucherCode = trim($data->voucher_code ?? '');
+        $notes = ''; // No notes field in form
         $validForStr = $data->valid_for ?? '1h';
 
         // Convert valid_for to hours
         $validFor = $this->parseValidFor($validForStr);
         $expiresAt = $validFor ? date('Y-m-d H:i:s', strtotime("+$validFor hours")) : null;
 
-        // Generate unique voucher code
-        $voucherCode = $this->generateVoucherCode();
+        // Use provided voucher code or generate unique one
+        if (empty($voucherCode)) {
+            $voucherCode = $this->generateVoucherCode();
+        } elseif (\Phuppi\Voucher::findByCode($voucherCode)) {
+            Flight::halt(400, 'Voucher code already exists');
+        }
 
         $voucher = new \Phuppi\Voucher([
             'user_id' => $user->id,
@@ -329,8 +334,14 @@ class VoucherController
      */
     private function generateVoucherCode(): string
     {
+        $animals = ['Bear', 'Cat', 'Cheetah', 'Chicken', 'Crocodile', 'Doe', 'Duck', 'Elephant', 'Fox', 'Frog', 'Horse', 'Lemur', 'Lion', 'Llama', 'Mouse', 'Otter', 'Owl', 'Panda', 'Penguin', 'Pig', 'Raccoon', 'Rhino', 'Sheep', 'Sloth', 'Snake', 'Tiger', 'Yak', 'Zebra'];
+        $emotions = ['Happy', 'Sad', 'Angry', 'Sleepy', 'Excited', 'Calm', 'Playful', 'Grumpy', 'Cheerful', 'Lazy'];
+
         do {
-            $code = bin2hex(random_bytes(16));
+            $emotion = $emotions[array_rand($emotions)];
+            $animal = $animals[array_rand($animals)];
+            $number = rand(100, 999);
+            $code = $emotion . $animal . $number;
             $existing = \Phuppi\Voucher::findByCode($code);
         } while ($existing);
 

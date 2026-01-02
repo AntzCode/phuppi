@@ -45,7 +45,7 @@
     function VoucherList({ _vouchers }) {
         const [vouchers, setVouchers] = useState(_vouchers);
         const [createForm, setCreateForm] = useState({
-            notes: '',
+            voucher_code: '',
             valid_for: '1h',
             errors: {}
         });
@@ -84,19 +84,19 @@
         const animals = ['Bear', 'Cat', 'Cheetah', 'Chicken', 'Crocodile', 'Doe', 'Duck', 'Elephant', 'Fox', 'Frog', 'Horse', 'Lemur', 'Lion', 'Llama', 'Mouse', 'Otter', 'Owl', 'Panda', 'Penguin', 'Pig', 'Raccoon', 'Rhino', 'Sheep', 'Sloth', 'Snake', 'Tiger', 'Yak', 'Zebra'];
         const emotions = ['Happy', 'Sad', 'Angry', 'Sleepy', 'Excited', 'Calm', 'Playful', 'Grumpy', 'Cheerful', 'Lazy'];
 
-        const generateName = () => {
+        const generateCode = () => {
             const emotion = emotions[Math.floor(Math.random() * emotions.length)];
             const animal = animals[Math.floor(Math.random() * animals.length)];
             const number = Math.floor(Math.random() * 900) + 100; // 100-999
-            setCreateForm(prev => ({ ...prev, notes: emotion + animal + number }));
+            setCreateForm(prev => ({ ...prev, voucher_code: emotion + animal + number }));
         };
 
         const handleCreateSubmit = function (e) {
             e.preventDefault();
-            createVoucher(createForm.notes, createForm.valid_for).then(data => {
+            createVoucher(createForm.voucher_code, createForm.valid_for).then(data => {
                 if (data.success) {
                     setVouchers(prev => [...prev, data.voucher]);
-                    setCreateForm({ notes: '', valid_for: '1h', errors: {} });
+                    setCreateForm({ voucher_code: '', valid_for: '1h', errors: {} });
                 } else {
                     setCreateForm(prev => ({ ...prev, errors: data.errors || {} }));
                 }
@@ -141,14 +141,14 @@
             });
         }
 
-        const createVoucher = function (notes, validFor) {
+        const createVoucher = function (voucherCode, validFor) {
             return fetch('/vouchers', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    notes: notes,
+                    voucher_code: voucherCode,
                     valid_for: validFor
                 })
             }).then(response => response.json());
@@ -171,10 +171,10 @@
                     <h3>Create New Voucher</h3>
                     <form class="ui form" onSubmit=${handleCreateSubmit}>
                         <div class="field">
-                            <label>Voucher Name</label>
+                            <label>Voucher Code</label>
                             <div class="ui action input">
-                                <input type="text" value=${createForm.notes} onInput=${e => setCreateForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Enter voucher name" />
-                                <button class="ui button" type="button" onClick=${generateName} title="Generate random name">
+                                <input type="text" value=${createForm.voucher_code} onInput=${e => setCreateForm(prev => ({ ...prev, voucher_code: e.target.value }))} placeholder="Enter voucher code" />
+                                <button class="ui button" type="button" onClick=${generateCode} title="Generate random code">
                                     <i class="random icon"></i>
                                 </button>
                             </div>
