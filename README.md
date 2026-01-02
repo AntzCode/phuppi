@@ -42,10 +42,39 @@ No database needed! (uses [SQLite](https://sqlite.org/))
 
 ## 🏗️ Under the Hood
 
-- **Framework:** Flight micro-framework
-- **DB:** SQLite (no config needed)
-- **Storage:** Local or S3
+Phuppi is intended for easy development and deployment, so it has a lean file structure and avoids bloated libraries and complicated build tools.
+
+- **Framework:** [Flight micro-framework for PHP](https://docs.flightphp.com/en/v3/)
+- **DB:** [SQLite](https://sqlite.org/) (configuration not required)
+- **Storage:** Local or [S3-compatible](https://aws.amazon.com/s3/) API connector
 - **Security:** bcrypt, sessions, tokens
+- **Templating:** [Latte templates for PHP](https://latte.nette.org/en/)
+- **Frontend:** [Preact standalone](https://preactjs.com/)
+
+## ⚡ Run on Docker for local development (takes just 5 Minutes)
+
+```bash
+# 1️⃣ Grab the code
+git clone https://github.com/AntzCode/phuppi.git
+cd phuppi
+
+# 2️⃣ customise the settings
+cp .env.example .env
+nano .env # or right-click and open with your IDE
+
+# 3️⃣  Fire up Docker
+docker compose up -d --build
+
+# 4️⃣ Set it up
+docker exec -it phuppi php src/bootstrap.php install
+
+# 5️⃣ Boom! Open http://localhost
+```
+
+**Pro tip:** add minio to your hosts file if you want to use minio local S3 containers 🔐
+
+`echo "127.0.0.1 minio" | sudo tee -a /etc/hosts`
+
 
 ## 📚 Documentation
 
@@ -56,24 +85,6 @@ docker compose run --rm phpdoc phpdoc -d src -t docs
 ```
 
 The generated documentation will be available in the `docs/` directory. Open `docs/index.html` in your browser to view it.
-
-## ⚡ Run on Docker for local development (takes just 2 Minutes)
-
-```bash
-# 1️⃣ Grab the code
-git clone https://github.com/AntzCode/phuppi.git
-cd phuppi
-
-# 2️⃣ Fire up Docker
-docker compose up -d --build
-
-# 3️⃣ Set it up
-docker exec -it phuppi php src/bootstrap.php install
-
-# 4️⃣ Boom! Open http://localhost
-```
-
-**Pro tip:** Login with `admin@example.com` / `admin` – change it ASAP! 🔐
 
 ## 🤝 Contribute
 
@@ -88,4 +99,3 @@ You are free to use, study, and modify this software. If you distribute the prog
 ---
 
 *Ready to share securely? Let's go!* 🚀
-
