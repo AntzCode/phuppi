@@ -9,9 +9,12 @@ RUN chown -R www-data:www-data /var/www/html
 
 RUN a2enmod rewrite
 
-RUN apt-get update && apt-get install -y libsqlite3-dev libzip-dev \
+RUN apt-get update && apt-get install -y libsqlite3-dev libzip-dev wget \
     && docker-php-ext-install pdo_sqlite zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install PHPStan as a dev tool
+RUN wget https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar -O /usr/local/bin/phpstan && chmod +x /usr/local/bin/phpstan
 
 RUN mkdir -p /var/www/data/log
 

@@ -10,10 +10,6 @@
 <h2 class="ui header">Welcome to {$name}, {Flight::voucher()->voucher_code ? Flight::voucher()->voucher_code : Flight::user()->username}</h2>
 <p>Here you can manage your shared files.</p>
 
-{if count($files) == 0}
-    <p>- Empty -</p>
-{else}
-    {include 'filelist.latte', files: $files}
-{/if}
+{include 'filelist.latte', files: $files}
 
 {/block}

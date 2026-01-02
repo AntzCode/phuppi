@@ -237,7 +237,7 @@ class FileController
             $uniqueName = uniqid() . '_' . $name;
             $pathPrefix = $user ? $user->username : $voucher->getUsername();
             if(Flight::storage() instanceof S3Storage) {
-                $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $uploads['type'][$index]);
+                $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $uploads['type'][$index], 3600*4);
                 if (!$presignedUrl) {
                     $results[] = ['error' => 'Failed to generate presigned URL for ' . $name];
                     continue;
@@ -261,22 +261,21 @@ class FileController
                     $results[] = ['error' => 'Failed to save file ' . $name];
                     continue;
                 }
-            }
             
-            
-            
-            $file = new UploadedFile();
-            $file->user_id = $user->id ?? $voucher->user_id;
-            $file->voucher_id = $voucher ? $voucher->id : null;
-            $file->filename = $uniqueName;
-            $file->display_filename = $name;
-            $file->filesize = $uploads['size'][$index];
-            $file->mimetype = $uploads['type'][$index];
-            $file->extension = pathinfo($name, PATHINFO_EXTENSION);
-            if ($file->save()) {
-                $results[] = ['id' => $file->id, 'message' => 'File uploaded: ' . $name];
-            } else {
-                $results[] = ['error' => 'Failed to save file record for ' . $name];
+                $file = new UploadedFile();
+                $file->user_id = $user->id ?? $voucher->user_id;
+                $file->voucher_id = $voucher->id ?? null;
+                $file->filename = $uniqueName;
+                $file->display_filename = $name;
+                $file->filesize = $uploads['size'][$index];
+                $file->mimetype = $uploads['type'][$index];
+                $file->extension = pathinfo($name, PATHINFO_EXTENSION);
+                if ($file->save()) {
+                    $results[] = ['id' => $file->id, 'message' => 'File uploaded: ' . $name];
+                } else {
+                    $results[] = ['error' => 'Failed to save file record for ' . $name];
+                }
+
             }
         }
         Flight::json($results);
@@ -529,7 +528,7 @@ class FileController
 
         $fileToken = new UploadedFileToken();
         $fileToken->uploaded_file_id = $file->id;
-        $fileToken->voucher_id = $this->getCurrentVoucher() ? $this->getCurrentVoucher()->id : null;
+        $fileToken->voucher_id = $this->getCurrentVoucher()->id ?? null;
         $fileToken->token = $token;
         $fileToken->expires_at = $expiresAt;
 
@@ -558,6 +557,7 @@ class FileController
             if(Flight::storage() instanceof S3Storage) {
                 $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename);
                 Flight::redirect($presignedUrl, 301);
+                exit;
             }
             if(Flight::storage() instanceof LocalStorage) {
                 $response = Flight::response();
@@ -575,6 +575,56 @@ class FileController
             Flight::halt(500, 'Internal server error');
         }
     }
+    public function requestPresignedUrl()
+    {
+        $permissionChecker = $this->getCurrentPermissionChecker();
+        if (!$permissionChecker || !$permissionChecker->can(FilePermission::PUT)) {
+            Flight::halt(403, 'Forbidden');
+        }
+
+        $data = Flight::request()->data;
+        $filename = $data->filename ?? null;
+        $filesize = $data->filesize ?? null;
+        $mimetype = $data->mimetype ?? null;
+
+        if (!$filename || !$filesize || !$mimetype) {
+            Flight::halt(400, 'Missing required fields: filename, filesize, mimetype');
+        }
+
+        $user = $this->getCurrentUser();
+        $voucher = $this->getCurrentVoucher();
+
+        if (Flight::storage() instanceof S3Storage) {
+            $uniqueName = uniqid() . '_' . $filename;
+            $pathPrefix = $user ? $user->username : $voucher->getUsername();
+            $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $mimetype, 3600 * 4);
+            if (!$presignedUrl) {
+                Flight::halt(500, 'Failed to generate presigned URL');
+            }
+            Flight::json([
+                'presigned_url' => $presignedUrl,
+                'filename' => $uniqueName,
+                'display_filename' => $filename,
+                'filesize' => $filesize,
+                'mimetype' => $mimetype,
+                'extension' => pathinfo($filename, PATHINFO_EXTENSION),
+                'user_id' => $user->id ?? $voucher->user_id,
+                'voucher_id' => $voucher ? $voucher->id : null
+            ]);
+        } else {
+            // For local storage, no presigned URL needed, just return metadata
+            Flight::json([
+                'filename' => $filename,
+                'display_filename' => $filename,
+                'filesize' => $filesize,
+                'mimetype' => $mimetype,
+                'extension' => pathinfo($filename, PATHINFO_EXTENSION),
+                'user_id' => $user->id ?? $voucher->user_id,
+                'voucher_id' => $voucher ? $voucher->id : null
+            ]);
+        }
+    }
+
     public function registerUploadedFile()
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
@@ -603,7 +653,7 @@ class FileController
 
         $file = new UploadedFile();
         $file->user_id = $user->id ?? $voucher->user_id;
-        $file->voucher_id = $voucher->id;
+        $file->voucher_id = $voucher->id ?? null;
         $file->filename = $filename;
         $file->display_filename = $displayFilename;
         $file->filesize = $filesize;

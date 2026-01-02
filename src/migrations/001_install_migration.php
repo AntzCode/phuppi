@@ -27,7 +27,7 @@ $db->exec("CREATE TABLE IF NOT EXISTS migrations (
 )");
 
 // Users table
-$db->exec("CREATE TABLE users (
+$db->exec("CREATE TABLE IF NOT EXISTS users (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     username VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
@@ -39,12 +39,12 @@ $db->exec("CREATE TABLE users (
 )");
 
 // Settings table
-$db->exec("CREATE TABLE settings (
+$db->exec("CREATE TABLE IF NOT EXISTS settings (
     name VARCHAR(32) PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 )");
 
-$db->exec("CREATE TABLE storage_connectors (
+$db->exec("CREATE TABLE IF NOT EXISTS storage_connectors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255) NOT NULL UNIQUE,
     type VARCHAR(50) NOT NULL,
@@ -54,7 +54,7 @@ $db->exec("CREATE TABLE storage_connectors (
 )");
 
 // Vouchers table
-$db->exec("CREATE TABLE vouchers (
+$db->exec("CREATE TABLE IF NOT EXISTS vouchers (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     voucher_code VARCHAR(255) NOT NULL,
@@ -70,7 +70,7 @@ $db->exec("CREATE TABLE vouchers (
 )");
 
 // Uploaded files table
-$db->exec("CREATE TABLE uploaded_files (
+$db->exec("CREATE TABLE IF NOT EXISTS uploaded_files (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -86,7 +86,7 @@ $db->exec("CREATE TABLE uploaded_files (
 )");
 
 // Notes table
-$db->exec("CREATE TABLE notes (
+$db->exec("CREATE TABLE IF NOT EXISTS notes (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -99,7 +99,7 @@ $db->exec("CREATE TABLE notes (
 )");
 
 // Note tokens table
-$db->exec("CREATE TABLE note_tokens (
+$db->exec("CREATE TABLE IF NOT EXISTS note_tokens (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     note_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -111,7 +111,7 @@ $db->exec("CREATE TABLE note_tokens (
 )");
 
 // Tags table
-$db->exec("CREATE TABLE tags (
+$db->exec("CREATE TABLE IF NOT EXISTS tags (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     slug VARCHAR(40) NOT NULL,
     tagname VARCHAR(255) NOT NULL,
@@ -119,7 +119,7 @@ $db->exec("CREATE TABLE tags (
 )");
 
 // Temporary files table
-$db->exec("CREATE TABLE temporary_files (
+$db->exec("CREATE TABLE IF NOT EXISTS temporary_files (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -134,7 +134,7 @@ $db->exec("CREATE TABLE temporary_files (
 )");
 
 // Uploaded file tokens table
-$db->exec("CREATE TABLE uploaded_file_tokens (
+$db->exec("CREATE TABLE IF NOT EXISTS uploaded_file_tokens (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     uploaded_file_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -146,7 +146,7 @@ $db->exec("CREATE TABLE uploaded_file_tokens (
 )");
 
 // Uploaded files remote auth table
-$db->exec("CREATE TABLE uploaded_files_remote_auth (
+$db->exec("CREATE TABLE IF NOT EXISTS uploaded_files_remote_auth (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     uploaded_file_id INTEGER NOT NULL,
     voucher_id INTEGER NULL,
@@ -158,7 +158,7 @@ $db->exec("CREATE TABLE uploaded_files_remote_auth (
 )");
 
 // Uploaded files tags table
-$db->exec("CREATE TABLE uploaded_files_tags (
+$db->exec("CREATE TABLE IF NOT EXISTS uploaded_files_tags (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     uploaded_file_id INTEGER NOT NULL,
     tag_id INTEGER NULL,
@@ -167,19 +167,14 @@ $db->exec("CREATE TABLE uploaded_files_tags (
 )");
 
 // roles table
-$db->exec("CREATE TABLE roles (
+$db->exec("CREATE TABLE IF NOT EXISTS roles (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT NOT NULL DEFAULT ''
 )");
 
-$db->exec("INSERT INTO roles (name, description) VALUES 
-    ('admin', 'Administrator with full access'), 
-    ('user', 'Regular user'), 
-    ('guest', 'Guest user with limited access')");
-
 // user_roles table
-$db->exec("CREATE TABLE user_roles (
+$db->exec("CREATE TABLE IF NOT EXISTS user_roles (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     role_id INTEGER NOT NULL,
@@ -189,7 +184,7 @@ $db->exec("CREATE TABLE user_roles (
 )");
 
 // voucher_roles table
-$db->exec("CREATE TABLE voucher_roles (
+$db->exec("CREATE TABLE IF NOT EXISTS voucher_roles (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     voucher_id INTEGER NOT NULL,
     role_id INTEGER NOT NULL,
@@ -199,7 +194,7 @@ $db->exec("CREATE TABLE voucher_roles (
 )");
 
 // User permissions table
-$db->exec("CREATE TABLE user_permissions (
+$db->exec("CREATE TABLE IF NOT EXISTS user_permissions (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     permission_name VARCHAR(255) NOT NULL,
@@ -208,7 +203,7 @@ $db->exec("CREATE TABLE user_permissions (
 )");
 
 // Voucher permissions table
-$db->exec("CREATE TABLE voucher_permissions (
+$db->exec("CREATE TABLE IF NOT EXISTS voucher_permissions (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     voucher_id INTEGER NOT NULL,
     permission_name VARCHAR(255) NOT NULL,
@@ -218,27 +213,39 @@ $db->exec("CREATE TABLE voucher_permissions (
 
 Flight::logger()->info('V2 tables created.');
 
-// Set default settings
-$defaultSettings = [];
-
-$statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
-foreach ($defaultSettings as $name => $value) {
-    $statement->execute([$name, $value]);
+//create default roles
+if ($db->query("SELECT COUNT(*) as count FROM roles")->fetchColumn() < 1) {
+    Flight::logger()->info('No roles defined, creating default roles...');
+    $db->exec("INSERT INTO roles (name, description) VALUES 
+    ('admin', 'Administrator with full access'), 
+    ('user', 'Regular user'), 
+    ('guest', 'Guest user with limited access')");
 }
-$statement = null;
+
+// Set default settings
+if ($db->query("SELECT COUNT(*) as count FROM settings")->fetchColumn() < 1) {
+    $defaultSettings = [];
+    $statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
+    foreach ($defaultSettings as $name => $value) {
+        $statement->execute([$name, $value]);
+    }
+    $statement = null;
+}
 
 // create the default local filesystem connector
-$statement = $db->prepare('INSERT OR IGNORE INTO storage_connectors (name, type, config) VALUES (?, ?,?)');
-$statement->execute(['local-default', 'local', json_encode([
-    'type' => 'local',
-    'path' => null,
-    'name' => 'Local Storage (Default)'
-])]);
-$statement = null;
+if ($db->query("SELECT COUNT(*) as count FROM storage_connectors WHERE name = 'local-default'")->fetchColumn() < 1) {
+    $statement = $db->prepare('INSERT OR IGNORE INTO storage_connectors (name, type, config) VALUES (?, ?,?)');
+    $statement->execute(['local-default', 'local', json_encode([
+        'type' => 'local',
+        'path' => null,
+        'name' => 'Local Storage (Default)'
+    ])]);
+    $statement = null;
 
-$statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
-$statement->execute(['active_storage_connector', 'local-default']);
-$statement = null;
+    $statement = $db->prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
+    $statement->execute(['active_storage_connector', 'local-default']);
+    $statement = null;
+}
 
 Flight::logger()->info('Default settings set.');
 
@@ -496,7 +503,7 @@ if ($v1Exists) {
     unset($settingsFlat['do_functions_multiple_zip_api_token']);
     unset($settingsFlat['aws_lambda_multiple_zip_function_name']);
 
-    foreach ($settingFlat as $settingName => $settingValue) {
+    foreach ($settingsFlat as $settingName => $settingValue) {
         $statement = $db->prepare('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)');
         $statement->execute([$settingName, $settingValue]);
         $statement = null;
@@ -532,7 +539,7 @@ if ($v1Exists) {
     $uploadedFileIdMap = [];
     $files = $db->query('SELECT * FROM fuppi_uploaded_files')->fetchAll(PDO::FETCH_ASSOC);
     foreach ($files as $file) {
-        if(!isset($voucherIdMap[(string) $file['voucher_id']])) {
+        if($file['voucher_id'] > 0 && !isset($voucherIdMap[(string) $file['voucher_id']])) {
             continue;
         }
         if(!isset($userIdMap[(string) $file['user_id']])) {
@@ -541,7 +548,7 @@ if ($v1Exists) {
         $statement = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $statement->execute([
             $userIdMap[(string) $file['user_id']],
-            $voucherIdMap[(string) $file['voucher_id']],
+            $file['voucher_id'] > 0 ? $voucherIdMap[(string) $file['voucher_id']] : null,
             $file['filename'],
             $file['display_filename'],
             $file['filesize'],
@@ -900,6 +907,8 @@ if ($v1Exists) {
 
 
 // Record migration
-$db->exec("INSERT INTO migrations (name) VALUES ('001_install_migration')");
+if ($db->query("SELECT COUNT(*) as count FROM migrations WHERE name = '001_install_migration'")->fetchColumn() < 1) {
+    $db->exec("INSERT INTO migrations (name) VALUES ('001_install_migration')");
+}
 
 Flight::logger()->info('V2 Migration completed successfully.');

@@ -61,6 +61,7 @@
         const [shareModalOpen, setShareModalOpen] = useState(false);
         const [shareFileData, setShareFileData] = useState(null);
         const [shareUrl, setShareUrl] = useState('');
+        const [shareExpiresAt, setShareExpiresAt] = useState(null);
         const [shareDuration, setShareDuration] = useState('1h');
         const [tagModalOpen, setTagModalOpen] = useState(false);
         const [tagFiles, setTagFiles] = useState([]);
@@ -254,6 +255,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     setShareUrl(data.share_url);
+                    setShareExpiresAt(data.expires_at);
                 } else {
                     console.error('Error generating share link:', response.statusText);
                 }
@@ -402,71 +404,93 @@
         const uploadSingleFile = (file, onProgress) => {
 
             return new Promise((resolve, reject) => {
-                // First, get presigned URL or upload directly
-                const xhr = new XMLHttpRequest();
-                const formData = new FormData();
-                formData.append('file', file);
-                xhr.open('POST', '/files');
-
-                xhr.onload = () => {
-                    if (xhr.status === 200) {
-                        const response = JSON.parse(xhr.responseText);
-                        if (response.length > 0 && response[0].presigned_url) {
-                            // S3 direct upload
-                            const presignedData = response[0];
-                            const uploadXhr = new XMLHttpRequest();
-                            uploadXhr.open('PUT', presignedData.presigned_url);
-                            uploadXhr.setRequestHeader('Content-Type', presignedData.mimetype);
-
-                            uploadXhr.upload.onprogress = (e) => {
-                                if (e.lengthComputable) {
-                                    const percent = (e.loaded / e.total) * 100;
-                                    onProgress(percent);
-                                }
-                            };
-
-                            uploadXhr.onload = () => {
-                                if (uploadXhr.status === 200) {
-                                    // Register the file
-                                    fetch('/files/register', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                        },
-                                        body: JSON.stringify({
-                                            filename: presignedData.filename,
-                                            display_filename: presignedData.display_filename,
-                                            filesize: presignedData.filesize,
-                                            mimetype: presignedData.mimetype,
-                                            extension: presignedData.extension,
-                                            user_id: presignedData.user_id,
-                                            voucher_id: presignedData.voucher_id
-                                        })
-                                    }).then(regResponse => {
-                                        if (regResponse.ok) {
-                                            resolve();
-                                        } else {
-                                            reject(new Error('Failed to register file'));
-                                        }
-                                    }).catch(reject);
-                                } else {
-                                    reject(new Error('Upload to S3 failed'));
-                                }
-                            };
-
-                            uploadXhr.onerror = () => reject(new Error('Network error during S3 upload'));
-                            uploadXhr.send(file);
-                        } else {
-                            // Local upload, already handled
-                            resolve();
-                        }
-                    } else {
-                        reject(new Error(xhr.responseText));
+                // First, request presigned URL
+                fetch('/files/presigned-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        filename: file.name,
+                        filesize: file.size,
+                        mimetype: file.type
+                    })
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to get presigned URL');
                     }
-                };
+                    return response.json();
+                }).then(presignedData => {
+                    if (presignedData.presigned_url) {
+                        // S3 direct upload
+                        const uploadXhr = new XMLHttpRequest();
+                        uploadXhr.open('PUT', presignedData.presigned_url);
+                        uploadXhr.setRequestHeader('Content-Type', presignedData.mimetype);
 
-                xhr.onerror = () => reject(new Error('Network error'));
-                xhr.send(formData);
+                        uploadXhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                const percent = (e.loaded / e.total) * 100;
+                                onProgress(percent);
+                            }
+                        };
+
+                        uploadXhr.onload = () => {
+                            if (uploadXhr.status === 200) {
+                                // Register the file
+                                fetch('/files/register', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        filename: presignedData.filename,
+                                        display_filename: presignedData.display_filename,
+                                        filesize: presignedData.filesize,
+                                        mimetype: presignedData.mimetype,
+                                        extension: presignedData.extension,
+                                        user_id: presignedData.user_id,
+                                        voucher_id: presignedData.voucher_id
+                                    })
+                                }).then(regResponse => {
+                                    if (regResponse.ok) {
+                                        resolve();
+                                    } else {
+                                        reject(new Error('Failed to register file'));
+                                    }
+                                }).catch(reject);
+                            } else {
+                                reject(new Error('Upload to S3 failed'));
+                            }
+                        };
+
+                        uploadXhr.onerror = () => reject(new Error('Network error during S3 upload'));
+                        uploadXhr.send(file);
+                    } else {
+                        // Local storage: upload directly
+                        const xhr = new XMLHttpRequest();
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        xhr.open('POST', '/files');
+
+                        xhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                const percent = (e.loaded / e.total) * 100;
+                                onProgress(percent);
+                            }
+                        };
+
+                        xhr.onload = () => {
+                            if (xhr.status === 200) {
+                                resolve();
+                            } else {
+                                reject(new Error(xhr.responseText));
+                            }
+                        };
+
+                        xhr.onerror = () => reject(new Error('Network error during local upload'));
+                        xhr.send(formData);
+                    }
+                }).catch(reject);
             });
         };
 
@@ -672,7 +696,7 @@
                 </div>`}
                 ${shareModalOpen && html`<div class="ui dimmer modals page transition visible active">
                     <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-                        <div class="header">Share ${shareFileData.display_filename}</div>
+                        <div class="header">Share ${shareFileData.display_filename}<i class="close icon clickable" style="float: right;" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}></i></div>
                         <div class="content">
                             ${shareUrl ? html`
                                 <div class="ui form">
@@ -682,6 +706,10 @@
                                             <input type="text" readonly value=${shareUrl} />
                                             <button class="ui button" onClick=${copyToClipboard}>Copy</button>
                                         </div>
+                                    </div>
+                                    <div class="field">
+                                        <label>Expires At</label>
+                                        <p>${shareExpiresAt ? new Date(shareExpiresAt).toLocaleString() : 'Never'}</p>
                                     </div>
                                 </div>
                             ` : html`
@@ -705,7 +733,7 @@
                         </div>
                         <div class="actions">
                             ${shareUrl ? html`
-                                <button class="ui button" onClick=${() => { setShareModalOpen(false); setShareUrl(''); }}>Close</button>
+                                <button class="ui button" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}>Close</button>
                             ` : html`
                                 <button class="ui button" onClick=${() => setShareModalOpen(false)}>Cancel</button>
                                 <button class="ui positive button" onClick=${generateShareLink}>Generate Link</button>

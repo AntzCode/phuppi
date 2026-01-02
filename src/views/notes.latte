@@ -50,6 +50,7 @@
         const [shareModalOpen, setShareModalOpen] = useState(false);
         const [shareNoteData, setShareNoteData] = useState(null);
         const [shareUrl, setShareUrl] = useState('');
+        const [shareExpiresAt, setShareExpiresAt] = useState(null);
         const [shareDuration, setShareDuration] = useState('1h');
 
         const fetchNotes = async () => {
@@ -237,6 +238,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     setShareUrl(data.share_url);
+                    setShareExpiresAt(data.expires_at);
                 } else {
                     console.error('Error generating share link:', response.statusText);
                 }
@@ -349,7 +351,7 @@
                         </div>
                         <div class="meta">${note.updated_at ? `Updated: ${note.updated_at}` : `Created: ${note.created_at}`}</div>
                     </div>`}
-                    <div class="extra content">
+                    <div class="extra content" style="display: flex; justify-content: flex-start; gap: 10px; flex-wrap: wrap">
                         ${userCan.note_view && html`<button class="ui positive right labeled icon button clickable" onClick=${() => openViewModal(note)}>
                             <i class="glasses icon"></i> View
                         </button>`}
@@ -407,7 +409,7 @@
 
             ${shareModalOpen && html`<div class="ui dimmer modals page transition visible active">
                 <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-                    <div class="header">Share ${shareNoteData.filename}</div>
+                    <div class="header">Share ${shareNoteData.filename}<i class="close icon clickable" style="float: right;" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}></i></div>
                     <div class="content">
                         ${shareUrl ? html`
                             <div class="ui form">
@@ -417,6 +419,10 @@
                                         <input type="text" readonly value=${shareUrl} />
                                         <button class="ui button" onClick=${copyToClipboard}>Copy</button>
                                     </div>
+                                </div>
+                                <div class="field">
+                                    <label>Expires At</label>
+                                    <p>${shareExpiresAt ? new Date(shareExpiresAt).toLocaleString() : 'Never'}</p>
                                 </div>
                             </div>
                         ` : html`
@@ -440,7 +446,7 @@
                     </div>
                     <div class="actions">
                         ${shareUrl ? html`
-                            <button class="ui button" onClick=${() => { setShareModalOpen(false); setShareUrl(''); }}>Close</button>
+                            <button class="ui button" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}>Close</button>
                         ` : html`
                             <button class="ui button" onClick=${() => setShareModalOpen(false)}>Cancel</button>
                             <button class="ui positive button" onClick=${generateShareLink}>Generate Link</button>

@@ -41,8 +41,19 @@ class NoteToken
         return false;
     }
 
+    public static function cleanupExpired(): int
+    {
+        $db = Flight::db();
+        $stmt = $db->prepare("DELETE FROM note_tokens WHERE expires_at IS NOT NULL AND expires_at < datetime('now')");
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
+
     public static function findByToken(string $token): ?self
     {
+        // Clean up expired tokens before searching
+        self::cleanupExpired();
+
         $db = Flight::db();
         $stmt = $db->prepare('SELECT * FROM note_tokens WHERE token = ? AND (expires_at IS NULL OR expires_at > datetime("now"))');
         $stmt->execute([$token]);

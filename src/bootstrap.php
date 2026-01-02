@@ -181,4 +181,3 @@ if(!Flight::voucher()->id && Flight::session()->get('id')) {
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());
 }
-

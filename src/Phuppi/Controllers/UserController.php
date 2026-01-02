@@ -159,7 +159,20 @@ class UserController
 
     public function logout()
     {
+        // Clear session data and destroy session
+        Flight::session()->clear();
         Flight::session()->destroy(session_id());
+
+        // Regenerate session ID to prevent session fixation
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+
+        // Set headers to prevent caching of logout response
+        Flight::response()->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        Flight::response()->header('Pragma', 'no-cache');
+        Flight::response()->header('Expires', '0');
+
         Flight::redirect('/login');
     }
 

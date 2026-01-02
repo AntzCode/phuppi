@@ -49,6 +49,9 @@ class InstallController
 
         $adminUserId = $db->lastInsertId();
 
+        $statement = $db->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)');
+        $statement->execute([$adminUserId, $db->query('SELECT id FROM roles WHERE name = "admin"')->fetchColumn()]);
+
         $statement = $db->prepare('INSERT INTO user_permissions (user_id, permission_name, permission_value) VALUES (?, ?, ?)');
         $statement->execute([$adminUserId, 'IS_ADMINISTRATOR', json_encode(true)]);
 

@@ -2,13 +2,13 @@
 
 // Check if first migration has been run (users table exists)
 $db = Flight::db();
-$usersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
+$userCount = $db->query("SELECT count(*) as user_count FROM users")->fetchColumn();
 
-if (!$usersTableExists) {
+if ($userCount < 1) {
 
-    $fuppiUsersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='fuppi_users'")->fetchColumn();
+    $usersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
 
-    if($fuppiUsersTableExists) {
+    if(!$usersTableExists) {
         // perform migration to v2
         require_once __DIR__ . '/migrations/001_install_migration.php';
         Flight::redirect('/login');
@@ -21,10 +21,6 @@ if (!$usersTableExists) {
 } else {
     // Normal routes
     Flight::route('GET /', [new \Phuppi\Controllers\FileController(), 'index']);
-
-    Flight::route('GET /test1', function() {
-        Flight::render('home.latte', ['name' => 'Test Phuppi!', 'sessionId' => Flight::session()->get('id')]);
-    });
 
     Flight::route('GET /login', [new \Phuppi\Controllers\UserController(), 'login']);
     Flight::route('POST /login', [new \Phuppi\Controllers\UserController(), 'login']);
@@ -58,6 +54,7 @@ if (!$usersTableExists) {
     Flight::route('POST /duplicates/verify', [new \Phuppi\Controllers\FileController(), 'verifyDuplicates']);
 
     Flight::route('POST /files', [new \Phuppi\Controllers\FileController(), 'uploadFile']);
+    Flight::route('POST /files/presigned-url', [new \Phuppi\Controllers\FileController(), 'requestPresignedUrl']);
     Flight::route('POST /files/register', [new \Phuppi\Controllers\FileController(), 'registerUploadedFile']);
     Flight::route('PUT /files/@id', [new \Phuppi\Controllers\FileController(), 'updateFile']);
     Flight::route('DELETE /files/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile']);

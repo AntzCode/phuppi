@@ -77,7 +77,7 @@ class NoteController
     public function listNotes()
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->hasPermission(NotePermission::LIST)) {
+        if (!$permissionChecker || !$permissionChecker->can(NotePermission::LIST)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -156,7 +156,7 @@ class NoteController
     public function createNote()
     {
         $permissionChecker = $this->getCurrentPermissionChecker();
-        if (!$permissionChecker || !$permissionChecker->hasPermission(NotePermission::CREATE)) {
+        if (!$permissionChecker || !$permissionChecker->can(NotePermission::CREATE)) {
             Flight::halt(403, 'Forbidden');
         }
 
