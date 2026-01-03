@@ -27,14 +27,6 @@ class InstallController
      */
     public function index(): void
     {
-        $db = Flight::db();
-        $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
-
-        if($usersTableExists) {
-            Flight::redirect('/');
-            exit;
-        }
-
         Flight::render('installer.latte', [
             'formUrl' => '/install',
             'username' => '',
@@ -50,12 +42,12 @@ class InstallController
     public function install(): void
     {
         $db = Flight::db();
-
-        $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
-
-        if($usersTableExists) {
-            Flight::redirect('/');
-            exit;
+        if($db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn()) {
+            if($db->query("SELECT COUNT(*) FROM users")->fetchColumn()) {
+                // already installed
+                Flight::redirect('/');
+                exit;
+            }
         }
 
         $v = new Validator(Flight::request()->data);

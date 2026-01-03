@@ -42,7 +42,7 @@ $userCount = $db->query("SELECT count(*) as user_count FROM users")->fetchColumn
 
 if ($userCount < 1) {
 
-    $usersTableExists = $db->getValue("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
+    $usersTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
 
     if (!$usersTableExists) {
         // perform migration to v2

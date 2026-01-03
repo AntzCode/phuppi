@@ -27,6 +27,6 @@ RUN apt-get update && apt-get install -y libsqlite3-dev libzip-dev wget \
 # Install PHPStan as a dev tool
 RUN wget https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar -O /usr/local/bin/phpstan && chmod +x /usr/local/bin/phpstan
 
-RUN mkdir -p /var/www/data/log
+RUN mkdir -p /var/www/data/logs
 
 COPY docker/php/000-default.conf /etc/apache2/sites-available/000-default.conf

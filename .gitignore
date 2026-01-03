@@ -2,8 +2,9 @@
 html/src/install.php
 
 # do not allow any data into the repository
-html/data
 data
+
+**/.gitkeep
 
 Serverless/*/node_modules/
 
