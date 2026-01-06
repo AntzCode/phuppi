@@ -1,6 +1,6 @@
-# 🚀 Phuppi 2.0: Share Like a Boss!
+# 🚀 Phuppi 2.0
 
-The PHP file-uppie thingy so you can share files and notes with top-notch security. Keep your data safe and accessible with passwords, vouchers and tokens. 
+The PHP file-uppie thingy so you can share files and notes. Keep your data safe and accessible with top-notch security, passwords, vouchers and tokens. 
 
 ![Preview of Phuppi file uploader](./assets/screenshots/preview.png)
 
@@ -41,7 +41,7 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 
 ## 🏗️ Under the Hood
 
-Phuppi is intended for easy development and deployment, so it has a lean file structure and avoids bloated libraries and complicated build tools.
+Phuppi is made to be easy for owners to upload and modify. It has a lean file structure and avoids bloated libraries and complicated build tools. You can make changes to the code using the most modern libraries and techniques, and your changes are reflected as soon as you refresh the page!
 
 - **Framework:** [Flight micro-framework for PHP](https://docs.flightphp.com/en/v3/)
 - **Database:** [SQLite](https://sqlite.org/) (configuration not required)
