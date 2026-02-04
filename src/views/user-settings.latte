@@ -1,0 +1,90 @@
+{layout 'layout.latte'}
+
+{block content}
+
+<h1 class="header">User Settings</h1>
+
+<div class="ui segment">
+    <h3>Change Password</h3>
+    <form class="ui large form" id="passwordForms">
+        <div class="ui error message" id="errorMessage" style="display: none;"></div>
+        <div class="ui success message" id="successMessage" style="display: none;"></div>
+        <div class="field">
+            <label for="password">Current Password*</label>
+            <input id="password" type="password" name="current_password" required>
+        </div>
+        <div class="field">
+            <label for="new-password">New Password*</label>
+            <input id="new-password" type="password" name="new_password" required minlength="6">
+        </div>
+        <div class="field">
+            <label for="confirm-password">Confirm New Password*</label>
+            <input id="confirm-password" type="password" name="confirm_password" required>
+        </div>
+        <button class="ui primary button" type="submit">Update Password</button>
+    </form>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('passwordForm');
+        const errorMsg = document.getElementById('errorMessage');
+        const successMsg = document.getElementById('successMessage');
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            // Client-side validation
+            const currentPw = form.querySelector('[name="current_password"]').value;
+            const newPw = form.querySelector('[name="new_password"]').value;
+            const confirmPw = form.querySelector('[name="confirm_password"]').value;
+
+            if (newPw !== confirmPw) {
+                showError('New passwords do not match');
+                return;
+            }
+            if (newPw.length < 6) {
+                showError('New password must be at least 6 characters');
+                return;
+            }
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/settings', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showSuccess('Password updated successfully');
+                    form.reset();
+                } else if (data.error) {
+                    showError(data.error);
+                } else if (data.errors) {
+                    showError('Validation errors: ' + JSON.stringify(data.errors));
+                } else {
+                    showError('Unexpected response');
+                }
+            } catch (error) {
+                showError('Request failed: ' + error.message);
+            }
+        });
+
+        function showError(message) {
+            errorMsg.textContent = message;
+            errorMsg.style.display = 'block';
+            successMsg.style.display = 'none';
+            form.classList.add('error');
+        }
+
+        function showSuccess(message) {
+            successMsg.textContent = message;
+            successMsg.style.display = 'block';
+            errorMsg.style.display = 'none';
+            form.classList.remove('error');
+        }
+    });
+</script>
+{/block}

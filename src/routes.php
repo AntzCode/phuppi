@@ -19,19 +19,18 @@ use Phuppi\Controllers\UserController;
 use Phuppi\Controllers\FileController;
 use Phuppi\Controllers\VoucherController;
 use Phuppi\Controllers\SettingsController;
+use Phuppi\Controllers\UserSettingsController;
 
 use Phuppi\Helper;
 use Phuppi\Note;
 use Phuppi\NoteToken;
-use Phuppi\Permissions\Middleware\IsAdmin;
 use Phuppi\Permissions\Middleware\IsAuthenticated;
 use Phuppi\Permissions\Middleware\IsAuthenticatedUser;
-use Phuppi\Permissions\Middleware\IsAuthenticatedVoucher;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\UserPermission;
 use Phuppi\Permissions\VoucherPermission;
-use Phuppi\Permissions\Middleware\HasPermission;
+use Phuppi\Permissions\Middleware\IsNotAuthenticatedVoucher;
 use Phuppi\Permissions\Middleware\RequireLogin;
 use Phuppi\UploadedFileToken;
 use Phuppi\UploadedFile;
@@ -51,8 +50,8 @@ if ($userCount < 1) {
         exit;
     } else {
         // Show installer
-        Flight::route('POST /install', [\Phuppi\Controllers\InstallController::class, 'install']);
-        Flight::route('*', [\Phuppi\Controllers\InstallController::class, 'index']);
+        Flight::route('POST /install', [InstallController::class, 'install']);
+        Flight::route('*', [InstallController::class, 'index']);
     }
 } else {
     // Normal routes
@@ -63,6 +62,11 @@ if ($userCount < 1) {
     Flight::route('GET /logout', [UserController::class, 'logout']);
 
     Flight::router()->group('/users', function ($router) {
+
+        // User can manage own profile
+        Flight::route('GET /settings', [UserSettingsController::class, 'index'])->addMiddleware(IsNotAuthenticatedVoucher::class);
+        Flight::route('POST /settings', [UserSettingsController::class, 'updatePassword'])->addMiddleware(IsNotAuthenticatedVoucher::class);
+
         $router->get('/', [UserController::class, 'listUsers'])->addMiddleware(function () {
             return Helper::can(UserPermission::LIST);
         });

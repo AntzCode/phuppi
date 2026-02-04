@@ -26,7 +26,8 @@
             {if user_can('note_list')}<a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>{/if}
             {if user_can('file_list')}<a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>{/if}
             {if !voucher_id() && user_can('file_list') and user_can('file_delete') and user_can('file_view')}<a class="item ui button primary" href="/duplicates"><i class="copy icon"></i> Duplicates</a>{/if}
-            {if user_can('voucher_list')}<a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>{/if}
+            {if !voucher_id() && user_id()}<a class="item ui button primary" href="/users/settings"><i class="user icon"></i> Profile</a>{/if}
+            {if user_can('user_update')}<a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>{/if}
             {if user_can('admin')}<a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>{/if}
             {if user_can('user_list')}<a class="item ui button" href="/users"><i class="user icon"></i> Users</a>{/if}
             {if user_id() || voucher_id()}<a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>{/if}
