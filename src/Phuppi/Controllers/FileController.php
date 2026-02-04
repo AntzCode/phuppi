@@ -19,8 +19,9 @@ use Flight;
 use Phuppi\Helper;
 use Phuppi\UploadedFile;
 use Phuppi\UploadedFileToken;
+use Phuppi\BatchFileToken;
+use Phuppi\ShortLink;
 use Phuppi\Permissions\FilePermission;
-use Phuppi\PermissionChecker;
 use Phuppi\Storage\LocalStorage;
 use Phuppi\Storage\S3Storage;
 
@@ -363,7 +364,7 @@ class FileController
                 return;
             }
 
-            if (Helper::can(FilePermission::GET, $file)) {
+            if (!Helper::can(FilePermission::GET, $file)) {
                 Flight::json(['error' => "Forbidden to access file $id"], 403);
                 return;
             }
@@ -562,6 +563,109 @@ class FileController
     }
 
     /**
+     * Generates a batch share token for multiple files.
+     *
+     * @return void
+     */
+    public function generateBatchShareToken(): void
+    {
+        $data = Flight::request()->data;
+        $ids = $data->ids ?? [];
+        if (empty($ids) || !is_array($ids)) {
+            Flight::halt(400, 'Invalid or missing file IDs');
+        }
+
+        $duration = $data->duration ?? '1h';
+
+        // Calculate expires_at
+        $expiresAt = null;
+        switch ($duration) {
+            case '1h':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                break;
+            case '1d':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 day'));
+                break;
+            case '1w':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 week'));
+                break;
+            case '1m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 month'));
+                break;
+            case '3m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 months'));
+                break;
+            case '6m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+6 months'));
+                break;
+            case '1y':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 year'));
+                break;
+            case '3y':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 years'));
+                break;
+            case 'forever':
+                $expiresAt = null;
+                break;
+            default:
+                Flight::halt(400, 'Invalid duration');
+        }
+
+        // Validate files
+        foreach ($ids as $id) {
+            $file = UploadedFile::findById((int)$id);
+            if (!$file || !Helper::can(FilePermission::GET, $file)) {
+                Flight::halt(403, 'Forbidden or file not found: ' . $id);
+            }
+        }
+
+        // Generate unique token
+        $token = bin2hex(random_bytes(32));
+
+        $voucher = Flight::voucher();
+
+        $batchToken = new BatchFileToken();
+        $batchToken->voucher_id = $voucher->id ?? null;
+        $batchToken->file_ids = $ids;
+        $batchToken->token = $token;
+        $batchToken->expires_at = $expiresAt;
+
+        if ($batchToken->save()) {
+            $shareUrl = Flight::request()->getScheme() . '://' . Flight::request()->servername . '/files/batch/' . $token;
+            Flight::json(['share_url' => $shareUrl, 'expires_at' => $expiresAt]);
+        } else {
+            Flight::halt(500, 'Failed to generate batch share token');
+        }
+    }
+
+    /**
+     * Shows a batch share page.
+     *
+     * @param string $token The batch token.
+     * @return void
+     */
+    public function showBatchShare($token): void
+    {
+        $batchToken = BatchFileToken::findByToken($token);
+        if (!$batchToken) {
+            Flight::halt(404, 'Batch share not found or expired');
+        }
+
+        $files = [];
+        foreach ($batchToken->file_ids as $id) {
+            $file = UploadedFile::findById((int)$id);
+            if ($file) {
+                $files[] = $file;
+            }
+        }
+
+        Flight::render('batch-share.latte', [
+            'batchToken' => $batchToken,
+            'files' => $files
+        ]);
+    }
+
+    /**
      * Gets a thumbnail for a file.
      *
      * @param int $id The file ID.
@@ -603,6 +707,7 @@ class FileController
             Flight::halt(500, 'Internal server error');
         }
     }
+
     /**
      * Requests a presigned URL for upload.
      *
@@ -794,7 +899,6 @@ class FileController
         while ($data = $stmt->fetch(\PDO::FETCH_ASSOC)) {
             $files[] = new UploadedFile($data);
         }
-
 
         // Group by size and mimetype
         $groups = [];
@@ -1006,5 +1110,82 @@ class FileController
             'hashes_100kb' => $hashes100,
             'hashes_full' => $hashesFull
         ]);
+    }
+
+    /**
+     * Shortens a URL.
+     *
+     * @return void
+     */
+    public function shortenUrl(): void
+    {
+        $data = Flight::request()->data;
+        $target = $data->target ?? null;
+        if (!$target) {
+            Flight::halt(400, 'Missing target URL');
+        }
+
+        $duration = $data->duration ?? '1h';
+
+        // Calculate expires_at
+        $expiresAt = null;
+        switch ($duration) {
+            case '1h':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                break;
+            case '1d':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 day'));
+                break;
+            case '1w':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 week'));
+                break;
+            case '1m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 month'));
+                break;
+            case '3m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 months'));
+                break;
+            case '6m':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+6 months'));
+                break;
+            case '1y':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 year'));
+                break;
+            case '3y':
+                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 years'));
+                break;
+            case 'forever':
+                $expiresAt = null;
+                break;
+            default:
+                Flight::halt(400, 'Invalid duration');
+        }
+
+        $shortLink = new ShortLink();
+        $shortLink->target = $target;
+        $shortLink->expires_at = $expiresAt;
+
+        if ($shortLink->save()) {
+            $shortUrl = Flight::request()->getScheme() . '://' . Flight::request()->servername . '/s/' . $shortLink->shortcode;
+            Flight::json(['short_url' => $shortUrl, 'expires_at' => $expiresAt]);
+        } else {
+            Flight::halt(500, 'Failed to create short link');
+        }
+    }
+
+    /**
+     * Redirects short link to target.
+     *
+     * @param string $shortcode The shortcode.
+     * @return void
+     */
+    public function redirectShortLink($shortcode): void
+    {
+        $shortLink = ShortLink::findByShortcode($shortcode);
+        if (!$shortLink) {
+            Flight::halt(404, 'Short link not found');
+        }
+
+        Flight::redirect($shortLink->target);
     }
 }

@@ -50,6 +50,7 @@
         const [shareModalOpen, setShareModalOpen] = useState(false);
         const [shareNoteData, setShareNoteData] = useState(null);
         const [shareUrl, setShareUrl] = useState('');
+        const [shortShareUrl, setShortShareUrl] = useState('');
         const [shareExpiresAt, setShareExpiresAt] = useState(null);
         const [shareDuration, setShareDuration] = useState('1h');
 
@@ -74,6 +75,12 @@
         useEffect(() => {
             fetchNotes();
         }, [sort, keyword, page, limit]);
+
+        useEffect(() => {
+            if (shareUrl) {
+                shortenUrl();
+            }
+        }, [shareUrl]);
 
         useEffect(() => {
             // Initialize Semantic UI dropdowns
@@ -253,8 +260,28 @@
             }
         };
 
+        const shortenUrl = async () => {
+            try {
+                const response = await fetch(`/shorten`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ target: shareUrl, duration: shareDuration }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setShortShareUrl(data.short_url);
+                } else {
+                    console.error('Error shortening URL:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error shortening URL:', error);
+            }
+        }
+
         const copyToClipboard = () => {
-            navigator.clipboard.writeText(shareUrl);
+            navigator.clipboard.writeText(shortShareUrl);
             alert('Link copied to clipboard!');
         };
 
@@ -417,12 +444,12 @@
                 <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
                     <div class="header">Share ${shareNoteData.filename}<i class="close icon clickable" style="float: right;" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}></i></div>
                     <div class="content">
-                        ${shareUrl ? html`
+                        ${shortShareUrl ? html`
                             <div class="ui form">
                                 <div class="field">
                                     <label>Share Link</label>
                                     <div class="ui action input">
-                                        <input type="text" readonly value=${shareUrl} />
+                                        <input type="text" readonly value=${shortShareUrl} />
                                         <button class="ui button" onClick=${copyToClipboard}>Copy</button>
                                     </div>
                                 </div>

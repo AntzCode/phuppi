@@ -20,6 +20,7 @@ use Phuppi\Controllers\FileController;
 use Phuppi\Controllers\VoucherController;
 use Phuppi\Controllers\SettingsController;
 use Phuppi\Controllers\UserSettingsController;
+use Phuppi\Controllers\ShortLinkController;
 
 use Phuppi\Helper;
 use Phuppi\Note;
@@ -34,6 +35,7 @@ use Phuppi\Permissions\Middleware\IsNotAuthenticatedVoucher;
 use Phuppi\Permissions\Middleware\RequireLogin;
 use Phuppi\UploadedFileToken;
 use Phuppi\UploadedFile;
+use Phuppi\BatchFileToken;
 
 // Check if first migration has been run (users table exists)
 $db = Flight::db();
@@ -66,6 +68,8 @@ if ($userCount < 1) {
         // User can manage own profile
         Flight::route('GET /settings', [UserSettingsController::class, 'index'])->addMiddleware(IsNotAuthenticatedVoucher::class);
         Flight::route('POST /settings', [UserSettingsController::class, 'updatePassword'])->addMiddleware(IsNotAuthenticatedVoucher::class);
+        Flight::route('POST /settings/shortlinks', [UserSettingsController::class, 'createShortLink'])->addMiddleware(IsNotAuthenticatedVoucher::class);
+        Flight::route('DELETE /settings/shortlinks/@id', [UserSettingsController::class, 'deleteShortLink'])->addMiddleware(IsNotAuthenticatedVoucher::class);
 
         $router->get('/', [UserController::class, 'listUsers'])->addMiddleware(function () {
             return Helper::can(UserPermission::LIST);
@@ -147,6 +151,9 @@ if ($userCount < 1) {
         $router->post('/@id/share', [FileController::class, 'generateShareToken'])->addMiddleware(function () {
             return Helper::can(FilePermission::GET);
         });
+        $router->post('/share-batch', [FileController::class, 'generateBatchShareToken'])->addMiddleware(function () {
+            return Helper::can(FilePermission::GET);
+        });
     }, [IsAuthenticated::class]);
 
     Flight::router()->get('/files/@id', [FileController::class, 'getFile'])->addMiddleware(function ($args) {
@@ -161,10 +168,25 @@ if ($userCount < 1) {
                 if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
                     return true;
                 }
+                $batchToken = BatchFileToken::findByToken($token);
+                if ($batchToken && in_array($fileId, $batchToken->file_ids)) {
+                    return true;
+                }
             }
         }
 
         return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+
+    Flight::router()->get('/files/batch/@token', [FileController::class, 'showBatchShare'])->addMiddleware(function ($args) {
+        $token = $args['token'];
+        if (strlen($token) <= 255) {
+            $batchToken = BatchFileToken::findByToken($token);
+            if ($batchToken) {
+                return true;
+            }
+        }
+        Flight::halt(403, 'Invalid or expired token');
     });
     
     Flight::router()->group('/duplicates', function ($router) {
@@ -224,6 +246,11 @@ if ($userCount < 1) {
 
         return Helper::can(NotePermission::VIEW, Note::findById($noteId));
     });
+    
+    // Shortener routes
+    Flight::route('GET /shortlinks', [ShortLinkController::class, 'index'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /shorten', [FileController::class, 'shortenUrl'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /s/@shortcode', [FileController::class, 'redirectShortLink']);
     
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);

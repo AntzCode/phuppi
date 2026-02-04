@@ -1,13 +1,13 @@
 {parameters
-    ?array $files = [],
-    $userCan = [
-        'file_create' => user_can('file_create'),
-        'file_delete' => user_can('file_delete'),
-        'file_view' => user_can('file_view'),
-        'file_put' => user_can('file_put'),
-        'file_get' => user_can('file_get'),
-        'file_update' => user_can('file_update'),
-    ]
+?array $files = [],
+$userCan = [
+'file_create' => user_can('file_create'),
+'file_delete' => user_can('file_delete'),
+'file_view' => user_can('file_view'),
+'file_put' => user_can('file_put'),
+'file_get' => user_can('file_get'),
+'file_update' => user_can('file_update'),
+]
 }
 
 <div id="file-list-container"></div>
@@ -32,7 +32,7 @@
         }
     }
 
-    const FileList = ({  }) => {
+    const FileList = ({ }) => {
 
         const getCookie = (name) => {
             const value = `; ${document.cookie}`;
@@ -61,8 +61,15 @@
         const [shareModalOpen, setShareModalOpen] = useState(false);
         const [shareFileData, setShareFileData] = useState(null);
         const [shareUrl, setShareUrl] = useState('');
+        const [shortShareUrl, setShortShareUrl] = useState('');
         const [shareExpiresAt, setShareExpiresAt] = useState(null);
         const [shareDuration, setShareDuration] = useState('1h');
+        const [batchShareModalOpen, setBatchShareModalOpen] = useState(false);
+        const [batchShareData, setBatchShareData] = useState([]);
+        const [batchShareUrl, setBatchShareUrl] = useState('');
+        const [shortBatchShareUrl, setShortBatchShareUrl] = useState('');
+        const [batchShareExpiresAt, setBatchShareExpiresAt] = useState(null);
+        const [batchShareDuration, setBatchShareDuration] = useState('1h');
         const [tagModalOpen, setTagModalOpen] = useState(false);
         const [tagFiles, setTagFiles] = useState([]);
         const [commonNotes, setCommonNotes] = useState('');
@@ -122,6 +129,18 @@
             $('.ui.dropdown.filelist-sort').dropdown('set selected', sort);
         }, [sort]);
 
+        useEffect(() => {
+            if (shareUrl) {
+                shortenUrl();
+            }
+        }, [shareUrl]);
+
+        useEffect(() => {
+            if (batchShareUrl) {
+                shortenBatchUrl();
+            }
+        }, [batchShareUrl]);
+
         // Handle multi-select actions
         const handleMultiSelectAction = async (action, ids) => {
             switch (action) {
@@ -177,6 +196,10 @@
                         console.error('Error downloading files:', error);
                     }
                     break;
+                case 'share-batch':
+                    setBatchShareData(ids);
+                    setBatchShareModalOpen(true);
+                    break;
                 default:
                     if (action === 'manage' || action === '') {
                         // For manage tags, open modal
@@ -196,6 +219,9 @@
                     }
                     if (value === 'manage') {
                         handleMultiSelectAction('manage', selectedFiles);
+                    }
+                    if (value === 'share-batch') {
+                        handleMultiSelectAction('share-batch', selectedFiles);
                     }
                     if (value === 'delete') {
                         handleMultiSelectAction('delete', selectedFiles);
@@ -264,9 +290,75 @@
             }
         }
 
+        const shortenUrl = async () => {
+            try {
+                const response = await fetch(`/shorten`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ target: shareUrl, duration: shareDuration }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setShortShareUrl(data.short_url);
+                } else {
+                    console.error('Error shortening URL:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error shortening URL:', error);
+            }
+        }
+
+        const shortenBatchUrl = async () => {
+            try {
+                const response = await fetch(`/shorten`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ target: batchShareUrl, duration: batchShareDuration }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setShortBatchShareUrl(data.short_url);
+                } else {
+                    console.error('Error shortening URL:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error shortening URL:', error);
+            }
+        }
+
         const copyToClipboard = () => {
-            navigator.clipboard.writeText(shareUrl);
+            navigator.clipboard.writeText(shortShareUrl);
             alert('Link copied to clipboard!');
+        }
+
+        const generateBatchShareLink = async () => {
+            try {
+                const response = await fetch('/files/share-batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ids: batchShareData, duration: batchShareDuration }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setBatchShareUrl(data.share_url);
+                    setBatchShareExpiresAt(data.expires_at);
+                } else {
+                    console.error('Error generating batch share link:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error generating batch share link:', error);
+            }
+        }
+
+        const copyBatchToClipboard = () => {
+            navigator.clipboard.writeText(shortBatchShareUrl);
+            alert('Batch link copied to clipboard!');
         }
 
         const getSortLabel = (sortValue) => {
@@ -339,7 +431,7 @@
         }
 
         const clearFilePicker = () => {
-            if(uploading) return;
+            if (uploading) return;
             const input = document.getElementById('upload');
             input.value = '';
             setFilepickerStats({ total: 0, size: 0 });
@@ -387,9 +479,9 @@
 
             setUploading(false);
             setTimeout(() => {
-                if(!uploading) {
+                if (!uploading) {
                     $('#uploadFileProgressContainer').hide();
-                }    
+                }
             }, 1200);
 
             // Clear input
@@ -398,7 +490,6 @@
 
             // Refresh file list
             fetchFiles();
-
         }
 
         const uploadSingleFile = (file, onProgress) => {
@@ -551,6 +642,10 @@
                             <i class="tag icon"></i>
                             <label>Manage Notes</label>
                         </div>`}
+                        ${userCan.file_get && html`<div class="item" data-value="share-batch">
+                            <i class="share icon"></i>
+                            <label>Batch Share</label>
+                        </div>`}
                         ${userCan.file_delete && html`<div class="item" data-value="delete">
                             <i class="trash icon"></i>
                             <label>Delete Selected</label>
@@ -652,9 +747,9 @@
                     </div>`}
                     ${userCan.file_get && html`<div class="ui tiny rounded image clickable raised" onClick=${() => previewFile(file)}>
                         ${['png', 'jpg', 'gif'].includes(file.extension.toLowerCase())
-                            ? html`<img src="/files/thumbnail/${file.id}" />`
-                            : html`<img src="/assets/images/filetype-icons/${file.extension}.png" />`
-                        }
+                    ? html`<img src="/files/thumbnail/${file.id}" />`
+                    : html`<img src="/assets/images/filetype-icons/${file.extension}.png" />`
+                }
                     </div>`}
                     <div class="content">
                         <div class="header">
@@ -682,12 +777,12 @@
                     <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
                         <div class="header">${previewFileData.display_filename}</div>
                         <div class="content" style="text-align: center;">
-                            ${previewFileData.mimetype.startsWith('image/') 
-                                ? html`<img src="/files/preview/${previewFileData.id}" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />` 
-                                : previewFileData.mimetype.startsWith('video/') 
-                                    ? html`<video src="/files/${previewFileData.id}" controls style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />` 
-                                    : html`<p>Preview not available for this file type.</p>`
-                            }
+                            ${previewFileData.mimetype.startsWith('image/')
+                    ? html`<img src="/files/preview/${previewFileData.id}" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
+                    : previewFileData.mimetype.startsWith('video/')
+                        ? html`<video src="/files/${previewFileData.id}" controls style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
+                        : html`<p>Preview not available for this file type.</p>`
+                }
                         </div>
                         <div class="actions">
                             <button class="ui button" onClick=${() => setModalOpen(false)}>Close</button>
@@ -703,8 +798,8 @@
                                     <div class="field">
                                         <label>Share Link</label>
                                         <div class="ui action input">
-                                            <input type="text" readonly value=${shareUrl} />
-                                            <button class="ui button" onClick=${copyToClipboard}>Copy</button>
+                                            <input type="text" readonly value=${shortShareUrl} />
+                                            <button class="ui button primary" onClick=${copyToClipboard}>Copy</button>
                                         </div>
                                     </div>
                                     <div class="field">
@@ -741,6 +836,53 @@
                         </div>
                     </div>
                 </div>`}
+                ${batchShareModalOpen && html`<div class="ui dimmer modals page transition visible active">
+                    <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+                        <div class="header">Batch Share ${batchShareData.length} Files<i class="close icon clickable" style="float: right;" onClick=${() => { setBatchShareModalOpen(false); setBatchShareUrl(''); setBatchShareExpiresAt(null); }}></i></div>
+                        <div class="content">
+                            ${shortBatchShareUrl ? html`
+                                <div class="ui form">
+                                    <div class="field">
+                                        <label>Batch Share Link</label>
+                                        <div class="ui action input">
+                                            <input type="text" readonly value=${shortBatchShareUrl} />
+                                            <button class="ui button" onClick=${copyBatchToClipboard}>Copy</button>
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label>Expires At</label>
+                                        <p>${batchShareExpiresAt ? new Date(batchShareExpiresAt).toLocaleString() : 'Never'}</p>
+                                    </div>
+                                </div>
+                            ` : html`
+                                <div class="ui form">
+                                    <div class="field">
+                                        <label>Link Validity Duration</label>
+                                        <select value=${batchShareDuration} onChange=${(e) => setBatchShareDuration(e.target.value)}>
+                                            <option value="1h">1 Hour</option>
+                                            <option value="1d">1 Day</option>
+                                            <option value="1w">1 Week</option>
+                                            <option value="1m">1 Month</option>
+                                            <option value="3m">3 Months</option>
+                                            <option value="6m">6 Months</option>
+                                            <option value="1y">1 Year</option>
+                                            <option value="3y">3 Years</option>
+                                            <option value="forever">Forever</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            `}
+                        </div>
+                        <div class="actions">
+                            ${batchShareUrl ? html`
+                                <button class="ui button" onClick=${() => { setBatchShareModalOpen(false); setBatchShareUrl(''); setBatchShareExpiresAt(null); }}>Close</button>
+                            ` : html`
+                                <button class="ui button" onClick=${() => setBatchShareModalOpen(false)}>Cancel</button>
+                                <button class="ui positive button" onClick=${generateBatchShareLink}>Generate Link</button>
+                            `}
+                        </div>
+                    </div>
+                </div>`}
                 ${tagModalOpen && html`<div class="ui dimmer modals page transition visible active">
                     <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
                         <div class="header">Manage Notes for Selected Files</div>
@@ -761,22 +903,22 @@
                         <div class="actions">
                             <button class="ui button" onClick=${() => setTagModalOpen(false)}>Cancel</button>
                             <button class="ui positive button" onClick=${async () => {
-                                try {
-                                    for (const file of tagFiles) {
-                                        await fetch('/files/' + file.id, {
-                                            method: 'PUT',
-                                            headers: {
-                                                'Content-Type': 'application/json',
-                                            },
-                                            body: JSON.stringify({ notes: commonNotes }),
-                                        });
-                                    }
-                                    setTagModalOpen(false);
-                                    fetchFiles(); // Refresh
-                                } catch (error) {
-                                    console.error('Error updating notes:', error);
-                                }
-                            }}>Save Notes</button>
+                    try {
+                        for (const file of tagFiles) {
+                            await fetch('/files/' + file.id, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ notes: commonNotes }),
+                            });
+                        }
+                        setTagModalOpen(false);
+                        fetchFiles(); // Refresh
+                    } catch (error) {
+                        console.error('Error updating notes:', error);
+                    }
+                }}>Save Notes</button>
                         </div>
                     </div>
                 </div>`}
@@ -787,8 +929,6 @@
 
     const container = document.getElementById('file-list-container');
     render(html`<${FileList} />`, container);
-
-
 
 
 </script>

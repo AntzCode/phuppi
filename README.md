@@ -36,6 +36,8 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 - Data migration tool for migrating data between S3 buckets [(↗️ screenshot)](./assets/screenshots/storage-connector-migration.png)
 - De-duplicator tool for cleanup [(↗️ screenshot)](./assets/screenshots/duplicates.png)
 - Token-based sharing for files & notes [(↗️ screenshot)](./assets/screenshots/share-link.png) [(↗️ screenshot)](./assets/screenshots/shared-note.png)
+- Batch file sharing - share multiple files with a single link [(↗️ screenshot)](./assets/screenshots/batch-share.png)
+- URL Shortener - create short, memorable links with configurable expiration [(↗️ screenshot)](./assets/screenshots/url-shortener.png)
 - Local filesystem storage or S3-compatible API support [(↗️ screenshot)](./assets/screenshots/active-storage-connector.png)
 - Docker-ready configuration for dev & prod
 

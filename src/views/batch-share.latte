@@ -1,0 +1,48 @@
+{extends 'layout.latte'}
+
+{block title}Batch Shared Files{/block}
+
+{block content}
+<div class="ui container">
+    <div class="ui segment">
+        <h1 class="ui header">
+            <i class="files icon"></i>
+            Batch Shared Files
+            <div class="sub header">{count($files)} files{if $batchToken->expires_at} • Expires {$batchToken->expires_at|date:'Y-m-d H:i:s'}{/if}</div>
+        </h1>
+        {if $batchToken->expires_at}
+        <div class="ui orange message">
+            <i class="clock icon"></i>
+            This batch share expires on {$batchToken->expires_at|date:'Y-m-d H:i:s'}.
+        </div>
+        {/if}
+        <div class="ui divider"></div>
+        <div class="ui divided items">
+            {foreach $files as $file}
+            <div class="item">
+                <div class="ui image tiny">
+                    <img width="40" height="40" src="/assets/images/filetype-icons/{$file->extension}.png" alt="{$file->extension|upper:'FILE'}" />
+                </div>
+                <div class="content">
+                    <div class="header">{$file->display_filename}</div>
+                    <div class="meta">
+                        <span>{if $file->filesize < 1024}{$file->filesize} B{elseif $file->filesize < 1048576}{round($file->filesize / 1024, 1)} KB{elseif $file->filesize < 1073741824}{round($file->filesize / 1048576, 1)} MB{else}{round($file->filesize / 1073741824, 1)} GB{/if} • {$file->mimetype}</span>
+                        {if $file->notes}
+                        <div class="ui tiny header" style="margin-top: 0.5em;">Notes</div>
+                        <p>{$file->notes}</p>
+                        {/if}
+                        <span>Uploaded: {$file->uploaded_at}</span>
+                    </div>
+                    <div class="extra">
+                        <a class="ui primary labeled icon button" href="/files/{$file->id}?token={$batchToken->token}">
+                            <i class="download icon"></i>
+                            Download
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {/foreach}
+        </div>
+    </div>
+</div>
+{/block}
