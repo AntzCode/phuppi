@@ -2,7 +2,7 @@
 html/src/install.php
 
 # do not allow any data into the repository
-data
+/data
 
 **/.gitkeep
 
