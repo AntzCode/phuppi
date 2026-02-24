@@ -1,5 +1,37 @@
+# Standard Apache configuration for Phuppi (Flight PHP framework)
+# Handles clean URLs + progressive streaming for /files/*
+
 RewriteEngine On
 
+# Standard rewrite for non-existing files to index.php (Flight routing)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]
+
+# Progressive streaming: disable gzip/caching for /files/* paths
+<IfModule mod_setenvif.c>
+    SetEnvIf Request_URI "^/files/" no-gzip
+</IfModule>
+
+<IfModule mod_deflate.c>
+    # Enable compression for common text-based MIME types (optional)
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json
+
+    # Explicitly disable compression for /files/ paths (reinforces no-gzip)
+    SetEnvIfNoCase Request_URI "^/files/" no-gzip=1
+</IfModule>
+
+<IfModule mod_headers.c>
+    <If "%{REQUEST_URI} =~ m#^/files/#">
+        Header always set Cache-Control "no-cache, no-store, must-revalidate"
+        Header always set Pragma "no-cache"
+        Header always set Expires "0"
+        Header unset ETag
+    </If>
+</IfModule>
+
+# Security: Prevent directory browsing
+Options -Indexes
+
+# Note: Timeout and LimitRequestBody are configured in docker/php/000-default.conf
+# For production, configure these in nginx/apache server config

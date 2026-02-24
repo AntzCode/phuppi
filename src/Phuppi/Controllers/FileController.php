@@ -24,6 +24,7 @@ use Phuppi\ShortLink;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Storage\LocalStorage;
 use Phuppi\Storage\S3Storage;
+use Aws\S3\Exception\S3Exception;
 
 class FileController
 {
@@ -114,7 +115,48 @@ class FileController
             Flight::halt(404, 'File not found');
         }
 
-        if (!Flight::storage()->exists($file->getUsername() . '/' . $file->filename)) {
+        // Storage exists check removed - streaming will handle missing files with proper error
+
+        // Clear any output buffers to prevent memory issues
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Zero-buffer streaming headers
+        if (strpos($_SERVER['SERVER_SOFTWARE'] ?? '', 'nginx') !== false) {
+            header('X-Accel-Buffering: no');
+        }
+        header('Cache-Control: no-cache');
+        ini_set('output_buffering', 0);
+        ini_set('zlib.output_compression', 0);
+        ignore_user_abort(false);
+
+        $disposition = 'attachment';
+
+        if (Flight::storage() instanceof S3Storage) {
+            // Stream file directly from S3 using credentials (no presigned URL expiration)
+            $this->streamFileFromS3($file, $disposition);
+            exit;
+        }
+
+        if (Flight::storage() instanceof LocalStorage) {
+            $this->streamFileFromLocal($file, $disposition);
+            exit;
+        }
+        throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+    }
+
+    /**
+     * Streams a file inline for preview (images/videos).
+     *
+     * @param int $id The file ID.
+     * @return void
+     */
+    public function streamInline($id): void
+    {
+        $file = UploadedFile::findById($id);
+
+        if (!$file) {
             Flight::halt(404, 'File not found');
         }
 
@@ -123,40 +165,262 @@ class FileController
             ob_end_clean();
         }
 
-        // Set headers
-        header('Content-Type: ' . $file->mimetype);
-        $forceDownload = Flight::request()->query['download'] ?? false;
-        $disposition = $forceDownload || !(str_starts_with($file->mimetype, 'image/') || str_starts_with($file->mimetype, 'video/')) ? 'attachment' : 'inline';
-        header('Content-Disposition: ' . $disposition . '; filename="' . $file->display_filename . '"');
+        // Zero-buffer streaming headers
+        if (strpos($_SERVER['SERVER_SOFTWARE'] ?? '', 'nginx') !== false) {
+            header('X-Accel-Buffering: no');
+        }
+        header('Cache-Control: no-cache');
+        ini_set('output_buffering', 0);
+        ini_set('zlib.output_compression', 0);
+        ignore_user_abort(false);
+
+        $disposition = 'inline';
 
         if (Flight::storage() instanceof S3Storage) {
-            // calculate a token that expires after download - expect 1 GB per hour download speed
-            $expiresIn = ceil(3600 * ($file->filesize / 1024 / 1024 / 1024));
-
-            // min 15 seconds
-            $expiresIn = $expiresIn < 15 ? 15 : $expiresIn;
-
-            if ($forceDownload) {
-                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename, $expiresIn, [
-                    'ResponseContentDisposition' => $disposition . '; filename="' . $file->display_filename . '"'
-                ]);
-            } else {
-                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename, $expiresIn);
-            }
-            Flight::redirect($presignedUrl, 301);
+            $this->streamFileFromS3($file, $disposition);
             exit;
         }
 
         if (Flight::storage() instanceof LocalStorage) {
-            $response = Flight::response();
-            $response->header('Content-Type', $file->mimetype);
-            $response->header('Content-Length', $file->filesize);
-            $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
-            $response->send(fpassthru($stream));
-            fclose($stream);
+            $this->streamFileFromLocal($file, $disposition);
             exit;
         }
         throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+    }
+
+    /**
+     * Streams a file directly from S3 to the client.
+     * This avoids presigned URL expiration issues by using S3 credentials directly.
+     *
+     * @param UploadedFile $file The file to stream.
+     * @param string $disposition Content disposition (attachment or inline).
+     * @return void
+     */
+    private function streamFileFromS3(UploadedFile $file, string $disposition): void
+    {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $storage = Flight::storage();
+        if (!$storage instanceof S3Storage) {
+            throw new \Exception('S3Storage required for streaming');
+        }
+
+        $key = Flight::storage()->getRelativePath($file->getUsername() . '/' . $file->filename);
+        $s3Client = $storage->getS3Client();
+        $bucket = $storage->getBucket();
+
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        try {
+            // Get file metadata first
+            $headResult = $s3Client->headObject([
+                'Bucket' => $bucket,
+                'Key' => $key,
+            ]);
+            $totalLength = (int) $headResult['ContentLength'];
+            $s3ContentType = $headResult['ContentType'] ?? null;
+            $contentType = $s3ContentType ?? $file->mimetype;
+            
+            // Fix: Serve .mkv files as video/mp4 for browser streaming compatibility
+            // Browsers don't natively support .mkv streaming but will stream .mp4
+            if (strtolower($file->extension) === 'mkv') {
+                $contentType = 'video/mp4';
+                Flight::logger()->info('STREAM DEBUG: Overriding .mkv Content-Type to video/mp4 for streaming');
+            }
+            
+            // Handle Range header for resumable downloads
+            $range = Flight::request()->header('Range') ?? null;
+            $startByte = 0;
+            $endByte = $totalLength - 1;
+            $isPartial = false;
+
+            if ($range && preg_match('/bytes=(\d+)-(\d*)/', $range, $matches)) {
+                $startByte = (int) $matches[1];
+                $endByte = isset($matches[2]) && $matches[2] !== '' ? (int) $matches[2] : $totalLength - 1;
+                
+                if ($startByte >= $totalLength || $startByte > $endByte) {
+                    http_response_code(416);
+                    header('Content-Range: bytes */' . $totalLength);
+                    exit('Range Not Satisfiable');
+                }
+
+                $isPartial = true;
+            } else {
+                // No Range header - serve full file with HTTP 200
+                // This ensures browsers complete full-file downloads instead of stopping after first chunk
+                $isPartial = false;
+                $startByte = 0;
+                $endByte = $totalLength - 1;
+            }
+
+            $contentLength = $endByte - $startByte + 1;
+
+            // Set all response headers here
+            header('Content-Type: ' . $contentType);
+            header('Content-Length: ' . $contentLength);
+            header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($file->display_filename) . '"');
+            header('Accept-Ranges: bytes');
+            header('Cache-Control: public, max-age=31536000'); // Cache previews/images
+
+            if ($isPartial) {
+                http_response_code(206);
+                header('Content-Range: bytes ' . $startByte . '-' . $endByte . '/' . $totalLength);
+            }
+
+            // Stream the object - use @http to enable true streaming (no buffering)
+            $params = [
+                'Bucket' => $bucket,
+                'Key' => $key,
+                '@http' => [
+                    'stream' => true,
+                ],
+            ];
+            if ($isPartial) {
+                $params['Range'] = 'bytes=' . $startByte . '-' . $endByte;
+            }
+
+            try {
+                $result = $s3Client->getObject($params);
+                $stream = $result['Body'];
+            } catch (\Aws\S3\Exception\S3Exception $e) {
+                // If Range request fails (some S3 configurations), fall back to full file
+                if ($startByte > 0 || $endByte < $totalLength - 1) {
+                    Flight::logger()->warning('S3 Range request failed, falling back to full file: ' . $e->getMessage());
+                    unset($params['Range']);
+                    $result = $s3Client->getObject($params);
+                    $stream = $result['Body'];
+                } else {
+                    throw $e;
+                }
+            }
+
+            // Chunked streaming - large chunks for several seconds of video buffer
+            $chunkSize = 8388608; // 8MB chunks for ~5-10 seconds of video buffer
+            while (!$stream->eof() && $contentLength > 0) {
+                $readSize = min($chunkSize, $contentLength);
+                $chunk = $stream->read($readSize);
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                $contentLength -= strlen($chunk);
+                // Flush after each chunk for immediate delivery
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+                flush();
+            }
+
+            $stream->close();
+
+        } catch (\Aws\S3\Exception\S3Exception $e) {
+            Flight::logger()->error('S3 streaming error for key ' . $key . ': ' . $e->getMessage());
+            http_response_code(404);
+            exit('File not found');
+        } catch (\Exception $e) {
+            Flight::logger()->error('S3 streaming failed for key ' . $key . ': ' . $e->getMessage());
+            http_response_code(500);
+            exit('Download failed');
+        }
+    }
+
+    /**
+     * Streams a file from LocalStorage.
+     */
+    private function streamFileFromLocal(UploadedFile $file, string $disposition): void
+    {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
+        $key = $file->getUsername() . '/' . $file->filename;
+        $totalLength = $file->filesize;
+
+        // Clear output buffers to prevent corruption
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        Flight::logger()->info('STREAM DEBUG LocalStorage: Starting stream for key=' . $key . ', filesize=' . $totalLength . ', disposition=' . $disposition);
+
+        // Handle Range
+        $range = Flight::request()->getHeader('Range') ?? null;
+        $startByte = 0;
+        $endByte = $totalLength - 1;
+        $isPartial = false;
+
+        $startByte = 0;
+        $endByte = $totalLength - 1;
+        $isPartial = false;
+
+        if ($range && preg_match('/bytes=(\d+)-(\d*)/', $range, $matches)) {
+            $startByte = (int) $matches[1];
+            $endByte = isset($matches[2]) && $matches[2] !== '' ? (int) $matches[2] : $totalLength - 1;
+            
+            if ($startByte >= $totalLength || $startByte > $endByte) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $totalLength);
+                exit('Range Not Satisfiable');
+            }
+            $isPartial = true;
+        } else {
+            // No Range header - serve full file with HTTP 200
+            // This ensures browsers complete full-file downloads instead of stopping after first chunk
+            $isPartial = false;
+            $startByte = 0;
+            $endByte = $totalLength - 1;
+        }
+
+        $contentLength = $endByte - $startByte + 1;
+
+        // Fix: Serve .mkv files as video/mp4 for browser streaming compatibility
+        $contentType = $file->mimetype;
+        if (strtolower($file->extension) === 'mkv') {
+            $contentType = 'video/mp4';
+            Flight::logger()->info('STREAM DEBUG: Overriding .mkv Content-Type to video/mp4 for streaming');
+        }
+
+        // Headers
+        header('Content-Type: ' . $contentType);
+        header('Content-Length: ' . $contentLength);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($file->display_filename) . '"');
+        header('Accept-Ranges: bytes');
+
+        if ($isPartial) {
+            http_response_code(206);
+            header('Content-Range: bytes ' . $startByte . '-' . $endByte . '/' . $totalLength);
+        }
+
+        $stream = Flight::storage()->getStream($key);
+        if (!$stream || !is_resource($stream)) {
+            http_response_code(500);
+            exit('Stream error');
+        }
+
+        fseek($stream, $startByte);
+
+        // Large chunk size for better buffer
+        $chunkSize = 8388608; // 8MB chunks
+        while ($contentLength > 0 && !feof($stream)) {
+            $readSize = min($chunkSize, $contentLength);
+            $chunk = fread($stream, $readSize);
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+            echo $chunk;
+            $contentLength -= strlen($chunk);
+            // Flush after each chunk for immediate delivery
+            if (ob_get_level()) {
+                ob_flush();
+            }
+            flush();
+            Flight::logger()->debug('STREAM DEBUG LocalStorage: Sent chunk size=' . strlen($chunk) . ', remaining=' . $contentLength);
+        }
+        fclose($stream);
+        Flight::logger()->info('STREAM DEBUG LocalStorage: Completed streaming key=' . $key);
     }
 
     /**
@@ -727,13 +991,22 @@ class FileController
         $user = Flight::user();
         $voucher = Flight::voucher();
 
-        if (Flight::storage() instanceof S3Storage) {
+        $storage = Flight::storage();
+
+        if ($storage instanceof S3Storage) {
             $uniqueName = uniqid() . '_' . $filename;
             $pathPrefix = $user ? $user->username : $voucher->getUsername();
-            $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $mimetype, 3600 * 4);
+            $s3Key = $pathPrefix . '/' . $uniqueName;
+            
+            Flight::logger()->info('requestPresignedUrl: generating presigned URL for key=' . $s3Key);
+            $presignedUrl = $storage->getPresignedPutUrl($s3Key, $mimetype, 3600 * 4);
+            
             if (!$presignedUrl) {
+                Flight::logger()->error('requestPresignedUrl: FAILED to generate presigned URL for key=' . $s3Key);
                 Flight::halt(500, 'Failed to generate presigned URL');
             }
+            
+            Flight::logger()->info('requestPresignedUrl: SUCCESS generated presigned URL');
             Flight::json([
                 'presigned_url' => $presignedUrl,
                 'filename' => $uniqueName,

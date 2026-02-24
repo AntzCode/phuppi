@@ -178,6 +178,27 @@ if ($userCount < 1) {
         return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
     });
 
+    Flight::router()->get('/files/stream/@id', [FileController::class, 'streamInline'])->addMiddleware(function ($args) {
+        // Same middleware as /files/@id for inline streaming
+        $fileId = (int) $args['id'];
+
+        if(isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $fileToken = UploadedFileToken::findByToken($token);
+                if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
+                    return true;
+                }
+                $batchToken = BatchFileToken::findByToken($token);
+                if ($batchToken && in_array($fileId, $batchToken->file_ids)) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+
     Flight::router()->get('/files/batch/@token', [FileController::class, 'showBatchShare'])->addMiddleware(function ($args) {
         $token = $args['token'];
         if (strlen($token) <= 255) {

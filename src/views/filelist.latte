@@ -780,7 +780,7 @@ $userCan = [
                             ${previewFileData.mimetype.startsWith('image/')
                     ? html`<img src="/files/preview/${previewFileData.id}" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
                     : previewFileData.mimetype.startsWith('video/')
-                        ? html`<video src="/files/${previewFileData.id}" controls style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
+                        ? html`<video src="/files/stream/${previewFileData.id}" controls preload="metadata" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
                         : html`<p>Preview not available for this file type.</p>`
                 }
                         </div>
