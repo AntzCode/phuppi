@@ -27,8 +27,17 @@ RUN apt-get update && apt-get install -y \
     wget \
     nano \
     htop \
-    ncdu \
-    && docker-php-ext-install pdo_sqlite zip \
+    ffmpeg \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libmagickwand-dev \
+    libpng-dev \
+    libwebp-dev \
+    pkg-config \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+    && docker-php-ext-install pdo_sqlite zip gd pcntl \
+    && pecl install imagick \
+    && docker-php-ext-enable imagick \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

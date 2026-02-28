@@ -70,6 +70,8 @@ class DatabaseSession implements SessionHandlerInterface
         $this->serialization = $config['serialization'] ?? 'json';
         $startSession = $config['start_session'] ?? true;
 
+        $startSession = !Helper::isCli() && $startSession;
+
         if (!in_array($this->serialization, ['json', 'php'], true)) {
             throw new \InvalidArgumentException("Invalid serialization method: {$this->serialization}. Use 'json' or 'php'.");
         }

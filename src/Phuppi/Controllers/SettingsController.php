@@ -30,9 +30,13 @@ class SettingsController
     {
         $connectors = Flight::get('storage_connectors') ?? [];
         $activeConnector = Flight::get('active_storage_connector') ?? 'local-default';
+        $previewSettings = $this->getPreviewSettings();
+        $queueWorkerStatus = $this->getQueueWorkerStatus();
         Flight::render('settings.latte', [
             'connectors' => $connectors,
-            'activeConnector' => $activeConnector
+            'activeConnector' => $activeConnector,
+            'previewSettings' => $previewSettings,
+            'queueWorkerStatus' => $queueWorkerStatus
         ]);
     }
 
@@ -41,6 +45,129 @@ class SettingsController
      *
      * @return void
      */
+    public function updateSettings(): void
+    {
+        $data = Flight::request()->data;
+        $action = $data->action ?? 'update_preview';
+   
+        switch ($action) {
+            case 'update_preview':
+                $this->updatePreviewSettings($data);
+                break;
+            case 'regenerate_all':
+                $this->regenerateAllPreviews();
+                break;
+            default:
+                Flight::json(['error' => 'Invalid action'], 400);
+        }
+    }
+   
+    private function getPreviewSettings(): array
+    {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT name, value FROM settings WHERE name LIKE "preview_%"');
+        $stmt->execute();
+        $settings = [];
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $key = substr($row['name'], 8); // remove 'preview_'
+            $settings[$key] = $row['value'];
+        }
+        return $settings;
+    }
+
+    /**
+     * Get queue worker status for CLI mode
+     *
+     * @return string 'running' or 'stopped'
+     */
+    private function getQueueWorkerStatus(): string
+    {
+        $pidFile = Flight::get('flight.data.path') . '/queue-worker.pid';
+        
+        if (!file_exists($pidFile)) {
+            return 'stopped';
+        }
+        
+        $pid = (int)file_get_contents($pidFile);
+        if ($pid <= 0) {
+            return 'stopped';
+        }
+        
+        // Check if process is actually running
+        if (function_exists('posix_kill') && posix_kill($pid, 0)) {
+            return 'running';
+        }
+        
+        // Process no longer exists, clean up stale PID file
+        @unlink($pidFile);
+        return 'stopped';
+    }
+   
+    private function updatePreviewSettings($data): void
+    {
+        $db = Flight::db();
+        $settings = [
+            'queue_mode' => $data->queue_mode ?? 'cli',
+            'max_concurrent' => $data->max_concurrent ?? 5,
+            'debounce_ms' => $data->debounce_ms ?? 300,
+            'width' => $data->width ?? 300,
+            'height' => $data->height ?? 300,
+            'format' => $data->format ?? 'jpeg',
+            'quality' => $data->quality ?? 80,
+            'max_size_kb' => $data->max_size_kb ?? 50
+        ];
+   
+        $stmt = $db->prepare('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)');
+        foreach ($settings as $key => $value) {
+            $stmt->execute(["preview_$key", $value]);
+        }
+   
+        Flight::json(['message' => 'Preview settings updated']);
+    }
+   
+    private function regenerateAllPreviews(): void
+    {
+        $db = Flight::db();
+        $storage = Flight::storage();
+    
+        // Delete preview files - join with users to get username
+        $stmt = $db->query('
+            SELECT DISTINCT uf.preview_filename, u.username, v.voucher_code
+            FROM uploaded_files uf
+            LEFT JOIN users u ON uf.user_id = u.id
+            LEFT JOIN vouchers v ON uf.voucher_id = v.id
+            WHERE uf.preview_filename IS NOT NULL
+        ');
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $username = !empty($row['username']) ? $row['username'] : 'voucher_' . $row['voucher_code'];
+            $previewKey = $username . '/previews/' . $row['preview_filename'];
+            try {
+                $storage->delete($previewKey);
+            } catch (\Exception $e) {
+                Flight::logger()->warning("Failed to delete preview file $previewKey: " . $e->getMessage());
+            }
+        }
+    
+        // Reset status
+        $db->exec('UPDATE uploaded_files SET preview_filename = NULL, preview_status = "pending", preview_generated_at = NULL');
+   
+        // Clear jobs
+        $db->exec('DELETE FROM preview_jobs');
+        $db->exec('DELETE FROM queue_locks');
+   
+        // Create new preview jobs for all files
+        $queueManager = new \Phuppi\Queue\QueueManager();
+        $filesStmt = $db->query('SELECT id FROM uploaded_files');
+        $jobCount = 0;
+        while ($fileRow = $filesStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $queueManager->createJob((int)$fileRow['id']);
+            $jobCount++;
+        }
+   
+        Flight::json(['message' => "All previews reset and requeued. Created $jobCount preview jobs."]);
+    }
+   
+   
     public function updateStorage(): void
     {
         $data = Flight::request()->data;

@@ -40,6 +40,7 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 - URL Shortener - create short, memorable links with configurable expiration [(↗️ screenshot)](./assets/screenshots/url-shortener.png)
 - Local filesystem storage or S3-compatible API support [(↗️ screenshot)](./assets/screenshots/active-storage-connector.png)
 - Docker-ready configuration for dev & prod
+- Automatic preview thumbnails for files (images, videos, documents) with configurable background queue processing (CLI worker or AJAX for shared hosting) [(↗️ screenshot)](./assets/screenshots/preview.png)
 
 ## 🏗️ Under the Hood
 

@@ -186,7 +186,7 @@ class S3Storage implements StorageInterface
      * @param int $expiresIn Expiration time in seconds.
      * @return ?string The URL or null if failed.
      */
-    public function getPresignedPutUrl(string $filename, string $contentType = null, int $expiresIn = 3600): ?string
+    public function getPresignedPutUrl(string $filename, string | null $contentType = null, int $expiresIn = 3600): ?string
     {
         $key = $this->getRelativePath($filename);
         try {

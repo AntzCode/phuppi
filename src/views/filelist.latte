@@ -18,7 +18,7 @@ $userCan = [
 
 <script type="module" n:syntax="off">
 
-    import { html, render, useState, useEffect } from '/assets/preact/htm-standalone.mjs';
+    import { html, render, useState, useEffect, useRef } from '/assets/preact/htm-standalone.mjs';
 
     const readableSize = (size) => {
         if (size < 1024) {
@@ -33,6 +33,8 @@ $userCan = [
     }
 
     const FileList = ({ }) => {
+
+        const cacheBreak = Date.now();
 
         const getCookie = (name) => {
             const value = `; ${document.cookie}`;
@@ -80,6 +82,9 @@ $userCan = [
         const [total, setTotal] = useState(0);
         const [totalPages, setTotalPages] = useState(0);
         const [uploading, setUploading] = useState(false);
+        const [queueProcessing, setQueueProcessing] = useState(false);
+        const [queueStats, setQueueStats] = useState({ pending: 0, processing: 0, failed: 0 });
+        const [queueMode, setQueueMode] = useState('cli');
 
         const toggleSelection = (id) => {
             setSelectedFiles(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -111,6 +116,130 @@ $userCan = [
         useEffect(() => {
             fetchFiles();
         }, [sort, keyword, page, limit]);
+       
+        // Queue processing for AJAX mode with debounce
+        const queueDebounceRef = useRef(null);
+        const lastQueueRequestRef = useRef(0);
+        const [maxConcurrent, setMaxConcurrent] = useState(5);
+        
+        useEffect(() => {
+            const checkQueueMode = async () => {
+                // Debounce: prevent multiple calls within 2 seconds
+                const now = Date.now();
+                if (now - lastQueueRequestRef.current < 2000) return;
+                lastQueueRequestRef.current = now;
+                
+                try {
+                    const response = await fetch('/api/queue/status');
+                    const data = await response.json();
+                    setQueueMode(data.mode);
+                    setMaxConcurrent(data.max_concurrent || 5);
+                    setQueueStats({
+                        pending: data.pending,
+                        processing: data.processing,
+                        failed: data.failed
+                    });
+                    
+                    // Clear any pending debounced call
+                    if (queueDebounceRef.current) {
+                        clearTimeout(queueDebounceRef.current);
+                    }
+                    
+                    // Debounce the queue processing call
+                    if (data.mode === 'ajax' && data.pending > 0 && !queueProcessing) {
+                        queueDebounceRef.current = setTimeout(() => {
+                            processQueue();
+                        }, 500);
+                    }
+                } catch (error) {
+                    console.log('Queue status unavailable');
+                }
+            };
+        
+            checkQueueMode();
+            const interval = setInterval(checkQueueMode, 30000);
+            return () => {
+                clearInterval(interval);
+                if (queueDebounceRef.current) {
+                    clearTimeout(queueDebounceRef.current);
+                }
+            };
+        }, [queueProcessing]);
+        
+        const processQueue = async () => {
+            if (queueProcessing) return;
+            setQueueProcessing(true);
+        
+            try {
+                // Process jobs in parallel based on max_concurrent setting
+                const response = await fetch('/api/queue/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: maxConcurrent })
+                });
+                const data = await response.json();
+                
+                // Update stats based on results
+                setQueueStats({
+                    pending: data.has_more ? Math.max(0, data.pending - data.processed) : 0,
+                    processing: 0,
+                    failed: data.failed
+                });
+                
+                // If more jobs remain, continue processing
+                if (data.has_more) {
+                    setTimeout(processQueue, 500);
+                }
+            } catch (error) {
+                console.error('Queue processing error:', error);
+            } finally {
+                setQueueProcessing(false);
+            }
+        };
+
+        // Process pending previews when files have pending status
+        const [previewProcessing, setPreviewProcessing] = useState(false);
+        const [pendingPreviewCount, setPendingPreviewCount] = useState(0);
+
+        useEffect(() => {
+            // Count files with pending previews
+            const pendingCount = files.filter(f => f.preview_status === 'pending').length;
+            setPendingPreviewCount(pendingCount);
+            
+            // Trigger preview processing if there are pending previews
+            if (pendingCount > 0 && !previewProcessing) {
+                processNextPreview();
+            }
+        }, [files]);
+
+        const processNextPreview = async () => {
+            if (previewProcessing) return;
+            
+            // Find the next file with pending preview
+            const pendingFile = files.find(f => f.preview_status === 'pending');
+            if (!pendingFile) {
+                setPendingPreviewCount(0);
+                return;
+            }
+            
+            setPreviewProcessing(true);
+            
+            try {
+                const response = await fetch(`/api/preview/generate/${pendingFile.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    // Preview generated, refresh file list
+                    fetchFiles();
+                }
+            } catch (error) {
+                console.error('Preview generation error:', error);
+            } finally {
+                setPreviewProcessing(false);
+            }
+        };
 
         useEffect(() => {
             // Initialize Semantic UI dropdowns
@@ -745,11 +874,11 @@ $userCan = [
                     ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="ui image uploaded-file" style="padding: 1em; align-self: center;">
                         <i class=${selectedFiles.includes(file.id) ? "clickable large primary check square icon" : "clickable large primary square outline icon"} onClick=${() => toggleSelection(file.id)}></i>
                     </div>`}
-                    ${userCan.file_get && html`<div class="ui tiny rounded image clickable raised" onClick=${() => previewFile(file)}>
-                        ${['png', 'jpg', 'gif'].includes(file.extension.toLowerCase())
-                    ? html`<img src="/files/thumbnail/${file.id}" />`
-                    : html`<img src="/assets/images/filetype-icons/${file.extension}.png" />`
-                }
+                    ${userCan.file_get && html`<div class="ui tiny rounded image clickable raised relative" onClick=${() => previewFile(file)}>
+                        <img src=${file.preview_status !== 'completed' ? '/files/preview/' + file.id + '?t=' + cacheBreak : '/files/preview/' + file.id} alt="Preview" onerror="this.src='/assets/designs/icons/filetype-icons/${file.extension.toLowerCase()}.png'; this.onerror=null;" />
+                        ${file.preview_status === 'pending' && html`<div class="ui tiny orange label absolute top left">Generating...</div>`}
+                        ${file.preview_status === 'processing' && html`<div class="ui tiny yellow label absolute top left">Processing...</div>`}
+                        ${file.preview_status === 'failed' && html`<div class="ui tiny red label absolute top left">Failed</div>`}
                     </div>`}
                     <div class="content">
                         <div class="header">
@@ -778,11 +907,13 @@ $userCan = [
                         <div class="header">${previewFileData.display_filename}</div>
                         <div class="content" style="text-align: center;">
                             ${previewFileData.mimetype.startsWith('image/')
-                    ? html`<img src="/files/preview/${previewFileData.id}" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
-                    : previewFileData.mimetype.startsWith('video/')
-                        ? html`<video src="/files/stream/${previewFileData.id}" controls preload="metadata" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
-                        : html`<p>Preview not available for this file type.</p>`
-                }
+                            ? html`<img src="/files/stream/${previewFileData.id}" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" onerror="this.src='/assets/images/filetype-icons/${previewFileData.extension.toLowerCase()}.png'; this.onerror=null;" />`
+                            : previewFileData.mimetype.startsWith('video/')
+                            ? html`<video src="/files/stream/${previewFileData.id}" controls preload="metadata" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;" />`
+                            : previewFileData.mimetype === 'application/pdf'
+                            ? html`<iframe src="/files/stream/${previewFileData.id}" style="width: 100%; height: 80vh; border: none; background: white;"></iframe>`
+                            : html`<p>Preview not available for this file type.</p>`
+                            }
                         </div>
                         <div class="actions">
                             <button class="ui button" onClick=${() => setModalOpen(false)}>Close</button>

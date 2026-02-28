@@ -21,6 +21,7 @@ use Phuppi\Controllers\VoucherController;
 use Phuppi\Controllers\SettingsController;
 use Phuppi\Controllers\UserSettingsController;
 use Phuppi\Controllers\ShortLinkController;
+use Phuppi\Controllers\QueueController;
 
 use Phuppi\Helper;
 use Phuppi\Note;
@@ -114,18 +115,15 @@ if ($userCount < 1) {
     Flight::router()->group('/admin', function ($router) {
         $router->get('/settings', [SettingsController::class, 'index']);
         $router->post('/settings/storage', [SettingsController::class, 'updateStorage']);
-    }, [IsAuthenticatedUser::class]);
+        $router->post('/settings/preview', [SettingsController::class, 'updateSettings']);
+    }, [IsAuthenticatedUser::class, function () {
+        return Flight::user()->hasRole('admin');
+    }]);
 
     // File routes
     Flight::router()->group('/files', function ($router) {
         $router->get('/', [FileController::class, 'listFiles'])->addMiddleware(function () {
             return Helper::can(FilePermission::LIST);
-        });
-        $router->get('/thumbnail/@id', [FileController::class, 'getThumbnail'])->addMiddleware(function () {
-            return Helper::can(FilePermission::GET);
-        });
-        $router->get('/preview/@id', [FileController::class, 'getPreview'])->addMiddleware(function () {
-            return Helper::can(FilePermission::GET);
         });
         $router->post('/', [FileController::class, 'uploadFile'])->addMiddleware(function () {
             return Helper::can(FilePermission::PUT);
@@ -156,12 +154,33 @@ if ($userCount < 1) {
         });
     }, [IsAuthenticated::class]);
 
+    Flight::router()->get('/files/preview/@id', [FileController::class, 'getPreview'])->addMiddleware(function ($args) {
+        // Same middleware as /files/@id for public token access
+        $fileId = (int) $args['id'];
+
+        if (isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $fileToken = UploadedFileToken::findByToken($token);
+                if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
+                    return true;
+                }
+                $batchToken = BatchFileToken::findByToken($token);
+                if ($batchToken && in_array($fileId, $batchToken->file_ids)) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+
     Flight::router()->get('/files/@id', [FileController::class, 'getFile'])->addMiddleware(function ($args) {
         // permitted user or token is allowed to access
 
         $fileId = (int) $args['id'];
 
-        if(isset(Flight::request()->query['token'])) {
+        if (isset(Flight::request()->query['token'])) {
             $token = Flight::request()->query['token'];
             if (strlen($token) <= 255) {
                 $fileToken = UploadedFileToken::findByToken($token);
@@ -182,7 +201,7 @@ if ($userCount < 1) {
         // Same middleware as /files/@id for inline streaming
         $fileId = (int) $args['id'];
 
-        if(isset(Flight::request()->query['token'])) {
+        if (isset(Flight::request()->query['token'])) {
             $token = Flight::request()->query['token'];
             if (strlen($token) <= 255) {
                 $fileToken = UploadedFileToken::findByToken($token);
@@ -199,6 +218,23 @@ if ($userCount < 1) {
         return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
     });
 
+    Flight::router()->group('/api/queue', function ($router) {
+        $router->post('/process', [QueueController::class, 'process'])->addMiddleware(IsAuthenticated::class);
+        $router->get('/status', [QueueController::class, 'status'])->addMiddleware(IsAuthenticated::class);
+        $router->get('/worker-status', [QueueController::class, 'workerStatus'])->addMiddleware([
+            IsAuthenticated::class,
+            function () {
+                return Flight::user()->hasRole('admin');
+            }
+        ]);
+    });
+
+    // Preview generation API
+    Flight::router()->post('/api/preview/generate/@id', [FileController::class, 'generatePreview'])->addMiddleware(function ($args) {
+        $file = UploadedFile::findById((int) $args['id']);
+        return $file && Helper::can(FilePermission::VIEW, $file);
+    });
+
     Flight::router()->get('/files/batch/@token', [FileController::class, 'showBatchShare'])->addMiddleware(function ($args) {
         $token = $args['token'];
         if (strlen($token) <= 255) {
@@ -209,7 +245,7 @@ if ($userCount < 1) {
         }
         Flight::halt(403, 'Invalid or expired token');
     });
-    
+
     Flight::router()->group('/duplicates', function ($router) {
         $router->get('/', [FileController::class, 'duplicates'])->addMiddleware(function () {
             return Helper::can(FilePermission::GET)
@@ -255,7 +291,7 @@ if ($userCount < 1) {
 
         $noteId = (int) $args['id'];
 
-        if(isset(Flight::request()->query['token'])) {
+        if (isset(Flight::request()->query['token'])) {
             $token = Flight::request()->query['token'];
             if (strlen($token) <= 255) {
                 $noteToken = NoteToken::findByToken($token);
@@ -267,12 +303,12 @@ if ($userCount < 1) {
 
         return Helper::can(NotePermission::VIEW, Note::findById($noteId));
     });
-    
+
     // Shortener routes
     Flight::route('GET /shortlinks', [ShortLinkController::class, 'index'])->addMiddleware(IsAuthenticated::class);
     Flight::route('POST /shorten', [FileController::class, 'shortenUrl'])->addMiddleware(IsAuthenticated::class);
     Flight::route('GET /s/@shortcode', [FileController::class, 'redirectShortLink']);
-    
+
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
     });

@@ -65,8 +65,8 @@ class NoteController
         $voucher = Flight::voucher();
 
         $result = Note::findFiltered(
-            $user ? $user->id : null,
-            $voucher ? $voucher->id : null,
+            $user->id ?: null,
+            $voucher->id ?: null,
             $keyword,
             $sort,
             $limit,

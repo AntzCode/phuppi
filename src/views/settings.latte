@@ -12,6 +12,7 @@
         <a class="item" data-tab="manage-connectors">Manage Connectors</a>
         <a class="item" data-tab="migration">Migration</a>
         <a class="item" data-tab="data-repair">Data Repair</a>
+        <a class="item" data-tab="preview-settings">Preview Settings</a>
     </div>
 
     <!-- Active Connector Tab -->
@@ -94,7 +95,7 @@
     <!-- Data Repair Tab -->
     <div class="ui bottom attached tab segment" data-tab="data-repair">
         <div class="ui divider"></div>
-
+ 
         <h3>Orphaned Records (Database records without files)</h3>
         <p>These are files that have database records but the corresponding files do not exist in storage.</p>
         <button class="ui blue button" id="scanOrphanedRecordsBtn">Scan for Orphaned Records</button>
@@ -102,9 +103,9 @@
             <div class="ui divided list" id="orphanedRecordsItems"></div>
         </div>
         <button class="ui red button" id="deleteOrphanedRecordsBtn" style="margin-top: 10px; display: none;">Delete Selected Records</button>
-
+ 
         <div class="ui divider"></div>
-
+ 
         <h3>Orphaned Files (Files in storage without database records)</h3>
         <p>These are files that exist in storage but do not have corresponding database records.</p>
         <button class="ui blue button" id="scanOrphanedFilesBtn">Scan for Orphaned Files</button>
@@ -112,6 +113,64 @@
             <div class="ui divided list" id="orphanedFilesItems"></div>
         </div>
         <button class="ui green button" id="importOrphanedFilesBtn" style="margin-top: 10px; display: none;">Import Selected Files</button>
+    </div>
+    
+    <!-- Preview Settings Tab -->
+    <div class="ui bottom attached tab segment" data-tab="preview-settings">
+        <h3>Preview Generation Settings</h3>
+        <form class="ui form" id="previewSettingsForm">
+            <input type="hidden" name="action" value="update_preview">
+            <div class="two fields">
+                <div class="field">
+                    <label>Queue Mode</label>
+                    <select name="queue_mode" class="ui dropdown" id="queueModeSelect">
+                        <option value="cli" {if $previewSettings['queue_mode'] == 'cli'}selected{/if}>CLI Worker (Recommended)</option>
+                        <option value="ajax" {if $previewSettings['queue_mode'] == 'ajax'}selected{/if}>AJAX (Shared Hosting)</option>
+                    </select>
+                    <div id="workerStatusDisplay" class="ui {if $queueWorkerStatus == 'running'}green{else}red{/if} message">
+                        <i class="{if $queueWorkerStatus == 'running'}check circle icon{else}exclamation circle icon{/if}"></i>
+                        <span id="workerStatusText">Queue Worker {$queueWorkerStatus|capitalize}</span>
+                    </div>
+                </div>
+                <div class="field" id="ajaxMaxConcurrentField" style="display: none;">
+                    <label>AJAX Max Concurrent</label>
+                    <input type="number" name="max_concurrent" value="{$previewSettings['max_concurrent']}" min="1" max="10">
+                </div>
+            </div>
+            <div class="two fields">
+                <div class="field">
+                    <label>Preview Width</label>
+                    <input type="number" name="width" value="{$previewSettings['width']}" min="100" max="1024">
+                </div>
+                <div class="field">
+                    <label>Preview Height</label>
+                    <input type="number" name="height" value="{$previewSettings['height']}" min="100" max="1024">
+                </div>
+            </div>
+            <div class="two fields">
+                <div class="field">
+                    <label>Format</label>
+                    <select name="format" class="ui dropdown">
+                        <option value="jpeg" {if $previewSettings['format'] == 'jpeg'}selected{/if}>JPEG</option>
+                        <option value="webp" {if $previewSettings['format'] == 'webp'}selected{/if}>WebP</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Quality (1-100)</label>
+                    <input type="number" name="quality" value="{$previewSettings['quality']}" min="1" max="100">
+                </div>
+            </div>
+            <div class="field">
+                <label>Max Size (KB)</label>
+                <input type="number" name="max_size_kb" value="{$previewSettings['max_size_kb']}" min="10" max="500">
+            </div>
+            <button class="ui primary button" type="submit" id="savePreviewSettingsBtn">Save Preview Settings</button>
+        </form>
+    
+        <div class="ui divider"></div>
+        <h3>Preview Management</h3>
+        <button class="ui orange button" id="regenerateAllBtn">Regenerate All Previews</button>
+        <div id="previewActionResult" style="margin-top: 10px;"></div>
     </div>
 </div>
 
@@ -345,6 +404,126 @@ document.addEventListener('DOMContentLoaded', function() {
             progressDiv.style.display = 'none';
         }
     });
+
+    // Preview Settings Form - AJAX submit
+    document.getElementById('previewSettingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const form = this;
+        const saveBtn = document.getElementById('savePreviewSettingsBtn');
+        const resultDiv = document.getElementById('previewActionResult');
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        
+        const formData = new FormData(form);
+        
+        fetch('/admin/settings/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                resultDiv.innerHTML = '<div class="ui positive message"><div class="header">Success</div><p>' + data.message + '</p></div>';
+            } else if (data.error) {
+                resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>' + data.error + '</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Failed to save settings</p></div>';
+        })
+        .finally(() => {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Preview Settings';
+        });
+    });
+
+    // Queue Mode conditional display
+    const queueModeSelect = document.getElementById('queueModeSelect');
+    const ajaxMaxConcurrentField = document.getElementById('ajaxMaxConcurrentField');
+    const workerStatusDisplayField = document.getElementById('workerStatusDisplay');
+
+    function updateQueueModeDisplay() {
+        const mode = queueModeSelect.value;
+        if (mode === 'ajax') {
+            ajaxMaxConcurrentField.style.display = 'block';
+            workerStatusDisplayField.style.display = 'none';
+            stopWorkerStatusPolling();
+        } else {
+            ajaxMaxConcurrentField.style.display = 'none';
+            workerStatusDisplayField.style.display = 'block';
+            startWorkerStatusPolling();
+        }
+    }
+
+    let workerStatusPollInterval = null;
+
+    async function updateWorkerStatus() {
+        try {
+            const response = await fetch('/api/queue/worker-status');
+            const data = await response.json();
+            const status = data.status || 'stopped';
+            const statusText = status === 'running' ? 'Queue Worker Running' : 'Queue Worker Stopped';
+            const display = document.getElementById('workerStatusDisplay');
+            const textSpan = document.getElementById('workerStatusText');
+            display.className = 'ui ' + (status === 'running' ? 'green' : 'red') + ' message';
+            textSpan.textContent = statusText;
+        } catch (error) {
+            console.error('Failed to fetch worker status:', error);
+        }
+    }
+
+    function startWorkerStatusPolling() {
+        if (workerStatusPollInterval) return;
+        updateWorkerStatus();
+        workerStatusPollInterval = setInterval(updateWorkerStatus, 5000);
+    }
+
+    function stopWorkerStatusPolling() {
+        if (workerStatusPollInterval) {
+            clearInterval(workerStatusPollInterval);
+            workerStatusPollInterval = null;
+        }
+    }
+
+    // Initialize on page load
+    queueModeSelect.addEventListener('change', updateQueueModeDisplay);
+    updateQueueModeDisplay();
+
+    // Regenerate All Previews
+    document.getElementById('regenerateAllBtn').addEventListener('click', function() {
+        if (!confirm('Are you sure you want to regenerate all previews? This will queue all files for preview generation.')) return;
+        
+        const resultDiv = document.getElementById('previewActionResult');
+        this.disabled = true;
+        this.textContent = 'Processing...';
+        
+        const formData = new FormData();
+        formData.append('action', 'regenerate_all');
+        
+        fetch('/admin/settings/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                resultDiv.innerHTML = '<div class="ui positive message"><div class="header">Success</div><p>' + data.message + '</p></div>';
+            } else if (data.error) {
+                resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>' + data.error + '</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Failed to regenerate previews</p></div>';
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.textContent = 'Regenerate All Previews';
+        });
+    });
+
 
     // Add connector
     document.getElementById('addConnectorBtn').addEventListener('click', function() {

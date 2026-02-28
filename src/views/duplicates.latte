@@ -59,8 +59,8 @@
                                         <label for="file-{$file->id}"></label>
                                     </div>
                                     <div class="ui tiny rounded image">
-                                        {if in_array(strtolower($file->extension), ['png', 'jpg', 'gif'])}
-                                            <img src="/files/thumbnail/{$file->id}" />
+                                        {if in_array(strtolower($file->mimetype), ['image/png', 'image/jpeg', 'image/gif'])}
+                                            <img src="/files/preview/{$file->id}" />
                                         {else}
                                             <img src="/assets/images/filetype-icons/{$file->extension}.png" />
                                         {/if}

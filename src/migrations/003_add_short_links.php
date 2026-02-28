@@ -23,4 +23,4 @@ $db->exec("CREATE TABLE IF NOT EXISTS short_links (
     expires_at DATETIME NULL
 );");
 
-Flight::logger()->info('Migration 003_add_short_links completed.');
+// Flight::logger()->info('Migration 003_add_short_links completed.');

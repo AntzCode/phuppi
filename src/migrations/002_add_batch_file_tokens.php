@@ -24,4 +24,4 @@ $db->exec("CREATE TABLE IF NOT EXISTS batch_file_tokens (
     expires_at DATETIME NULL
 );");
 
-Flight::logger()->info('Migration 002_add_batch_file_tokens completed.');
+// Flight::logger()->info('Migration 002_add_batch_file_tokens completed.');

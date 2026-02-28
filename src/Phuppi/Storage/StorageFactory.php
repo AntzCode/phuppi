@@ -218,6 +218,9 @@ class StorageFactory
                 // Clean up temp file
                 unlink($tempPath);
 
+                // Also migrate preview image if it exists
+                self::migratePreviewImage($file, $fromStorage, $toStorage, $results);
+
                 // Update file record with new connector (if we add a field for it)
                 // For now, just count as migrated
                 $results['migrated']++;
@@ -236,5 +239,81 @@ class StorageFactory
         $results['current_size'] = $currentSize;
 
         return $results;
+    }
+
+    /**
+     * Migrate preview image for a file
+     *
+     * @param \Phuppi\UploadedFile $file The file to migrate preview for
+     * @param StorageInterface $fromStorage Source storage
+     * @param StorageInterface $toStorage Destination storage
+     * @param array $results Results array to update
+     * @return void
+     */
+    private static function migratePreviewImage(\Phuppi\UploadedFile $file, StorageInterface $fromStorage, StorageInterface $toStorage, array &$results): void
+    {
+        if (empty($file->preview_filename)) {
+            return;
+        }
+
+        $username = $file->getUsername();
+        $previewPath = $username . '/previews/' . $file->preview_filename;
+
+        // Check if preview exists in source
+        if (!$fromStorage->exists($previewPath)) {
+            return;
+        }
+
+        // Check if preview already exists in destination
+        if ($toStorage->exists($previewPath)) {
+            $sourceSize = $fromStorage->size($previewPath);
+            $destSize = $toStorage->size($previewPath);
+            if ($sourceSize !== null && $destSize !== null && $sourceSize === $destSize) {
+                return; // Already exists with same size
+            }
+        }
+
+        // Get preview stream from source
+        $stream = $fromStorage->getStream($previewPath);
+        if (!$stream) {
+            $results['errors'][] = "Could not read preview {$previewPath} from source connector";
+            return;
+        }
+
+        // Create temp file for transfer
+        $tempPath = tempnam(sys_get_temp_dir(), 'preview_migration_');
+        $tempHandle = fopen($tempPath, 'w');
+
+        if (is_resource($stream)) {
+            stream_copy_to_stream($stream, $tempHandle);
+            fclose($stream);
+        } elseif (method_exists($stream, 'detach')) {
+            $resource = $stream->detach();
+            if (is_resource($resource)) {
+                stream_copy_to_stream($resource, $tempHandle);
+                fclose($resource);
+            } else {
+                fclose($tempHandle);
+                unlink($tempPath);
+                return;
+            }
+        } elseif (method_exists($stream, 'getContents')) {
+            fwrite($tempHandle, $stream->getContents());
+        } else {
+            fclose($tempHandle);
+            unlink($tempPath);
+            return;
+        }
+
+        fclose($tempHandle);
+
+        // Put preview to destination
+        if (!$toStorage->put($previewPath, $tempPath)) {
+            $results['errors'][] = "Could not write preview {$previewPath} to destination connector";
+            unlink($tempPath);
+            return;
+        }
+
+        unlink($tempPath);
     }
 }

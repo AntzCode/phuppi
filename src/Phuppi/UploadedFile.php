@@ -48,6 +48,15 @@ class UploadedFile
 
     /** @var string */
     public $notes;
+   
+    /** @var string|null */
+    public $preview_filename;
+   
+    /** @var string */
+    public $preview_status = 'pending';
+   
+    /** @var string|null */
+    public $preview_generated_at;
 
     /** @var ?User */
     protected ?User $ownerUser = null;
@@ -69,6 +78,9 @@ class UploadedFile
         $this->extension = $data['extension'] ?? '';
         $this->uploaded_at = $data['uploaded_at'] ?? null;
         $this->notes = $data['notes'] ?? '';
+        $this->preview_filename = $data['preview_filename'] ?? null;
+        $this->preview_status = $data['preview_status'] ?? 'pending';
+        $this->preview_generated_at = $data['preview_generated_at'] ?? null;
     }
 
     /**
@@ -95,6 +107,9 @@ class UploadedFile
             $this->extension = $data['extension'];
             $this->uploaded_at = $data['uploaded_at'];
             $this->notes = $data['notes'];
+            $this->preview_filename = $data['preview_filename'];
+            $this->preview_status = $data['preview_status'];
+            $this->preview_generated_at = $data['preview_generated_at'];
             return true;
         }
         return false;
@@ -267,8 +282,8 @@ class UploadedFile
         if ($this->id) {
             // Update
 
-            $stmt = $db->prepare('UPDATE uploaded_files SET user_id = ?, voucher_id = ?, filename = ?, display_filename = ?, filesize = ?, mimetype = ?, extension = ?, notes = ? WHERE id = ?');
-            
+            $stmt = $db->prepare('UPDATE uploaded_files SET user_id = ?, voucher_id = ?, filename = ?, display_filename = ?, filesize = ?, mimetype = ?, extension = ?, notes = ?, preview_filename = ?, preview_status = ?, preview_generated_at = ? WHERE id = ?');
+                        
             return $stmt->execute([
                 $this->user_id,
                 $this->voucher_id,
@@ -278,15 +293,19 @@ class UploadedFile
                 $this->mimetype,
                 $this->extension,
                 $this->notes,
+                $this->preview_filename,
+                $this->preview_status,
+                $this->preview_generated_at,
                 $this->id
             ]);
 
         } else {
             // Insert
 
-            $stmt = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes, preview_filename, preview_status, preview_generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+           
             $now = date('Y-m-d H:i:s');
-            
+                        
             $result = $stmt->execute([
                 $this->user_id,
                 $this->voucher_id,
@@ -296,9 +315,11 @@ class UploadedFile
                 $this->mimetype,
                 $this->extension,
                 $now,
-                $this->notes
+                $this->notes,
+                $this->preview_filename,
+                $this->preview_status,
+                $this->preview_generated_at
             ]);
-
             if ($result) {
                 $this->id = $db->lastInsertId();
                 $this->uploaded_at = $now;

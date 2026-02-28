@@ -75,9 +75,9 @@ class Migration
         foreach ($files as $file) {
             $name = basename($file, '.php');
             if (!isset($executed[$name])) {
-                Flight::logger()->info("Running migration: $name");
+                // Flight::logger()->info("Running migration: $name");
                 require_once $file;
-                Flight::logger()->info("Migration completed: $name");
+                // Flight::logger()->info("Migration completed: $name");
             }
         }
     }

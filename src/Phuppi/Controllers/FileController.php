@@ -21,6 +21,7 @@ use Phuppi\UploadedFile;
 use Phuppi\UploadedFileToken;
 use Phuppi\BatchFileToken;
 use Phuppi\ShortLink;
+use Phuppi\Queue\QueueManager;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Storage\LocalStorage;
 use Phuppi\Storage\S3Storage;
@@ -67,8 +68,8 @@ class FileController
         $voucher = Flight::voucher();
 
         $result = UploadedFile::findFiltered(
-            $user ? $user->id : null,
-            $voucher ? $voucher->id : null,
+            $user->id ?: null,
+            $voucher->id ?: null,
             $keyword,
             $sort,
             $limit,
@@ -89,8 +90,13 @@ class FileController
                 'notes' => $file->notes,
                 'voucher_id' => $file->voucher_id,
                 'voucher_code' => $file->voucher_id ? $file->getVoucherCode() : null,
+                'preview_status' => $file->preview_status ?? 'pending',
+                'preview_filename' => $file->preview_filename,
             ];
         }, $result['files']);
+
+        // Trigger preview generation for pending files
+        $this->triggerPendingPreviews($result['files']);
 
         Flight::json([
             'files' => $fileData,
@@ -461,7 +467,7 @@ class FileController
 
             // Store file using storage abstraction
             $uniqueName = uniqid() . '_' . $name;
-            $pathPrefix = $user ? $user->username : $voucher->getUsername();
+            $pathPrefix = $user->id ? $user->username : $voucher->getUsername();
 
             if (Flight::storage() instanceof S3Storage) {
                 $presignedUrl = Flight::storage()->getPresignedPutUrl($pathPrefix . '/' . $uniqueName, $uploads['type'][$index], 3600 * 4);
@@ -477,7 +483,7 @@ class FileController
                     'mimetype' => $uploads['type'][$index],
                     'extension' => pathinfo($name, PATHINFO_EXTENSION),
                     'user_id' => $user->id ?? $voucher->user_id,
-                    'voucher_id' => $voucher ? $voucher->id : null
+                    'voucher_id' => $voucher->id ?: null
                 ];
                 continue;
             }
@@ -499,7 +505,12 @@ class FileController
                 $file->extension = pathinfo($name, PATHINFO_EXTENSION);
 
                 if ($file->save()) {
-                    $results[] = ['id' => $file->id, 'message' => 'File uploaded: ' . $name];
+                    QueueManager::createJob($file->id);
+                    $results[] = [
+                        'id' => $file->id,
+                        'message' => 'File uploaded: ' . $name,
+                        'preview_status' => $file->preview_status
+                    ];
                 } else {
                     $results[] = ['error' => 'Failed to save file record for ' . $name];
                 }
@@ -555,6 +566,9 @@ class FileController
             Flight::halt(403, 'Forbidden');
         }
 
+        // Delete preview file if it exists
+        $this->deletePreviewFile($file);
+
         Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
         if ($file->delete()) {
             Flight::json(['message' => 'File deleted']);
@@ -594,6 +608,9 @@ class FileController
                 continue;
             }
 
+            // Delete preview file if it exists
+            $this->deletePreviewFile($file);
+
             Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
             if ($file->delete()) {
                 $deleted++;
@@ -602,6 +619,26 @@ class FileController
             }
         }
         Flight::json(['message' => "Deleted $deleted files", 'errors' => $errors]);
+    }
+
+    /**
+     * Delete the preview file for an uploaded file
+     */
+    private function deletePreviewFile(UploadedFile $file): void
+    {
+        if (empty($file->preview_filename)) {
+            return;
+        }
+
+        $previewKey = $file->getUsername() . '/previews/' . $file->preview_filename;
+        try {
+            if (Flight::storage()->exists($previewKey)) {
+                Flight::storage()->delete($previewKey);
+                Flight::logger()->info("Deleted preview file: $previewKey");
+            }
+        } catch (\Exception $e) {
+            Flight::logger()->warning("Failed to delete preview file $previewKey: " . $e->getMessage());
+        }
     }
 
     /**
@@ -930,49 +967,6 @@ class FileController
     }
 
     /**
-     * Gets a thumbnail for a file.
-     *
-     * @param int $id The file ID.
-     * @return void
-     */
-    public function getThumbnail($id): void
-    {
-        try {
-            $file = UploadedFile::findById($id);
-
-            if (!$file) {
-                Flight::logger()->error('getThumbnail: File not found for ID: ' . $id);
-                Flight::halt(404, 'File not found');
-            }
-            
-            if (!Helper::can(FilePermission::VIEW, $file)) {
-                Flight::logger()->warning('getThumbnail: Forbidden access for file ID: ' . $id);
-                Flight::halt(403, 'Forbidden');
-            }
-            
-            if (Flight::storage() instanceof S3Storage) {
-                $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename);
-                Flight::redirect($presignedUrl, 301);
-                exit;
-            }
-            
-            if (Flight::storage() instanceof LocalStorage) {
-                $response = Flight::response();
-                $response->header('Content-Type', $file->mimetype);
-                $response->header('Content-Length', $file->filesize);
-                $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
-                $response->send(fpassthru($stream));
-                fclose($stream);
-                exit;
-            }
-            throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
-        } catch (\Exception $e) {
-            Flight::logger()->error('getThumbnail: Exception: ' . $e->getMessage());
-            Flight::halt(500, 'Internal server error');
-        }
-    }
-
-    /**
      * Requests a presigned URL for upload.
      *
      * @return void
@@ -995,7 +989,7 @@ class FileController
 
         if ($storage instanceof S3Storage) {
             $uniqueName = uniqid() . '_' . $filename;
-            $pathPrefix = $user ? $user->username : $voucher->getUsername();
+            $pathPrefix = $user->id ? $user->username : $voucher->getUsername();
             $s3Key = $pathPrefix . '/' . $uniqueName;
             
             Flight::logger()->info('requestPresignedUrl: generating presigned URL for key=' . $s3Key);
@@ -1015,7 +1009,7 @@ class FileController
                 'mimetype' => $mimetype,
                 'extension' => pathinfo($filename, PATHINFO_EXTENSION),
                 'user_id' => $user->id ?? $voucher->user_id,
-                'voucher_id' => $voucher ? $voucher->id : null
+                'voucher_id' => $voucher->id ?: null
             ]);
         } else {
             // For local storage, no presigned URL needed, just return metadata
@@ -1026,7 +1020,7 @@ class FileController
                 'mimetype' => $mimetype,
                 'extension' => pathinfo($filename, PATHINFO_EXTENSION),
                 'user_id' => $user->id ?? $voucher->user_id,
-                'voucher_id' => $voucher ? $voucher->id : null
+                'voucher_id' => $voucher->id ?: null
             ]);
         }
     }
@@ -1053,7 +1047,7 @@ class FileController
         $user = Flight::user();
         $voucher = Flight::voucher();
 
-        $pathPrefix = $user ? $user->username : $voucher->getUsername();
+        $pathPrefix = $user->id ? $user->username : $voucher->getUsername();
 
         // Verify the file exists in storage
         if (!Flight::storage()->exists($pathPrefix . '/' . $filename)) {
@@ -1070,14 +1064,19 @@ class FileController
         $file->extension = $extension;
 
         if ($file->save()) {
-            Flight::json(['id' => $file->id, 'message' => 'File registered: ' . $displayFilename]);
+            QueueManager::createJob($file->id);
+            Flight::json([
+                'id' => $file->id,
+                'message' => 'File registered: ' . $displayFilename,
+                'preview_status' => $file->preview_status
+            ]);
         } else {
             Flight::halt(500, 'Failed to register file');
         }
     }
 
     /**
-     * Gets a preview for a file.
+     * Gets the preview thumbnail for a file.
      *
      * @param int $id The file ID.
      * @return void
@@ -1094,23 +1093,110 @@ class FileController
             Flight::halt(403, 'Forbidden');
         }
 
+        if ($file->preview_status !== 'completed' || !$file->preview_filename) {
+            $this->serveFiletypeIcon($file->extension);
+            return;
+        }
+
+        $previewKey = $file->getUsername() . '/previews/' . $file->preview_filename;
+
+        if (!Flight::storage()->exists($previewKey)) {
+            $this->serveFiletypeIcon($file->extension);
+            return;
+        }
+
+        $extension = strtolower(pathinfo($file->preview_filename, PATHINFO_EXTENSION));
+        $contentType = match($extension) {
+            'webp' => 'image/webp',
+            default => 'image/jpeg',
+        };
+
         if (Flight::storage() instanceof S3Storage) {
-            $presignedUrl = Flight::storage()->getUrl($file->getUsername() . '/' . $file->filename);
+            $presignedUrl = Flight::storage()->getUrl($previewKey);
             Flight::redirect($presignedUrl, 301);
             exit;
         }
 
         if (Flight::storage() instanceof LocalStorage) {
             $response = Flight::response();
-            $response->header('Content-Type', $file->mimetype);
-            $response->header('Content-Length', $file->filesize);
-            $stream = Flight::storage()->getStream($file->getUsername() . '/' . $file->filename);
+            $response->header('Content-Type', $contentType);
+            $response->header('Cache-Control', 'public, max-age=31536000, immutable');
+            $response->header('Content-Disposition', 'inline');
+            $stream = Flight::storage()->getStream($previewKey);
             $response->send(fpassthru($stream));
             fclose($stream);
             exit;
         }
 
         throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+    }
+
+    /**
+     * Generates a preview for a file via AJAX.
+     * This endpoint is called by the frontend to generate previews one at a time.
+     *
+     * @param int $id The file ID.
+     * @return void
+     */
+    public function generatePreview($id): void
+    {
+        $file = UploadedFile::findById($id);
+        
+        if (!$file) {
+            Flight::json(['error' => 'File not found'], 404);
+            return;
+        }
+
+        // Only process if preview is pending
+        if ($file->preview_status !== 'pending') {
+            Flight::json(['message' => 'Preview already processed or processing', 'status' => $file->preview_status]);
+            return;
+        }
+
+        try {
+            $generator = new \Phuppi\Service\PreviewGenerator();
+            $success = $generator->generate((int)$id, true);
+            
+            if ($success) {
+                Flight::json(['message' => 'Preview generated successfully']);
+            } else {
+                Flight::json(['error' => 'Preview generation failed'], 500);
+            }
+        } catch (\Exception $e) {
+            Flight::logger()->error("Preview generation error: " . $e->getMessage());
+            Flight::json(['error' => 'Preview generation failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Serves a filetype icon as fallback.
+     *
+     * @param string $extension The file extension.
+     * @return void
+     */
+    private function serveFiletypeIcon(string $extension): void
+    {
+        $extension = strtolower($extension);
+        $iconPath = Flight::get('flight.public.path') . '/assets/images/filetype-icons/' . $extension . '.png';
+        
+        // Check if specific icon exists, otherwise use unknown.png
+        if (!file_exists($iconPath)) {
+            $iconPath = Flight::get('flight.public.path') . '/assets/images/filetype-icons/unknown.png';
+        }
+
+        if (file_exists($iconPath)) {
+            $response = Flight::response();
+            $r = $response->header('Content-Type', 'image/png');
+            // var_dump($r);exit;
+            // Don't cache - preview not ready yet, browser should re-request to get actual preview
+            $response->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+            $response->header('Pragma', 'no-cache');
+            $response->header('Expires', '0');
+            readfile($iconPath);
+            Flight::halt();
+        }
+
+        Flight::halt(404, 'Icon not found');
     }
 
     /**
@@ -1460,5 +1546,37 @@ class FileController
         }
 
         Flight::redirect($shortLink->target);
+    }
+
+    /**
+     * Triggers preview generation for files with pending previews.
+     * This method queues preview jobs for files that haven't had their previews generated yet.
+     *
+     * @param array $files Array of UploadedFile objects
+     * @return void
+     */
+    private function triggerPendingPreviews(array $files): void
+    {
+        $queueManager = new \Phuppi\Queue\QueueManager();
+        
+        foreach ($files as $file) {
+            // Only process files with pending preview status
+            if ($file->preview_status === 'pending') {
+                // Check if a job already exists for this file
+                $db = Flight::db();
+                $stmt = $db->prepare('SELECT id FROM preview_jobs WHERE uploaded_file_id = ? AND status IN ("pending", "processing")');
+                $stmt->execute([$file->id]);
+                
+                if (!$stmt->fetch(\PDO::FETCH_ASSOC)) {
+                    // No existing job, create one
+                    try {
+                        $queueManager->createJob($file->id);
+                    } catch (\Exception $e) {
+                        // Log but don't fail the entire request
+                        Flight::logger()->warning("Failed to queue preview job for file {$file->id}: " . $e->getMessage());
+                    }
+                }
+            }
+        }
     }
 }

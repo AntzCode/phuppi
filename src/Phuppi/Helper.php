@@ -36,7 +36,7 @@ class Helper
      */
     public static function getPhuppiVersion(): string
     {
-        return '2.0.1';
+        return '2.1.0';
     }
 
     /**
@@ -130,5 +130,15 @@ class Helper
         } else {
             return false;
         }
+    }
+
+    /**
+     * Checks if the script is running from the command line interface (CLI).
+     *
+     * @return bool True if running in CLI mode, false otherwise.
+     */
+    public static function isCli(): bool
+    {
+        return PHP_SAPI === 'cli';
     }
 }

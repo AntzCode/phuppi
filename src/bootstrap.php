@@ -121,10 +121,14 @@ function register_flight_db() {
 
     $db = Flight::db();
 
-    $result = $db->query("PRAGMA integrity_check;")->fetchColumn();
-    $result = $db->query("PRAGMA quick_check;");
-    $status = $result->fetchColumn();
-
+    try {
+        $result = $db->query("PRAGMA integrity_check;")->fetchColumn();
+        $result = $db->query("PRAGMA quick_check;");
+        $status = $result->fetchColumn();
+    } catch (PDOException $e) {
+        $status = 'error';
+    }
+    
     if ($status !== 'ok') {
         $lockFilePath = Flight::get('flight.data.path') . '/database-recovery.lock'; 
         if(file_exists($lockFilePath) && filemtime($lockFilePath) > (time() - 600)) {
