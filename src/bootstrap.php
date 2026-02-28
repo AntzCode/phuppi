@@ -97,10 +97,82 @@ Flight::register('logger', 'Phuppi\FileLogger');
 /**
  * register Database plugin
  */
-Flight::register('db', 'PDO', array('sqlite:' .  Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite'), function ($db) {
-    // Optional: Set PDO attributes for better error handling
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-});
+
+function register_flight_db() {
+
+    $dbFilePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite';
+    
+    Flight::register('db', 'PDO', array('sqlite:' .  $dbFilePath), function ($db) {
+        // Set PDO attributes for better error handling
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // SQLite PRAGMAs for better concurrency with parallel preview processing
+        // Write-Ahead Logging mode allows concurrent reads while writing
+        $db->exec('PRAGMA journal_mode = WAL');
+        // Wait up to 5 seconds when database is locked (instead of immediate failure)
+        $db->exec('PRAGMA busy_timeout = 5000');
+        // Normal synchronous level balances performance and durability
+        $db->exec('PRAGMA synchronous = FULL');
+        // Increase cache size for better performance (negative value = kilobytes)
+        $db->exec('PRAGMA cache_size = -10000');
+        // Checkpoint WAL log every 1000 pages
+        $db->exec('PRAGMA wal_autocheckpoint = 1000');
+    });
+
+    $db = Flight::db();
+
+    $result = $db->query("PRAGMA integrity_check;")->fetchColumn();
+    $result = $db->query("PRAGMA quick_check;");
+    $status = $result->fetchColumn();
+
+    if ($status !== 'ok') {
+        $lockFilePath = Flight::get('flight.data.path') . '/database-recovery.lock'; 
+        if(file_exists($lockFilePath) && filemtime($lockFilePath) > (time() - 600)) {
+            // database repair in progress
+            Flight::halt(500, 'Database repair in progress');
+        }
+        touch($lockFilePath);
+
+        $timestamp = time();
+
+        $dbFilePath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database.sqlite';
+        $dbCopyPath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database-error-' . $timestamp . '.sqlite';
+        $dbRecoveryPath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'recovered-' . $timestamp . '.sql';
+        $dbNewPath = Flight::get('flight.data.path') . DIRECTORY_SEPARATOR . 'database-new-' . $timestamp . '.sqlite';
+
+        // make a copy of the database
+        copy($dbFilePath, $dbCopyPath);
+        
+        // recover the database
+        $cmd = "sqlite3 " . escapeshellarg($dbCopyPath) . " \".recover\" > " . escapeshellarg($dbRecoveryPath);
+        exec($cmd, $output, $returnCode);
+        $cmd = "sqlite3 " . escapeshellarg($dbNewPath) . " < " . escapeshellarg($dbRecoveryPath);
+        exec($cmd, $output, $returnCode);
+        $cmd = "sqlite3 " . escapeshellarg($dbNewPath) . " \"PRAGMA integrity_check;\"";
+        exec($cmd, $output, $returnCode);
+
+        $integrity = trim(implode("\n", $output));
+        
+        if($integrity === 'ok') {
+            // restore the database, cleanup and log
+            rename($dbNewPath, $dbFilePath);
+            unlink($dbRecoveryPath);
+            unlink($lockFilePath);
+            Flight::logger()->error('Database integrity recovered from critical error at timestamp ' . $timestamp . ': ' . $status);
+            // reload the database
+            register_flight_db();
+        } else {
+            // log the critical error (@TOTO: trigger notifications)
+            Flight::logger()->critical('Database integrity failed recovery at timestamp ' . $timestamp . ': ' . $integrity . ' - ' . $status);
+            // unlink($lockFilePath); // leave lock until it expires, to prevent excessive failures
+            throw new RuntimeException("Database integrity failed");
+        }
+
+    }
+
+}
+
+register_flight_db();
 
 // Load storage connectors configuration from database
 $db = Flight::db();
@@ -176,8 +248,11 @@ if (!isset($connectors['minio-default']) && getenv('MINIO_ACCESS_KEY')) {
 Flight::set('storage_connectors', $connectors);
 Flight::set('active_storage_connector', $activeConnector);
 
-Flight::session();
-
+try {
+    Flight::session();
+} catch (Exception $e) {
+    Flight::logger()->error('Failed to start session: ' . $e->getMessage());
+}
 
 // Check for session expiration (30 minutes)
 // this will log the user out after 30 minutes of inactivity to prevent session hijacking if user has left the computer unattended
@@ -204,6 +279,4 @@ if (!Flight::voucher()->id && Flight::session()->get('id')) {
     // Update session activity to prevent premature expiration
     Flight::session()->set('last_activity', time());
 }
-
-
 
