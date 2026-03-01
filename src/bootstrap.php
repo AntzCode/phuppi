@@ -62,11 +62,20 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'latte' . DIRECTORY_SEPARATOR . 'sr
 /**
  * set Flight variables
  */
-Flight::set('flight.views.path', __DIR__ . DIRECTORY_SEPARATOR . 'views');
-Flight::set('flight.root.path', dirname(__DIR__));
-Flight::set('flight.data.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data');
-Flight::set('flight.public.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'html');
-Flight::set('flight.cache.path', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cache');
+$viewsPath = getenv('PHUPPI_VIEWS_PATH') ?: __DIR__ . DIRECTORY_SEPARATOR . 'views';
+Flight::set('flight.views.path', $viewsPath);
+
+$rootPath = getenv('PHUPPI_ROOT_PATH') ?: dirname(__DIR__);
+Flight::set('flight.root.path', $rootPath);
+
+$dataPath = getenv('PHUPPI_DATA_PATH') ?: $rootPath . DIRECTORY_SEPARATOR . 'data';
+Flight::set('flight.data.path', $dataPath);
+
+$publicPath = getenv('PHUPPI_PUBLIC_PATH') ?: $rootPath . DIRECTORY_SEPARATOR . 'html';
+Flight::set('flight.public.path', $publicPath);
+
+$cachePath = getenv('PHUPPI_CACHE_PATH') ?: $dataPath . DIRECTORY_SEPARATOR . 'cache';
+Flight::set('flight.cache.path', $cachePath);
 
 // Ensure cache directory exists
 $cachePath = Flight::get('flight.cache.path');
