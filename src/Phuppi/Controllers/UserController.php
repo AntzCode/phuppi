@@ -21,6 +21,7 @@ use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
 use Phuppi\Permissions\UserPermission;
 use Phuppi\Permissions\VoucherPermission;
+use Phuppi\RememberToken;
 use Valitron\Validator;
 
 class UserController
@@ -81,6 +82,7 @@ class UserController
      */
     private function handleUserLogin(): void
     {
+        $rememberMe = Flight::request()->data->remember_me ?? false;
         $v = new Validator(Flight::request()->data);
         $v->rule('required', ['username', 'password']);
 
@@ -92,7 +94,8 @@ class UserController
                 'errorPassword' => $v->errors('password')[0] ?? '',
                 'voucherCode' => '',
                 'errorVoucher' => '',
-                'activeTab' => 'login'
+                'activeTab' => 'login',
+                'rememberMe' => $rememberMe
             ]);
             return;
         }
@@ -113,13 +116,25 @@ class UserController
                 'errorPassword' => '',
                 'voucherCode' => '',
                 'errorVoucher' => '',
-                'activeTab' => 'login'
+                'activeTab' => 'login',
+                'rememberMe' => $rememberMe
             ]);
             return;
         }
 
         if ($user && password_verify($password, $user['password'])) {
+            // Set user ID in session
             Flight::session()->set('id', $user['id']);
+
+            // Handle remember me functionality
+            if ($rememberMe) {
+                // Create new remember token
+                $token = RememberToken::create((int) $user['id']);
+                $token->setCookie($token->plainToken);
+
+                Flight::logger()->info('Remember token created for user: ' . $username);
+            }
+
             Flight::redirect('/');
         } else {
             Flight::render('login.latte', [
@@ -129,7 +144,8 @@ class UserController
                 'errorPassword' => 'Invalid password',
                 'voucherCode' => '',
                 'errorVoucher' => '',
-                'activeTab' => 'login'
+                'activeTab' => 'login',
+                'rememberMe' => $rememberMe
             ]);
         }
     }
@@ -202,6 +218,27 @@ class UserController
      */
     public function logout(): void
     {
+        // Get user ID before clearing session for remember token cleanup
+        $userId = Flight::session()->get('id');
+
+        // Clear remember tokens for this user if logged in
+        if ($userId) {
+            RememberToken::deleteAllForUser((int) $userId);
+
+            // Clear the remember cookie
+            $cookieName = 'phuppi_remember';
+            setcookie($cookieName, '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'domain' => '',
+                'secure' => true,
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]);
+
+            Flight::logger()->info('Remember tokens cleared for user ID: ' . $userId);
+        }
+
         // Clear session data and destroy session
         Flight::session()->clear();
         Flight::session()->destroy(session_id());

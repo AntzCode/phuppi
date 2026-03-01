@@ -267,6 +267,33 @@ try {
     Flight::logger()->error('Failed to start session: ' . $e->getMessage());
 }
 
+// Check for remember me cookie and auto-login if user is not already logged in
+// This must happen before the session expiration check
+if (!Flight::session()->get('id') && !Flight::session()->get('voucher_id')) {
+    $rememberCookie = $_COOKIE['phuppi_remember'] ?? null;
+    if ($rememberCookie) {
+        $token = \Phuppi\RememberToken::validate($rememberCookie);
+        if ($token && $token->getUserId()) {
+            // Valid remember token found, log the user in
+            Flight::session()->set('id', $token->getUserId());
+            Flight::logger()->info('Auto-login from remember token for user ID: ' . $token->getUserId());
+
+            // Clean up the cookie - we'll set a fresh one on next login
+            // This prevents token reuse issues
+        } else {
+            // Invalid or expired token, clear the cookie
+            setcookie('phuppi_remember', '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'domain' => '',
+                'secure' => true,
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]);
+        }
+    }
+}
+
 // Check for session expiration (30 minutes)
 // this will log the user out after 30 minutes of inactivity to prevent session hijacking if user has left the computer unattended
 // @TODO: have a "keep me logged in" option or configuration in user settings

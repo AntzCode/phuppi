@@ -6,7 +6,8 @@
     ?string $errorPassword = "",
     ?string $voucherCode = "",
     ?string $errorVoucher = "",
-    ?string $activeTab = "login"
+    ?string $activeTab = "login",
+    ?bool $rememberMe = false
 }
 {layout 'layout.latte'}
 
@@ -38,13 +39,19 @@
                         <div><small><span class="ui red text"><strong>{$errorPassword}</strong></span></small></div>
                     {/if}
                 </div>
+                <div class="field">
+                    <div class="ui checkbox">
+                        <input type="checkbox" name="remember_me" id="remember_me" value="1" {$rememberMe ? 'checked' : ''} />
+                        <label for="remember_me">Remember me</label>
+                    </div>
+                </div>
                 {if $error}
                     <div class="ui error message">
                         <p>{$error}</p>
                     </div>
                 {/if}
 
-                <button class="ui right labeled icon green button" type="submit"><i class="sign-in icon left"></i> Login</button>
+                <button class="ui right labeled icon green button" type="submit"><i class="arrow right icon left"></i> Login</button>
 
             </form>
         </div>

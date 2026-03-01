@@ -58,6 +58,13 @@ if ($userCount < 1) {
     }
 } else {
     // Normal routes
+
+    // Check if remember_tokens migration needs to run
+    $rememberTokensTableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='remember_tokens'")->fetchColumn();
+    if (!$rememberTokensTableExists) {
+        require_once __DIR__ . '/migrations/005_add_remember_tokens.php';
+    }
+
     Flight::route('GET /', [FileController::class, 'index'])->addMiddleware(RequireLogin::class);
 
     Flight::route('GET /login', [UserController::class, 'login']);
