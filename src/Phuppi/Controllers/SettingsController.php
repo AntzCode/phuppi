@@ -31,11 +31,13 @@ class SettingsController
         $connectors = Flight::get('storage_connectors') ?? [];
         $activeConnector = Flight::get('active_storage_connector') ?? 'local-default';
         $previewSettings = $this->getPreviewSettings();
+        $videoPreviewSettings = $this->getVideoPreviewSettings();
         $queueWorkerStatus = $this->getQueueWorkerStatus();
         Flight::render('settings.latte', [
             'connectors' => $connectors,
             'activeConnector' => $activeConnector,
             'previewSettings' => $previewSettings,
+            'videoPreviewSettings' => $videoPreviewSettings,
             'queueWorkerStatus' => $queueWorkerStatus
         ]);
     }
@@ -54,8 +56,14 @@ class SettingsController
             case 'update_preview':
                 $this->updatePreviewSettings($data);
                 break;
+            case 'update_video_preview':
+                $this->updateVideoPreviewSettings($data);
+                break;
             case 'regenerate_all':
                 $this->regenerateAllPreviews();
+                break;
+            case 'regenerate_all_video_previews':
+                $this->regenerateAllVideoPreviews();
                 break;
             default:
                 Flight::json(['error' => 'Invalid action'], 400);
@@ -70,6 +78,31 @@ class SettingsController
         $settings = [];
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
             $key = substr($row['name'], 8); // remove 'preview_'
+            $settings[$key] = $row['value'];
+        }
+        return $settings;
+    }
+
+    /**
+     * Gets video preview settings from the database.
+     *
+     * @return array Video preview settings.
+     */
+    private function getVideoPreviewSettings(): array
+    {
+        $db = Flight::db();
+        $stmt = $db->prepare('SELECT name, value FROM settings WHERE name LIKE "video_preview_%"');
+        $stmt->execute();
+        
+        $settings = [
+            'enabled' => '1',
+            'resolution' => '720p',
+            'quality' => 'medium',
+            'generate_poster' => '1',
+            'queue_mode' => 'cli'
+        ];
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $key = substr($row['name'], 14); // remove 'video_preview_'
             $settings[$key] = $row['value'];
         }
         return $settings;
@@ -165,6 +198,78 @@ class SettingsController
         }
    
         Flight::json(['message' => "All previews reset and requeued. Created $jobCount preview jobs."]);
+    }
+
+    /**
+     * Updates video preview settings.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function updateVideoPreviewSettings($data): void
+    {
+        $db = Flight::db();
+        $settings = [
+            'enabled' => $data->video_preview_enabled ?? '1',
+            'resolution' => $data->video_preview_resolution ?? '720p',
+            'quality' => $data->video_preview_quality ?? 'medium',
+            'generate_poster' => $data->video_preview_generate_poster ?? '1',
+            'queue_mode' => $data->video_preview_queue_mode ?? 'cli',
+        ];
+    
+        $stmt = $db->prepare('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)');
+        foreach ($settings as $key => $value) {
+            $stmt->execute(["video_preview_$key", $value]);
+        }
+    
+        Flight::json(['message' => 'Video preview settings updated']);
+    }
+
+    /**
+     * Regenerates all video previews.
+     *
+     * @return void
+     */
+    private function regenerateAllVideoPreviews(): void
+    {
+        $db = Flight::db();
+        $storage = Flight::storage();
+    
+        // Delete video preview files
+        $stmt = $db->query('
+            SELECT DISTINCT uf.video_preview_filename, u.username, v.voucher_code
+            FROM uploaded_files uf
+            LEFT JOIN users u ON uf.user_id = u.id
+            LEFT JOIN vouchers v ON uf.voucher_id = v.id
+            WHERE uf.video_preview_filename IS NOT NULL
+        ');
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $username = !empty($row['username']) ? $row['username'] : 'voucher_' . $row['voucher_code'];
+            $previewKey = $username . '/video_previews/' . $row['video_preview_filename'];
+            try {
+                $storage->delete($previewKey);
+            } catch (\Exception $e) {
+                Flight::logger()->warning("Failed to delete video preview file $previewKey: " . $e->getMessage());
+            }
+        }
+    
+        // Reset video preview status
+        $db->exec('UPDATE uploaded_files SET video_preview_filename = NULL, video_preview_status = "pending", video_preview_generated_at = NULL');
+    
+        // Clear video preview jobs
+        $db->exec('DELETE FROM video_preview_jobs');
+        $db->exec('DELETE FROM queue_locks');
+    
+        // Create new video preview jobs for all video files
+        $queueManager = new \Phuppi\Queue\QueueManager();
+        $filesStmt = $db->query("SELECT id FROM uploaded_files WHERE mimetype LIKE 'video/%'");
+        $jobCount = 0;
+        while ($fileRow = $filesStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $queueManager->createVideoPreviewJob((int)$fileRow['id']);
+            $jobCount++;
+        }
+    
+        Flight::json(['message' => "All video previews reset and requeued. Created $jobCount video preview jobs."]);
     }
    
    

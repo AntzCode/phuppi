@@ -1,0 +1,16 @@
+{
+    "chmod": "0755",
+    "directories": ["src", "vendor"],
+    "main": "src/CommonMarkConverter.php",
+    "output": "commonmark.phar",
+    "stub": "stub.php",
+    "blacklist": [
+        "tests",
+        ".git",
+        ".github",
+        "docs",
+        "*.md"
+    ],
+    "dump-autoload": true,
+    "compression": "GZ"
+}

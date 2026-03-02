@@ -17,6 +17,11 @@ namespace Phuppi;
 
 use Flight;
 
+use League\CommonMark\Environment\Environment;
+use League\CommonMark\MarkdownConverter;
+use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
+
 use Phuppi\Note;
 use Phuppi\Permissions\FilePermission;
 use Phuppi\Permissions\NotePermission;
@@ -25,6 +30,8 @@ use Phuppi\Permissions\VoucherPermission;
 use Phuppi\UploadedFile;
 use Phuppi\User;
 use Phuppi\Voucher;
+
+require_once(__DIR__ . '/../commonmark/commonmark.phar');
 
 class Helper
 {
@@ -36,7 +43,7 @@ class Helper
      */
     public static function getPhuppiVersion(): string
     {
-        return '2.1.1';
+        return '2.2.0';
     }
 
     /**
@@ -141,4 +148,26 @@ class Helper
     {
         return PHP_SAPI === 'cli';
     }
+
+
+    /**
+     * Converts wiki markup to HTML using Wiky.php library.
+     *
+     * @param string $content The wiki markup content to convert
+     * @return string The converted HTML content
+     */
+    public static function convertMarkdownToHtml(string $content): string
+    {
+        
+        $environment = new Environment([
+            'html_input' => 'strip',
+            'allow_unsafe_links' => false
+        ]);
+        $environment->addExtension(new CommonMarkCoreExtension());
+        $environment->addExtension(new GithubFlavoredMarkdownExtension());
+        $converter = new MarkdownConverter($environment);
+        
+        return $converter->convert($content);
+    }
+
 }

@@ -3,7 +3,7 @@
 /**
  * queue-worker.php
  *
- * CLI queue worker for processing preview generation jobs.
+ * CLI queue worker for processing preview generation jobs (images and videos).
  *
  * Usage: php bin/queue-worker.php
  *
@@ -24,12 +24,14 @@ if (!Helper::isCli()) {
     die("This script must be run from CLI\n");
 }
 
-echo "Phuppi Preview Queue Worker v1.0.0\n";
+echo "Phuppi Preview Queue Worker v2.0.0\n";
 echo "===================================\n\n";
 
 $queue = new QueueManager();
-$processed = 0;
-$failed = 0;
+$imageProcessed = 0;
+$imageFailed = 0;
+$videoProcessed = 0;
+$videoFailed = 0;
 
 declare(ticks = 1);
 pcntl_signal(SIGTERM, function() use (&$running) { $running = false; });
@@ -46,22 +48,39 @@ echo "Starting queue worker (Press Ctrl+C to stop)...\n\n";
 while ($running) {
     $queue->cleanupExpiredLocks();
     
+    // Process image preview jobs
     $job = $queue->claimNext();
     if ($job) {
-        echo "[Job {$job->id}] Processing file {$job->uploaded_file_id}...\n";
+        echo "[Image Job {$job->id}] Processing file {$job->uploaded_file_id}...\n";
         
         $success = $queue->processJob($job);
         if ($success) {
-            $processed++;
-            echo "[Job {$job->id}] Completed ✓\n";
+            $imageProcessed++;
+            echo "[Image Job {$job->id}] Completed ✓\n";
         } else {
-            $failed++;
-            echo "[Job {$job->id}] Failed ✗\n";
+            $imageFailed++;
+            echo "[Image Job {$job->id}] Failed ✗\n";
         }
-    } else {
-        echo "No pending jobs. Sleeping 5s...\n";
+        continue; // Continue to next iteration after processing
     }
     
+    // Process video preview jobs
+    $videoJob = $queue->claimNextVideoPreview();
+    if ($videoJob) {
+        echo "[Video Job {$videoJob->id}] Processing file {$videoJob->uploaded_file_id}...\n";
+        
+        $success = $queue->processVideoPreviewJob($videoJob);
+        if ($success) {
+            $videoProcessed++;
+            echo "[Video Job {$videoJob->id}] Completed ✓\n";
+        } else {
+            $videoFailed++;
+            echo "[Video Job {$videoJob->id}] Failed ✗\n";
+        }
+        continue;
+    }
+    
+    echo "No pending jobs. Sleeping 5s...\n";
     sleep(5);
 }
 
@@ -70,4 +89,6 @@ if (file_exists($pidFile)) {
     unlink($pidFile);
 }
 
-echo "\nWorker stopped. Processed: $processed, Failed: $failed\n";
+echo "\nWorker stopped.\n";
+echo "Image previews - Processed: $imageProcessed, Failed: $imageFailed\n";
+echo "Video previews - Processed: $videoProcessed, Failed: $videoFailed\n";

@@ -13,6 +13,7 @@
         <a class="item" data-tab="migration">Migration</a>
         <a class="item" data-tab="data-repair">Data Repair</a>
         <a class="item" data-tab="preview-settings">Preview Settings</a>
+        <a class="item" data-tab="video-preview-settings">Video Preview</a>
     </div>
 
     <!-- Active Connector Tab -->
@@ -136,6 +137,13 @@
                     <label>AJAX Max Concurrent</label>
                     <input type="number" name="max_concurrent" value="{$previewSettings['max_concurrent']}" min="1" max="10">
                 </div>
+                <div class="ui info message" id="cliDocumentationField" style="display: none; display: flex; flex-direction: row; align-items: center;">
+                    <i class="info circle icon" style="margin-right: 0.5em; margin-bottom: 0;"></i>
+                    <div class="content">
+                        <div class="header">CLI Worker Documentation</div>
+                        <p>Learn how to <a href="/docs/cli" target="_blank" style="text-decoration: underline;">set up and run the CLI queue worker</a> for preview generation.</p>
+                    </div>
+                </div>
             </div>
             <div class="two fields">
                 <div class="field">
@@ -171,6 +179,74 @@
         <h3>Preview Management</h3>
         <button class="ui orange button" id="regenerateAllBtn">Regenerate All Previews</button>
         <div id="previewActionResult" style="margin-top: 10px;"></div>
+    </div>
+
+    <!-- Video Preview Settings Tab -->
+    <div class="ui bottom attached tab segment" data-tab="video-preview-settings">
+        <h3>Video Preview Settings</h3>
+        <form class="ui form" id="videoPreviewSettingsForm">
+            <input type="hidden" name="action" value="update_video_preview">
+            <div class="field">
+                <div class="ui toggle checkbox">
+                    <input type="hidden" name="video_preview_enabled" value="0">
+                    <input type="checkbox" name="video_preview_enabled" value="1" {if $videoPreviewSettings['enabled'] == '1'}checked{/if}>
+                    <label>Enable Video Preview Transcoding</label>
+                </div>
+                <small>Generate browser-friendly video previews for all video files</small>
+            </div>
+            <div class="two fields">
+                <div class="field">
+                    <input type="hidden" id="videoPreviewResolutionValue" value="{$videoPreviewSettings['resolution']}">
+                    <label>Resolution</label>
+                    <select name="video_preview_resolution" id="videoPreviewResolution" class="ui dropdown">
+                        <option value="240p" {if $videoPreviewSettings['resolution'] == '240p'}selected{/if}>240p (426x240)</option>
+                        <option value="360p" {if $videoPreviewSettings['resolution'] == '360p'}selected{/if}>360p (640x360)</option>
+                        <option value="480p" {if $videoPreviewSettings['resolution'] == '480p'}selected{/if}>480p (854x480)</option>
+                        <option value="720p" {if $videoPreviewSettings['resolution'] == '720p'}selected{/if}>720p (1280x720)</option>
+                        <option value="1080p" {if $videoPreviewSettings['resolution'] == '1080p'}selected{/if}>1080p (1920x1080)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <input type="hidden" id="videoPreviewQualityValue" value="{$videoPreviewSettings['quality']}">
+                    <label>Quality</label>
+                    <select name="video_preview_quality" id="videoPreviewQuality" class="ui dropdown">
+                        <option value="crushed" {if $videoPreviewSettings['quality'] == 'crushed'}selected{/if}>Crushed (minimum size)</option>
+                        <option value="low" {if $videoPreviewSettings['quality'] == 'low'}selected{/if}>Low (smaller file size)</option>
+                        <option value="medium" {if $videoPreviewSettings['quality'] == 'medium'}selected{/if}>Medium (balanced)</option>
+                        <option value="high" {if $videoPreviewSettings['quality'] == 'high'}selected{/if}>High (better quality)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <div class="ui toggle checkbox">
+                    <input type="hidden" name="video_preview_generate_poster" value="0">
+                    <input type="checkbox" name="video_preview_generate_poster" value="1" {if $videoPreviewSettings['generate_poster'] == '1'}checked{/if}>
+                    <label>Generate Poster Image</label>
+                </div>
+                <small>Create a thumbnail image from the first frame of the video</small>
+            </div>
+            <div class="field">
+                <input type="hidden" id="videoPreviewQueueModeValue" value="{$videoPreviewSettings['queue_mode']}">
+                <label>Queue Mode</label>
+                <select name="video_preview_queue_mode" id="videoPreviewQueueMode" class="ui dropdown">
+                    <option value="cli" {if $videoPreviewSettings['queue_mode'] == 'cli'}selected{/if}>CLI Worker (Recommended)</option>
+                    <option value="ajax" {if $videoPreviewSettings['queue_mode'] == 'ajax'}selected{/if}>AJAX (Shared Hosting)</option>
+                </select>
+            </div>
+            <div class="ui info message" id="videoCliDocumentationField" style="display: none; display: flex; flex-direction: row; align-items: center;">
+                <i class="info circle icon" style="margin-right: 0.5em; margin-bottom: 0;"></i>
+                <div class="content">
+                    <div class="header">CLI Worker Documentation</div>
+                    <p>Learn how to <a href="/docs/cli" target="_blank" style="text-decoration: underline;">set up and run the CLI queue worker</a> for video preview generation.</p>
+                </div>
+            </div>
+            <button class="ui primary button" type="submit" id="saveVideoPreviewSettingsBtn">Save Video Preview Settings</button>
+        </form>
+    
+        <div class="ui divider"></div>
+        <h3>Video Preview Management</h3>
+        <button class="ui orange button" id="regenerateAllVideoPreviewsBtn">Regenerate All Video Previews</button>
+        <div id="videoPreviewActionResult" style="margin-top: 10px;"></div>
     </div>
 </div>
 
@@ -244,7 +320,6 @@
 </script>
 <script n:syntax="off">
 document.addEventListener('DOMContentLoaded', function() {
-    // Tabs
     $('.menu .item').tab();
 
     // Active connector form
@@ -442,16 +517,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Queue Mode conditional display
     const queueModeSelect = document.getElementById('queueModeSelect');
     const ajaxMaxConcurrentField = document.getElementById('ajaxMaxConcurrentField');
+    const cliDocumentationField = document.getElementById('cliDocumentationField');
     const workerStatusDisplayField = document.getElementById('workerStatusDisplay');
 
     function updateQueueModeDisplay() {
         const mode = queueModeSelect.value;
         if (mode === 'ajax') {
             ajaxMaxConcurrentField.style.display = 'block';
+            cliDocumentationField.style.display = 'none';
             workerStatusDisplayField.style.display = 'none';
             stopWorkerStatusPolling();
         } else {
             ajaxMaxConcurrentField.style.display = 'none';
+            cliDocumentationField.style.display = 'flex';
             workerStatusDisplayField.style.display = 'block';
             startWorkerStatusPolling();
         }
@@ -491,6 +569,23 @@ document.addEventListener('DOMContentLoaded', function() {
     queueModeSelect.addEventListener('change', updateQueueModeDisplay);
     updateQueueModeDisplay();
 
+    // Video Preview Queue Mode conditional display
+    const videoPreviewQueueMode = document.getElementById('videoPreviewQueueMode');
+    const videoCliDocumentationField = document.getElementById('videoCliDocumentationField');
+
+    function updateVideoQueueModeDisplay() {
+        const mode = videoPreviewQueueMode.value;
+        if (mode === 'cli') {
+            videoCliDocumentationField.style.display = 'flex';
+        } else {
+            videoCliDocumentationField.style.display = 'none';
+        }
+    }
+
+    // Initialize on page load
+    videoPreviewQueueMode.addEventListener('change', updateVideoQueueModeDisplay);
+    updateVideoQueueModeDisplay();
+
     // Regenerate All Previews
     document.getElementById('regenerateAllBtn').addEventListener('click', function() {
         if (!confirm('Are you sure you want to regenerate all previews? This will queue all files for preview generation.')) return;
@@ -521,6 +616,73 @@ document.addEventListener('DOMContentLoaded', function() {
         .finally(() => {
             this.disabled = false;
             this.textContent = 'Regenerate All Previews';
+        });
+    });
+
+    // Video Preview Settings Form - AJAX submit
+    document.getElementById('videoPreviewSettingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const form = this;
+        const saveBtn = document.getElementById('saveVideoPreviewSettingsBtn');
+        const resultDiv = document.getElementById('videoPreviewActionResult');
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        
+        const formData = new FormData(form);
+        
+        fetch('/admin/settings/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                resultDiv.innerHTML = '<div class="ui positive message"><div class="header">Success</div><p>' + data.message + '</p></div>';
+            } else if (data.error) {
+                resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>' + data.error + '</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Failed to save video preview settings</p></div>';
+        })
+        .finally(() => {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Video Preview Settings';
+        });
+    });
+
+    // Regenerate All Video Previews
+    document.getElementById('regenerateAllVideoPreviewsBtn').addEventListener('click', function() {
+        if (!confirm('Are you sure you want to regenerate all video previews? This will queue all video files for preview generation.')) return;
+        
+        const resultDiv = document.getElementById('videoPreviewActionResult');
+        this.disabled = true;
+        this.textContent = 'Processing...';
+        
+        const formData = new FormData();
+        formData.append('action', 'regenerate_all_video_previews');
+        
+        fetch('/admin/settings/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                resultDiv.innerHTML = '<div class="ui positive message"><div class="header">Success</div><p>' + data.message + '</p></div>';
+            } else if (data.error) {
+                resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>' + data.error + '</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Failed to regenerate video previews</p></div>';
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.textContent = 'Regenerate All Video Previews';
         });
     });
 

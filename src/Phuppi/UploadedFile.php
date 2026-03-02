@@ -51,12 +51,24 @@ class UploadedFile
    
     /** @var string|null */
     public $preview_filename;
-   
+    
     /** @var string */
     public $preview_status = 'pending';
-   
+    
     /** @var string|null */
     public $preview_generated_at;
+
+    /** @var string|null */
+    public $video_preview_filename;
+    
+    /** @var string */
+    public $video_preview_status = 'pending';
+    
+    /** @var string|null */
+    public $video_preview_generated_at;
+    
+    /** @var string|null */
+    public $video_preview_poster_filename;
 
     /** @var ?User */
     protected ?User $ownerUser = null;
@@ -81,6 +93,10 @@ class UploadedFile
         $this->preview_filename = $data['preview_filename'] ?? null;
         $this->preview_status = $data['preview_status'] ?? 'pending';
         $this->preview_generated_at = $data['preview_generated_at'] ?? null;
+        $this->video_preview_filename = $data['video_preview_filename'] ?? null;
+        $this->video_preview_status = $data['video_preview_status'] ?? 'pending';
+        $this->video_preview_generated_at = $data['video_preview_generated_at'] ?? null;
+        $this->video_preview_poster_filename = $data['video_preview_poster_filename'] ?? null;
     }
 
     /**
@@ -110,6 +126,10 @@ class UploadedFile
             $this->preview_filename = $data['preview_filename'];
             $this->preview_status = $data['preview_status'];
             $this->preview_generated_at = $data['preview_generated_at'];
+            $this->video_preview_filename = $data['video_preview_filename'];
+            $this->video_preview_status = $data['video_preview_status'];
+            $this->video_preview_generated_at = $data['video_preview_generated_at'];
+            $this->video_preview_poster_filename = $data['video_preview_poster_filename'];
             return true;
         }
         return false;
@@ -282,7 +302,7 @@ class UploadedFile
         if ($this->id) {
             // Update
 
-            $stmt = $db->prepare('UPDATE uploaded_files SET user_id = ?, voucher_id = ?, filename = ?, display_filename = ?, filesize = ?, mimetype = ?, extension = ?, notes = ?, preview_filename = ?, preview_status = ?, preview_generated_at = ? WHERE id = ?');
+            $stmt = $db->prepare('UPDATE uploaded_files SET user_id = ?, voucher_id = ?, filename = ?, display_filename = ?, filesize = ?, mimetype = ?, extension = ?, notes = ?, preview_filename = ?, preview_status = ?, preview_generated_at = ?, video_preview_filename = ?, video_preview_status = ?, video_preview_generated_at = ?, video_preview_poster_filename = ? WHERE id = ?');
                         
             return $stmt->execute([
                 $this->user_id,
@@ -296,13 +316,17 @@ class UploadedFile
                 $this->preview_filename,
                 $this->preview_status,
                 $this->preview_generated_at,
+                $this->video_preview_filename,
+                $this->video_preview_status,
+                $this->video_preview_generated_at,
+                $this->video_preview_poster_filename,
                 $this->id
             ]);
 
         } else {
             // Insert
 
-            $stmt = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes, preview_filename, preview_status, preview_generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt = $db->prepare('INSERT INTO uploaded_files (user_id, voucher_id, filename, display_filename, filesize, mimetype, extension, uploaded_at, notes, preview_filename, preview_status, preview_generated_at, video_preview_filename, video_preview_status, video_preview_generated_at, video_preview_poster_filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
            
             $now = date('Y-m-d H:i:s');
                         
@@ -318,7 +342,11 @@ class UploadedFile
                 $this->notes,
                 $this->preview_filename,
                 $this->preview_status,
-                $this->preview_generated_at
+                $this->preview_generated_at,
+                $this->video_preview_filename,
+                $this->video_preview_status,
+                $this->video_preview_generated_at,
+                $this->video_preview_poster_filename
             ]);
             if ($result) {
                 $this->id = $db->lastInsertId();

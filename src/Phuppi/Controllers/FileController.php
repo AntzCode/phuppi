@@ -92,6 +92,9 @@ class FileController
                 'voucher_code' => $file->voucher_id ? $file->getVoucherCode() : null,
                 'preview_status' => $file->preview_status ?? 'pending',
                 'preview_filename' => $file->preview_filename,
+                'video_preview_status' => $file->video_preview_status ?? 'pending',
+                'video_preview_filename' => $file->video_preview_filename,
+                'video_preview_poster_filename' => $file->video_preview_poster_filename,
             ];
         }, $result['files']);
 
@@ -166,6 +169,12 @@ class FileController
             Flight::halt(404, 'File not found');
         }
 
+        // For videos, prefer video preview if available
+        if ($this->isVideoFile($file) && $file->video_preview_status === 'completed' && $file->video_preview_filename) {
+            $this->getVideoPreview($id);
+            return;
+        }
+
         // Clear any output buffers to prevent memory issues
         while (ob_get_level()) {
             ob_end_clean();
@@ -192,6 +201,17 @@ class FileController
             exit;
         }
         throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+    }
+
+    /**
+     * Checks if a file is a video file.
+     *
+     * @param UploadedFile $file The file to check.
+     * @return bool True if the file is a video.
+     */
+    private function isVideoFile(UploadedFile $file): bool
+    {
+        return strpos($file->mimetype, 'video/') === 0;
     }
 
     /**
@@ -350,8 +370,6 @@ class FileController
             ob_end_clean();
         }
 
-        Flight::logger()->info('STREAM DEBUG LocalStorage: Starting stream for key=' . $key . ', filesize=' . $totalLength . ', disposition=' . $disposition);
-
         // Handle Range
         $range = Flight::request()->getHeader('Range') ?? null;
         $startByte = 0;
@@ -423,10 +441,8 @@ class FileController
                 ob_flush();
             }
             flush();
-            Flight::logger()->debug('STREAM DEBUG LocalStorage: Sent chunk size=' . strlen($chunk) . ', remaining=' . $contentLength);
         }
         fclose($stream);
-        Flight::logger()->info('STREAM DEBUG LocalStorage: Completed streaming key=' . $key);
     }
 
     /**
@@ -506,6 +522,12 @@ class FileController
 
                 if ($file->save()) {
                     QueueManager::createJob($file->id);
+                    
+                    // Also queue video preview job for video files
+                    if (strpos($file->mimetype, 'video/') === 0) {
+                        QueueManager::createVideoPreviewJob($file->id);
+                    }
+                    
                     $results[] = [
                         'id' => $file->id,
                         'message' => 'File uploaded: ' . $name,
@@ -549,35 +571,6 @@ class FileController
     }
 
     /**
-     * Deletes a file.
-     *
-     * @param int $id The file ID.
-     * @return void
-     */
-    public function deleteFile($id): void
-    {
-        $file = UploadedFile::findById($id);
-
-        if (!$file) {
-            Flight::halt(404, 'File not found');
-        }
-
-        if (!Helper::can(FilePermission::DELETE, $file)) {
-            Flight::halt(403, 'Forbidden');
-        }
-
-        // Delete preview file if it exists
-        $this->deletePreviewFile($file);
-
-        Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
-        if ($file->delete()) {
-            Flight::json(['message' => 'File deleted']);
-        } else {
-            Flight::halt(500, 'Failed to delete file');
-        }
-    }
-
-    /**
      * Deletes multiple files.
      *
      * @return void
@@ -611,6 +604,9 @@ class FileController
             // Delete preview file if it exists
             $this->deletePreviewFile($file);
 
+            // Delete video preview files if they exist
+            $this->deleteVideoPreviewFiles($file);
+
             Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
             if ($file->delete()) {
                 $deleted++;
@@ -638,6 +634,38 @@ class FileController
             }
         } catch (\Exception $e) {
             Flight::logger()->warning("Failed to delete preview file $previewKey: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Delete the video preview files (MP4 and poster) for an uploaded file
+     */
+    private function deleteVideoPreviewFiles(UploadedFile $file): void
+    {
+        // Delete video preview MP4 file if it exists
+        if (!empty($file->video_preview_filename)) {
+            $videoPreviewKey = $file->getUsername() . '/video-previews/' . $file->video_preview_filename;
+            try {
+                if (Flight::storage()->exists($videoPreviewKey)) {
+                    Flight::storage()->delete($videoPreviewKey);
+                    Flight::logger()->info("Deleted video preview file: $videoPreviewKey");
+                }
+            } catch (\Exception $e) {
+                Flight::logger()->warning("Failed to delete video preview file $videoPreviewKey: " . $e->getMessage());
+            }
+        }
+
+        // Delete video poster JPG file if it exists
+        if (!empty($file->video_preview_poster_filename)) {
+            $videoPosterKey = $file->getUsername() . '/video-previews/' . $file->video_preview_poster_filename;
+            try {
+                if (Flight::storage()->exists($videoPosterKey)) {
+                    Flight::storage()->delete($videoPosterKey);
+                    Flight::logger()->info("Deleted video poster file: $videoPosterKey");
+                }
+            } catch (\Exception $e) {
+                Flight::logger()->warning("Failed to delete video poster file $videoPosterKey: " . $e->getMessage());
+            }
         }
     }
 
@@ -1065,6 +1093,12 @@ class FileController
 
         if ($file->save()) {
             QueueManager::createJob($file->id);
+            
+            // Also queue video preview job for video files
+            if (strpos($mimetype, 'video/') === 0) {
+                QueueManager::createVideoPreviewJob($file->id);
+            }
+            
             Flight::json([
                 'id' => $file->id,
                 'message' => 'File registered: ' . $displayFilename,
@@ -1169,6 +1203,310 @@ class FileController
     }
 
     /**
+     * Serves the transcoded video preview MP4.
+     *
+     * @param int $id The file ID.
+     * @return void
+     */
+    public function getVideoPreview($id): void
+    {
+        $file = UploadedFile::findById($id);
+
+        if (!$file) {
+            Flight::halt(404, 'File not found');
+        }
+
+        if (!Helper::can(FilePermission::VIEW, $file)) {
+            Flight::halt(403, 'Forbidden');
+        }
+
+        // Check if video preview exists and is completed
+        if ($file->video_preview_status !== 'completed' || !$file->video_preview_filename) {
+            Flight::halt(404, 'Video preview not available');
+        }
+
+        $previewKey = $file->getUsername() . '/video-previews/' . $file->video_preview_filename;
+
+        if (!Flight::storage()->exists($previewKey)) {
+            Flight::halt(404, 'Video preview file not found');
+        }
+
+        // Clear output buffers
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Zero-buffer streaming headers
+        if (strpos($_SERVER['SERVER_SOFTWARE'] ?? '', 'nginx') !== false) {
+            header('X-Accel-Buffering: no');
+        }
+        header('Cache-Control: no-cache');
+        ini_set('output_buffering', 0);
+        ini_set('zlib.output_compression', 0);
+        ignore_user_abort(false);
+
+        // Get file size for Range header support
+        $totalLength = Flight::storage()->size($previewKey);
+
+        // Handle Range header for resumable streaming
+        $range = Flight::request()->header('Range') ?? null;
+        $startByte = 0;
+        $endByte = $totalLength - 1;
+        $isPartial = false;
+
+        if ($range && preg_match('/bytes=(\d+)-(\d*)/', $range, $matches)) {
+            $startByte = (int) $matches[1];
+            $endByte = isset($matches[2]) && $matches[2] !== '' ? (int) $matches[2] : $totalLength - 1;
+            
+            if ($startByte >= $totalLength || $startByte > $endByte) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $totalLength);
+                exit('Range Not Satisfiable');
+            }
+            $isPartial = true;
+        }
+
+        $contentLength = $endByte - $startByte + 1;
+
+        // Set headers
+        header('Content-Type: video/mp4');
+        header('Content-Length: ' . $contentLength);
+        header('Content-Disposition: inline; filename="' . addslashes(pathinfo($file->display_filename, PATHINFO_FILENAME) . '_preview.mp4') . '"');
+        header('Accept-Ranges: bytes');
+        header('Cache-Control: public, max-age=31536000');
+
+        if ($isPartial) {
+            http_response_code(206);
+            header('Content-Range: bytes ' . $startByte . '-' . $endByte . '/' . $totalLength);
+        }
+
+        // Stream the video preview
+        if (Flight::storage() instanceof S3Storage) {
+            $this->streamVideoPreviewFromS3($previewKey, $startByte, $endByte, $isPartial);
+        } elseif (Flight::storage() instanceof LocalStorage) {
+            $this->streamVideoPreviewFromLocal($previewKey, $startByte, $endByte, $contentLength, $isPartial);
+        }
+    }
+
+    /**
+     * Streams video preview from S3 with Range support.
+     *
+     * @param string $key The S3 key.
+     * @param int $startByte Start byte.
+     * @param int $endByte End byte.
+     * @param bool $isPartial Whether this is a partial request.
+     * @return void
+     */
+    private function streamVideoPreviewFromS3(string $key, int $startByte, int $endByte, bool $isPartial): void
+    {
+        $storage = Flight::storage();
+        if (!$storage instanceof S3Storage) {
+            throw new \Exception('S3Storage required');
+        }
+
+        $s3Client = $storage->getS3Client();
+        $bucket = $storage->getBucket();
+
+        $params = [
+            'Bucket' => $bucket,
+            'Key' => $storage->getPathPrefix() . '/' . $key,
+            '@http' => [
+                'stream' => true,
+            ],
+        ];
+
+        if ($isPartial) {
+            $params['Range'] = 'bytes=' . $startByte . '-' . $endByte;
+        }
+
+        try {
+            // Check if object exists first
+            if (!$storage->exists($key)) {
+                Flight::logger()->error('S3 video preview file does not exist: ' . $key);
+                http_response_code(404);
+                exit('Video preview file not found in storage');
+            }
+
+            $result = $s3Client->getObject($params);
+            $stream = $result['Body'];
+
+            $chunkSize = 8388608; // 8MB chunks
+            while (!$stream->eof()) {
+                $chunk = $stream->read($chunkSize);
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            }
+
+            $stream->close();
+        } catch (\Aws\S3\Exception\S3Exception $e) {
+            Flight::logger()->error('S3 video preview streaming error: ' . $e->getMessage() . ' | Key: ' . $key . ' | Bucket: ' . $bucket);
+            http_response_code(500);
+            exit('Streaming error');
+        }
+    }
+
+    /**
+     * Streams video preview from LocalStorage with Range support.
+     *
+     * @param string $key The storage key.
+     * @param int $startByte Start byte.
+     * @param int $endByte End byte.
+     * @param int $contentLength Content length.
+     * @param bool $isPartial Whether this is a partial request.
+     * @return void
+     */
+    private function streamVideoPreviewFromLocal(string $key, int $startByte, int $endByte, int $contentLength, bool $isPartial): void
+    {
+        $stream = Flight::storage()->getStream($key);
+        if (!$stream || !is_resource($stream)) {
+            http_response_code(500);
+            exit('Stream error');
+        }
+
+        fseek($stream, $startByte);
+
+        $chunkSize = 8388608; // 8MB chunks
+        while ($contentLength > 0 && !feof($stream)) {
+            $readSize = min($chunkSize, $contentLength);
+            $chunk = fread($stream, $readSize);
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+            echo $chunk;
+            $contentLength -= strlen($chunk);
+            if (ob_get_level()) {
+                ob_flush();
+            }
+            flush();
+        }
+        fclose($stream);
+    }
+
+    /**
+     * Serves the video poster frame image.
+     *
+     * @param int $id The file ID.
+     * @return void
+     */
+    public function getVideoPoster($id): void
+    {
+        $file = UploadedFile::findById($id);
+
+        if (!$file) {
+            Flight::halt(404, 'File not found');
+        }
+
+        if (!Helper::can(FilePermission::VIEW, $file)) {
+            Flight::halt(403, 'Forbidden');
+        }
+
+        // Check if poster exists
+        if (!$file->video_preview_poster_filename) {
+            // Fallback to filetype icon
+            $this->serveFiletypeIcon($file->extension);
+            return;
+        }
+
+        $posterKey = $file->getUsername() . '/video-previews/' . $file->video_preview_poster_filename;
+
+        if (!Flight::storage()->exists($posterKey)) {
+            $this->serveFiletypeIcon($file->extension);
+            return;
+        }
+
+        // Clear output buffers
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Determine content type from extension
+        $extension = strtolower(pathinfo($file->video_preview_poster_filename, PATHINFO_EXTENSION));
+        $contentType = match($extension) {
+            'webp' => 'image/webp',
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            default => 'image/jpeg',
+        };
+
+        if (Flight::storage() instanceof S3Storage) {
+            $presignedUrl = Flight::storage()->getUrl($posterKey);
+            Flight::redirect($presignedUrl, 301);
+            exit;
+        }
+
+        if (Flight::storage() instanceof LocalStorage) {
+            $response = Flight::response();
+            $response->header('Content-Type', $contentType);
+            $response->header('Cache-Control', 'public, max-age=31536000, immutable');
+            $response->header('Content-Disposition', 'inline');
+            $stream = Flight::storage()->getStream($posterKey);
+            $response->send(fpassthru($stream));
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+            exit;
+        }
+
+        throw new \Exception('Unsupported storage type: ' . get_class(Flight::storage()));
+    }
+
+    /**
+     * API endpoint to trigger video preview generation.
+     *
+     * @param int $id The file ID.
+     * @return void
+     */
+    public function generateVideoPreview($id): void
+    {
+        $file = UploadedFile::findById($id);
+
+        if (!$file) {
+            Flight::json(['error' => 'File not found'], 404);
+            return;
+        }
+
+        if (!Helper::can(FilePermission::VIEW, $file)) {
+            Flight::json(['error' => 'Forbidden'], 403);
+            return;
+        }
+
+        // Check if it's a video file
+        if (!$this->isVideoFile($file)) {
+            Flight::json(['error' => 'Not a video file'], 400);
+            return;
+        }
+
+        // Only process if video preview is pending or failed
+        if (!in_array($file->video_preview_status, ['pending', 'failed'])) {
+            Flight::json([
+                'message' => 'Video preview already processed or processing',
+                'status' => $file->video_preview_status
+            ]);
+            return;
+        }
+
+        try {
+            $generator = new \Phuppi\Service\VideoPreviewGenerator();
+            $success = $generator->generate((int)$id, true);
+            
+            if ($success) {
+                Flight::json(['message' => 'Video preview generation started']);
+            } else {
+                Flight::json(['error' => 'Video preview generation failed to start'], 500);
+            }
+        } catch (\Exception $e) {
+            Flight::logger()->error("Video preview generation error: " . $e->getMessage());
+            Flight::json(['error' => 'Video preview generation failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Serves a filetype icon as fallback.
      *
      * @param string $extension The file extension.
@@ -1196,7 +1534,7 @@ class FileController
             Flight::halt();
         }
 
-        Flight::halt(404, 'Icon not found');
+        Flight::halt(404, 'Icon not found for extension ' . $extension);
     }
 
     /**
@@ -1571,6 +1909,16 @@ class FileController
                     // No existing job, create one
                     try {
                         $queueManager->createJob($file->id);
+                        
+                        // Also queue video preview job for video files
+                        if (strpos($file->mimetype, 'video/') === 0 && $file->video_preview_status === 'pending') {
+                            // Check if video preview job already exists
+                            $stmt = $db->prepare('SELECT id FROM video_preview_jobs WHERE uploaded_file_id = ? AND status IN ("pending", "processing")');
+                            $stmt->execute([$file->id]);
+                            if (!$stmt->fetch(\PDO::FETCH_ASSOC)) {
+                                $queueManager->createVideoPreviewJob($file->id);
+                            }
+                        }
                     } catch (\Exception $e) {
                         // Log but don't fail the entire request
                         Flight::logger()->warning("Failed to queue preview job for file {$file->id}: " . $e->getMessage());

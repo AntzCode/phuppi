@@ -16,6 +16,8 @@ namespace Phuppi\Queue;
 
 use Flight;
 use Phuppi\Service\PreviewGenerator;
+use Phuppi\Service\VideoPreviewGenerator;
+use Phuppi\UploadedFile;
 use Exception;
 
 class QueueManager
@@ -26,8 +28,8 @@ class QueueManager
 
     public function __construct()
     {
-        $this->mode = $this->getSetting('queue_mode', 'cli');
-        $this->maxConcurrent = (int) $this->getSetting('max_concurrent', 5);
+        $this->mode = $this->getSetting('preview_queue_mode', 'cli');
+        $this->maxConcurrent = (int) $this->getSetting('preview_max_concurrent', 5);
     }
 
     /**
@@ -37,6 +39,16 @@ class QueueManager
     {
         $job = PreviewJob::createForFile($fileId);
         Flight::logger()->info("Created preview job {$job->id} for file $fileId");
+        return $job;
+    }
+
+    /**
+     * Create video preview job for file
+     */
+    public static function createVideoPreviewJob(int $fileId): VideoPreviewJob
+    {
+        $job = VideoPreviewJob::createForFile($fileId);
+        Flight::logger()->info("Created video preview job {$job->id} for file $fileId");
         return $job;
     }
 
@@ -57,16 +69,17 @@ class QueueManager
                 // Cleanup expired locks first
                 $this->cleanupExpiredLocks($db);
                 
-                // Try to claim job and acquire lock
+                // Try to claim job and acquire lock (process smallest files first)
                 $stmt = $db->prepare('
                     SELECT pj.id FROM preview_jobs pj
+                    INNER JOIN uploaded_files uf ON uf.id = pj.uploaded_file_id
                     WHERE pj.status = "pending"
                     AND NOT EXISTS (
                         SELECT 1 FROM queue_locks ql
                         WHERE ql.job_id = pj.id
                         AND ql.expires_at > datetime("now")
                     )
-                    ORDER BY pj.created_at ASC
+                    ORDER BY uf.filesize ASC, pj.created_at ASC
                     LIMIT 1
                 ');
                 $stmt->execute();
@@ -116,6 +129,94 @@ class QueueManager
                 
                 if ($attempt >= $maxRetries) {
                     Flight::logger()->error("Failed to claim job after {$attempt} attempts: " . $e->getMessage());
+                    return null;
+                }
+                
+                // Wait before retry (exponential backoff)
+                usleep(50000 * $attempt); // 50ms, 100ms, 150ms...
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Claim next video preview job (CLI mode) with transaction handling and retry logic
+     */
+    public function claimNextVideoPreview(int $maxRetries = 3): ?VideoPreviewJob
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxRetries) {
+            try {
+                $db = Flight::db();
+                
+                // Begin immediate transaction for SQLite locking
+                $db->exec('BEGIN IMMEDIATE');
+                
+                // Cleanup expired locks first
+                $this->cleanupExpiredLocks($db);
+                
+                // Try to claim video preview job and acquire lock (process smallest files first)
+                $stmt = $db->prepare('
+                    SELECT vj.id FROM video_preview_jobs vj
+                    INNER JOIN uploaded_files uf ON uf.id = vj.uploaded_file_id
+                    WHERE vj.status = "pending"
+                    AND NOT EXISTS (
+                        SELECT 1 FROM queue_locks ql
+                        WHERE ql.job_id = vj.id
+                        AND ql.expires_at > datetime("now")
+                    )
+                    ORDER BY uf.filesize ASC, vj.created_at ASC
+                    LIMIT 1
+                ');
+                $stmt->execute();
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if (!$row) {
+                    $db->exec('ROLLBACK');
+                    return null;
+                }
+                
+                $jobId = (int)$row['id'];
+                
+                // Update job status
+                $updateStmt = $db->prepare('
+                    UPDATE video_preview_jobs
+                    SET status = "processing", attempts = attempts + 1
+                    WHERE id = ?
+                ');
+                $updateStmt->execute([$jobId]);
+                
+                // Acquire lock
+                $lockToken = bin2hex(random_bytes(32));
+                $expiresAt = date('Y-m-d H:i:s', strtotime("+{$this->lockTimeoutMinutes} minutes"));
+                $lockStmt = $db->prepare('
+                    INSERT INTO queue_locks (job_id, lock_token, expires_at)
+                    VALUES (?, ?, ?)
+                ');
+                $lockStmt->execute([$jobId, $lockToken, $expiresAt]);
+                
+                // Commit transaction
+                $db->exec('COMMIT');
+                
+                // Fetch and return the claimed job
+                $job = VideoPreviewJob::findById($jobId);
+                if ($job) {
+                    Flight::logger()->info("Claimed video preview job {$job->id} for file {$job->uploaded_file_id}");
+                }
+                return $job;
+                
+            } catch (\PDOException $e) {
+                $attempt++;
+                try {
+                    Flight::db()->exec('ROLLBACK');
+                } catch (\Exception $rollbackEx) {
+                    // Ignore rollback errors
+                }
+                
+                if ($attempt >= $maxRetries) {
+                    Flight::logger()->error("Failed to claim video preview job after {$attempt} attempts: " . $e->getMessage());
                     return null;
                 }
                 
@@ -181,6 +282,71 @@ class QueueManager
     }
 
     /**
+     * Process single video preview job
+     */
+    public function processVideoPreviewJob(VideoPreviewJob $job): bool
+    {
+        try {
+            // Check if the file is a video
+            $file = UploadedFile::findById($job->uploaded_file_id);
+            if (!$file) {
+                $job->markFailed('File not found');
+                return false;
+            }
+
+            if (!str_starts_with($file->mimetype, 'video/')) {
+                $job->markFailed('File is not a video');
+                return false;
+            }
+
+            $generator = new VideoPreviewGenerator();
+            $success = $generator->generate($job->uploaded_file_id, true); // Skip permission check for queue workers
+
+            if ($success) {
+                $job->markComplete();
+            } else {
+                $job->markFailed('Video preview generation failed');
+            }
+            return $success;
+        } catch (Exception $e) {
+            Flight::logger()->error("Video preview job {$job->id} failed: " . $e->getMessage());
+            $job->markFailed($e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Process batch of video preview jobs (AJAX mode)
+     */
+    public function processVideoPreviewBatch(int $limit = 0): array
+    {
+        $limit = $limit ?: $this->maxConcurrent;
+        $results = [];
+        $processed = 0;
+
+        while ($processed < $limit) {
+            $job = $this->claimNextVideoPreview();
+            if (!$job) break;
+
+            $success = $this->processVideoPreviewJob($job);
+            $results[] = [
+                'job_id' => $job->id,
+                'file_id' => $job->uploaded_file_id,
+                'success' => $success
+            ];
+
+            $processed++;
+        }
+
+        $hasMore = $this->hasPendingVideoPreviewJobs();
+        return [
+            'processed' => $processed,
+            'has_more' => $hasMore,
+            'results' => $results
+        ];
+    }
+
+    /**
      * Cleanup expired locks
      * @param \PDO|null $db Optional database connection for transaction context
      */
@@ -190,6 +356,13 @@ class QueueManager
         // SQLite-compatible: update via join with subquery
         $db->exec('
             UPDATE preview_jobs
+            SET status = "failed", last_error = "Lock expired - job timed out", processed_at = datetime("now")
+            WHERE status = "processing"
+            AND id IN (SELECT job_id FROM queue_locks WHERE expires_at < datetime("now"))
+        ');
+        // Also cleanup video preview jobs
+        $db->exec('
+            UPDATE video_preview_jobs
             SET status = "failed", last_error = "Lock expired - job timed out", processed_at = datetime("now")
             WHERE status = "processing"
             AND id IN (SELECT job_id FROM queue_locks WHERE expires_at < datetime("now"))
@@ -204,6 +377,16 @@ class QueueManager
     {
         $db = Flight::db();
         $count = $db->query('SELECT COUNT(*) FROM preview_jobs WHERE status = "pending"')->fetchColumn();
+        return (int)$count > 0;
+    }
+
+    /**
+     * Check if pending video preview jobs exist
+     */
+    public function hasPendingVideoPreviewJobs(): bool
+    {
+        $db = Flight::db();
+        $count = $db->query('SELECT COUNT(*) FROM video_preview_jobs WHERE status = "pending"')->fetchColumn();
         return (int)$count > 0;
     }
 

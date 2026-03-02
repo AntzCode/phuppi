@@ -144,9 +144,7 @@ if ($userCount < 1) {
         $router->put('/@id', [FileController::class, 'updateFile'])->addMiddleware(function () {
             return Helper::can(FilePermission::PUT);
         });
-        $router->delete('/@id', [\Phuppi\Controllers\FileController::class, 'deleteFile'])->addMiddleware(function () {
-            return Helper::can(FilePermission::DELETE);
-        });
+        // Single file delete removed - use batch delete endpoint at DELETE /files instead
         $router->delete('/', [FileController::class, 'deleteMultipleFiles'])->addMiddleware(function () {
             return Helper::can(FilePermission::DELETE);
         });
@@ -163,6 +161,49 @@ if ($userCount < 1) {
 
     Flight::router()->get('/files/preview/@id', [FileController::class, 'getPreview'])->addMiddleware(function ($args) {
         // Same middleware as /files/@id for public token access
+        $fileId = (int) $args['id'];
+
+        if (isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $fileToken = UploadedFileToken::findByToken($token);
+                if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
+                    return true;
+                }
+                $batchToken = BatchFileToken::findByToken($token);
+                if ($batchToken && in_array($fileId, $batchToken->file_ids)) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+
+    // Video preview routes
+    Flight::router()->get('/files/video-preview/@id', [FileController::class, 'getVideoPreview'])->addMiddleware(function ($args) {
+        // Same middleware as /files/preview/@id for public token access
+        $fileId = (int) $args['id'];
+
+        if (isset(Flight::request()->query['token'])) {
+            $token = Flight::request()->query['token'];
+            if (strlen($token) <= 255) {
+                $fileToken = UploadedFileToken::findByToken($token);
+                if ($fileToken && $fileToken->uploaded_file_id === $fileId) {
+                    return true;
+                }
+                $batchToken = BatchFileToken::findByToken($token);
+                if ($batchToken && in_array($fileId, $batchToken->file_ids)) {
+                    return true;
+                }
+            }
+        }
+
+        return Helper::can(FilePermission::GET, UploadedFile::findById($fileId));
+    });
+
+    Flight::router()->get('/files/video-poster/@id', [FileController::class, 'getVideoPoster'])->addMiddleware(function ($args) {
+        // Same middleware as /files/preview/@id for public token access
         $fileId = (int) $args['id'];
 
         if (isset(Flight::request()->query['token'])) {
@@ -242,6 +283,12 @@ if ($userCount < 1) {
         return $file && Helper::can(FilePermission::VIEW, $file);
     });
 
+    // Video preview generation API
+    Flight::router()->post('/api/video-preview/generate/@id', [FileController::class, 'generateVideoPreview'])->addMiddleware(function ($args) {
+        $file = UploadedFile::findById((int) $args['id']);
+        return $file && Helper::can(FilePermission::VIEW, $file);
+    });
+
     Flight::router()->get('/files/batch/@token', [FileController::class, 'showBatchShare'])->addMiddleware(function ($args) {
         $token = $args['token'];
         if (strlen($token) <= 255) {
@@ -315,6 +362,22 @@ if ($userCount < 1) {
     Flight::route('GET /shortlinks', [ShortLinkController::class, 'index'])->addMiddleware(IsAuthenticated::class);
     Flight::route('POST /shorten', [FileController::class, 'shortenUrl'])->addMiddleware(IsAuthenticated::class);
     Flight::route('GET /s/@shortcode', [FileController::class, 'redirectShortLink']);
+
+    // CLI Documentation route
+    Flight::route('GET /docs/cli', function () {
+        $docFile = Flight::get('flight.public.path') . '/docs/cli-configuration.md';
+        if (!file_exists($docFile)) {
+            Flight::halt(404, 'Documentation not found');
+        }
+
+        $content = file_get_contents($docFile);
+        $html = Helper::convertMarkdownToHtml($content);
+
+        Flight::render('doc-page.latte', [
+            'title' => 'CLI Configuration Guide',
+            'content' => $html
+        ]);
+    });
 
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
