@@ -363,21 +363,34 @@ if ($userCount < 1) {
     Flight::route('POST /shorten', [FileController::class, 'shortenUrl'])->addMiddleware(IsAuthenticated::class);
     Flight::route('GET /s/@shortcode', [FileController::class, 'redirectShortLink']);
 
-    // CLI Documentation route
-    Flight::route('GET /docs/cli', function () {
-        $docFile = Flight::get('flight.public.path') . '/docs/cli-configuration.md';
-        if (!file_exists($docFile)) {
-            Flight::halt(404, 'Documentation not found');
-        }
+    // Documentation routes
+    $docs = [
+        'cli' => [
+            'title' => 'CLI Configuration Guide',                  
+            'file' => 'cli-configuration.md'
+        ],
+        'do-spaces-cors' => [
+            'title' => 'Digital Ocean Spaces CORS Configuration',  
+            'file' => 'do-spaces-cors.md'
+        ],
+    ];
 
-        $content = file_get_contents($docFile);
-        $html = Helper::convertMarkdownToHtml($content);
+    foreach ($docs as $route => $config) {
+        Flight::route("GET /docs/{$route}", function () use ($config) {
+            $docFile = Flight::get('flight.public.path') . '/docs/' . $config['file'];
+            if (!file_exists($docFile)) {
+                Flight::halt(404, 'Documentation not found');
+            }
 
-        Flight::render('doc-page.latte', [
-            'title' => 'CLI Configuration Guide',
-            'content' => $html
-        ]);
-    });
+            $content = file_get_contents($docFile);
+            $html = Helper::convertMarkdownToHtml($content);
+
+            Flight::render('doc-page.latte', [
+                'title' => $config['title'],
+                'content' => $html
+            ]);
+        });
+    }
 
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);

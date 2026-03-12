@@ -274,7 +274,17 @@
                 <select name="connector_type" class="ui dropdown" id="connectorTypeSelect">
                     <option value="local">Local Storage</option>
                     <option value="s3">Amazon S3</option>
+                    <option value="do_spaces">Digital Ocean Spaces</option>
                 </select>
+                <div class="do-fields-docs" style="display: none; margin-top: 10px;">
+                    <div class="ui info message" style="display: flex; flex-direction: row; align-items: center;">
+                        <i class="info circle icon" style="margin-right: 0.5em; margin-bottom: 0;"></i>
+                        <div class="content">
+                            <div class="header">Digital Ocean Spaces Setup</div>
+                            <p>After creating your connector, you'll need to <a href="/docs/do-spaces-cors" target="_blank" style="text-decoration: underline;">configure CORS</a> on your Space to enable uploads.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="local-fields">
@@ -305,14 +315,52 @@
                     <label>S3 Secret Key</label>
                     <input type="password" name="s3_secret" required>
                 </div>
-                <button class="ui blue button" id="testS3ConnectionBtn" type="button">Test Connection</button>
+                <button class="ui blue button test-connection-btn" type="button">Test Connection</button>
+            </div>
+
+            <div class="do-fields" style="display: none;">
+                <div class="field">
+                    <label>Space Name (Bucket)</label>
+                    <input type="text" name="s3_bucket" required placeholder="my-space">
+                </div>
+                <div class="field">
+                    <label>Region</label>
+                    <select name="s3_region" class="ui dropdown" required>
+                        <option value="nyc3">NYC3 (New York)</option>
+                        <option value="nyc1">NYC1 (New York - Legacy)</option>
+                        <option value="sgp1">SGP1 (Singapore)</option>
+                        <option value="ams3">AMS3 (Amsterdam)</option>
+                        <option value="fra1">FRA1 (Frankfurt)</option>
+                        <option value="sfo2">SFO2 (San Francisco)</option>
+                        <option value="sfo3">SFO3 (San Francisco)</option>
+                        <option value="lon1">LON1 (London)</option>
+                        <option value="tor1">TOR1 (Toronto)</option>
+                        <option value="blr1">BLR1 (Bangalore)</option>
+                        <option value="sym1">SYM1 (Sydney)</option>
+                        <option value="dot">DOT (Denver)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Endpoint</label>
+                    <input type="text" name="s3_endpoint" required placeholder="nyc3.digitaloceanspaces.com">
+                    <small>The regional endpoint for your Space (e.g., nyc3.digitaloceanspaces.com)</small>
+                </div>
+                <div class="field">
+                    <label>Access Key</label>
+                    <input type="text" name="s3_key" required>
+                </div>
+                <div class="field">
+                    <label>Secret Key</label>
+                    <input type="password" name="s3_secret" required>
+                </div>
+                <button class="ui blue button test-connection-btn" type="button">Test Connection</button>
             </div>
 
         </form>
     </div>
     <div class="actions">
         <div class="ui cancel button">Cancel</div>
-        <div class="ui primary approve button" id="saveConnectorBtn">Save</div>
+        <div class="ui primary button" id="saveConnectorBtn">Save</div>
     </div>
 </div>
 <script>
@@ -690,7 +738,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add connector
     document.getElementById('addConnectorBtn').addEventListener('click', function() {
         document.getElementById('modalHeader').textContent = 'Add Storage Connector';
-        document.querySelector('input[name="action"]').value = 'add_connector';
+        document.querySelector('#connectorForm input[name="action"]').value = 'add_connector';
         document.getElementById('connectorNameInput').value = '';
         document.getElementById('connectorForm').reset();
         toggleConnectorFields();
@@ -704,23 +752,44 @@ document.addEventListener('DOMContentLoaded', function() {
             const config = connectors[name];
 
             document.getElementById('modalHeader').textContent = 'Edit Storage Connector';
-            document.querySelector('input[name="action"]').value = 'update_connector';
+            document.querySelector('#connectorForm input[name="action"]').value = 'update_connector';
             document.getElementById('connectorNameInput').value = name;
+            
+            // Reset form first for clean state
+            document.getElementById('connectorForm').reset();
+            
+            // Now set values
             document.querySelector('input[name="connector_display_name"]').value = config.name;
             document.querySelector('input[name="path_prefix"]').value = config.path_prefix || '';
             document.querySelector('select[name="connector_type"]').value = config.type;
 
+            // Show the correct fields first before populating values
+            toggleConnectorFields();
+
+            // Now populate values based on connector type
             if (config.type === 'local') {
                 document.querySelector('input[name="local_path"]').value = config.path || '';
-            } else if (config.type === 's3') {
-                document.querySelector('input[name="s3_bucket"]').value = config.bucket || '';
-                document.querySelector('input[name="s3_region"]').value = config.region || 'us-east-1';
-                document.querySelector('input[name="s3_endpoint"]').value = config.endpoint || '';
-                document.querySelector('input[name="s3_key"]').value = config.key || '';
-                document.querySelector('input[name="s3_secret"]').value = config.secret || '';
+            } else if (config.type === 's3' || config.type === 'do_spaces') {
+                // Get the visible fields container (either .s3-fields or .do-fields)
+                const activeFields = config.type === 'do_spaces' 
+                    ? document.querySelector('.do-fields') 
+                    : document.querySelector('.s3-fields');
+                
+                if (activeFields) {
+                    const bucketInput = activeFields.querySelector('input[name="s3_bucket"]');
+                    const regionSelect = activeFields.querySelector('select[name="s3_region"]');
+                    const endpointInput = activeFields.querySelector('input[name="s3_endpoint"]');
+                    const keyInput = activeFields.querySelector('input[name="s3_key"]');
+                    const secretInput = activeFields.querySelector('input[name="s3_secret"]');
+                    
+                    if (bucketInput) bucketInput.value = config.bucket || '';
+                    if (regionSelect) regionSelect.value = config.region || 'us-east-1';
+                    if (endpointInput) endpointInput.value = config.endpoint || '';
+                    if (keyInput) keyInput.value = config.key || '';
+                    if (secretInput) secretInput.value = config.secret || '';
+                }
             }
 
-            toggleConnectorFields();
             $('#connectorModal').modal('show');
         }
     });
@@ -747,11 +816,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('connectorTypeSelect').addEventListener('change', toggleConnectorFields);
 
     // Save connector
-    document.getElementById('saveConnectorBtn').addEventListener('click', function() {
+    document.getElementById('saveConnectorBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
         const form = document.getElementById('connectorForm');
         const formData = new FormData(form);
 
-        // Generate name for new connectors
+        // Generate name for new connectors only
         if (formData.get('action') === 'add_connector' && !formData.get('connector_name')) {
             const displayName = formData.get('connector_display_name');
             const name = displayName.toLowerCase().replace(/[^a-z0-9]/g, '-');
@@ -766,36 +838,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Test S3 connection
-    document.getElementById('testS3ConnectionBtn').addEventListener('click', function() {
-        const form = document.getElementById('connectorForm');
-        const formData = new FormData(form);
-        formData.set('action', 'test_connection');
+    // Test S3/DO Spaces connection
+    document.querySelectorAll('.test-connection-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const form = document.getElementById('connectorForm');
+            const formData = new FormData(form);
+            formData.set('action', 'test_connection');
 
-        this.disabled = true;
-        this.textContent = 'Testing...';
+            this.disabled = true;
+            this.textContent = 'Testing...';
 
-        fetch('/admin/settings/storage', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.message) {
-                alert('Connection successful!');
-            } else if (data.error) {
-                alert('Connection failed: ' + data.error);
-            } else {
-                alert('Unexpected response');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error testing connection');
-        })
-        .finally(() => {
-            this.disabled = false;
-            this.textContent = 'Test Connection';
+            fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert('Connection successful!');
+                } else if (data.error) {
+                    alert('Connection failed: ' + data.error);
+                } else {
+                    alert('Unexpected response');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error testing connection');
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.textContent = 'Test Connection';
+            });
         });
     });
 
@@ -803,17 +877,21 @@ document.addEventListener('DOMContentLoaded', function() {
         const type = document.getElementById('connectorTypeSelect').value;
         const localFields = document.querySelector('.local-fields');
         const s3Fields = document.querySelector('.s3-fields');
-        const testS3Btn = document.getElementById('testS3ConnectionBtn');
+        const doFields = document.querySelector('.do-fields');
+        const doDocs = document.querySelector('.do-fields-docs');
 
         localFields.style.display = 'none';
         s3Fields.style.display = 'none';
-        testS3Btn.style.display = 'none';
+        doFields.style.display = 'none';
+        doDocs.style.display = 'none';
 
         if (type === 'local') {
             localFields.style.display = 'block';
         } else if (type === 's3') {
             s3Fields.style.display = 'block';
-            testS3Btn.style.display = 'inline-block';
+        } else if (type === 'do_spaces') {
+            doFields.style.display = 'block';
+            doDocs.style.display = 'block';
         }
     }
 

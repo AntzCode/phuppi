@@ -43,6 +43,18 @@ class S3Storage implements StorageInterface
         $secret = $config['secret'] ?? '';
         $endpoint = $config['endpoint'] ?? null;
 
+        // Check if this is a Digital Ocean Spaces endpoint
+        $isDigitalOcean = $endpoint && strpos($endpoint, 'digitaloceanspaces.com') !== false;
+
+        // For DO Spaces, ensure the endpoint doesn't include the bucket name
+        // Users might enter "bucket.region.digitaloceanspaces.com" but we need just "region.digitaloceanspaces.com"
+        if ($isDigitalOcean && $endpoint && $this->bucket) {
+            $bucketPrefix = $this->bucket . '.';
+            if (strpos($endpoint, $bucketPrefix) === 0) {
+                $endpoint = substr($endpoint, strlen($bucketPrefix));
+            }
+        }
+
         $this->s3Client = new S3Client([
             'version' => 'latest',
             'region' => $region,
@@ -51,7 +63,8 @@ class S3Storage implements StorageInterface
                 'secret' => $secret,
             ],
             'endpoint' => $endpoint,
-            'use_path_style_endpoint' => true,
+            // DO Spaces uses virtual-hosted style URLs, not path-style
+            'use_path_style_endpoint' => !$isDigitalOcean,
         ]);
     }
 
@@ -209,16 +222,16 @@ class S3Storage implements StorageInterface
     /**
      * Tests the connection to S3.
      *
-     * @return bool True if connected, false otherwise.
+     * @return array ['success' => bool, 'error' => string|null]
      */
-    public function testConnection(): bool
+    public function testConnection(): array
     {
         try {
             $this->s3Client->headBucket(['Bucket' => $this->bucket]);
-            return true;
+            return ['success' => true, 'error' => null];
         } catch (\Exception $e) {
             Flight::logger()->error('S3Storage testConnection: Failed to connect to ' . $this->bucket . ': ' . $e->getMessage());
-            return false;
+            return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 

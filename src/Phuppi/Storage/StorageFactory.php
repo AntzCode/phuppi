@@ -69,6 +69,7 @@ class StorageFactory
             case 'local':
                 return new LocalStorage($config);
             case 's3':
+            case 'do_spaces':
                 return new S3Storage($config);
             default:
                 throw new \InvalidArgumentException("Unsupported storage type: $type");

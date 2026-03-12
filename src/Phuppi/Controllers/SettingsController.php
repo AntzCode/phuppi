@@ -358,13 +358,15 @@ class SettingsController
 
         $db = Flight::db();
 
-        // Check if connector name already exists
-        $stmt = $db->prepare('SELECT id FROM storage_connectors WHERE name = ?');
-        $stmt->execute([$name]);
-        $existing = $stmt->fetchColumn();
-        if ($existing) {
-            Flight::json(['error' => 'Connector name already exists'], 400);
-            return;
+        // Check if connector name already exists (only for new connectors)
+        if ($data->action === 'add_connector') {
+            $stmt = $db->prepare('SELECT id FROM storage_connectors WHERE name = ?');
+            $stmt->execute([$name]);
+            $existing = $stmt->fetchColumn();
+            if ($existing) {
+                Flight::json(['error' => 'Connector name already exists'], 400);
+                return;
+            }
         }
 
         $config = [
@@ -379,6 +381,7 @@ class SettingsController
                 $config['path'] = $data->local_path ?? null;
                 break;
             case 's3':
+            case 'do_spaces':
                 $config['bucket'] = $data->s3_bucket ?? '';
                 $config['region'] = $data->s3_region ?? 'us-east-1';
                 $config['key'] = $data->s3_key ?? '';
@@ -427,6 +430,7 @@ class SettingsController
                 $config['path'] = $data->local_path ?? $config['path'];
                 break;
             case 's3':
+            case 'do_spaces':
                 $config['bucket'] = $data->s3_bucket ?? $config['bucket'];
                 $config['region'] = $data->s3_region ?? $config['region'];
                 $config['key'] = $data->s3_key ?? $config['key'];
@@ -552,8 +556,8 @@ class SettingsController
     private function testConnection($data): void
     {
         $type = $data->connector_type ?? '';
-        if ($type !== 's3') {
-            Flight::json(['error' => 'Test connection only supported for S3'], 400);
+        if ($type !== 's3' && $type !== 'do_spaces') {
+            Flight::json(['error' => 'Test connection only supported for S3 and Digital Ocean Spaces'], 400);
             return;
         }
 
@@ -569,12 +573,12 @@ class SettingsController
         try {
 
             $storage = new \Phuppi\Storage\S3Storage($config);
-            $success = $storage->testConnection();
+            $result = $storage->testConnection();
 
-            if ($success) {
+            if ($result['success']) {
                 Flight::json(['message' => 'Connection successful']);
             } else {
-                Flight::json(['error' => 'Connection failed'], 400);
+                Flight::json(['error' => 'Connection failed: ' . $result['error']], 400);
             }
         } catch (\Exception $e) {
             Flight::json(['error' => 'Connection failed: ' . $e->getMessage()], 400);
