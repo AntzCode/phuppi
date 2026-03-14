@@ -78,6 +78,30 @@
                 <label>File IDs (optional - leave empty to migrate all)</label>
                 <input type="text" name="file_ids" placeholder="e.g. 1,2,3 or 1">
             </div>
+            <div class="two fields">
+                
+                <div class="field">
+                    <label>Transfer Limit (GB)</label>
+                    <input style="width: 100%" type="range" id="transferLimitSlider" name="transfer_limit_gb" min="0" max="250" value="0" step="5">
+                </div>
+                <div class="field">
+                    <label>&nbsp;</label>
+                    <div class="ui input">
+                        <input type="number" id="transferLimitInput" name="transfer_limit_gb_input" min="0" max="2500" value="0" step="0.5">
+                        <span class="ui label">GB (0 = no limit)</span>
+                    </div>
+                </div>
+
+            </div>
+            <div class="field">
+                <label>Transfer Priority</label>
+                <select name="transfer_priority" class="ui dropdown" id="transferPriority">
+                    <option value="smallest_first">Smallest First</option>
+                    <option value="largest_first">Largest First</option>
+                    <option value="newest_first">Newest First</option>
+                    <option value="oldest_first">Oldest First</option>
+                </select>
+            </div>
             <button class="ui orange button" type="submit" id="startMigrationBtn">Start Migration</button>
         </form>
 
@@ -89,6 +113,7 @@
                 <div class="label" id="progressLabel">Preparing migration...</div>
             </div>
             <div id="etaDisplay" style="margin-top: 10px;"></div>
+            <div id="limitDisplay" style="margin-top: 10px; font-weight: bold;"></div>
             <button class="ui red button" id="abortMigrationBtn" style="margin-top: 10px;">Abort Migration</button>
         </div>
     </div>
@@ -370,6 +395,19 @@
 document.addEventListener('DOMContentLoaded', function() {
     $('.menu .item').tab();
 
+    // Sync slider and input for transfer limit
+    const transferLimitSlider = document.getElementById('transferLimitSlider');
+    const transferLimitInput = document.getElementById('transferLimitInput');
+
+    if (transferLimitSlider && transferLimitInput) {
+        transferLimitSlider.addEventListener('input', function() {
+            transferLimitInput.value = this.value;
+        });
+        transferLimitInput.addEventListener('input', function() {
+            transferLimitSlider.value = this.value;
+        });
+    }
+
     // Active connector form
     document.getElementById('activeConnectorForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -389,6 +427,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const progressDiv = document.getElementById('migrationProgress');
         const progressLabel = document.getElementById('progressLabel');
         const etaDisplay = document.getElementById('etaDisplay');
+        const limitDisplay = document.getElementById('limitDisplay');
         const abortBtn = document.getElementById('abortMigrationBtn');
 
         let abortMigration = false;
@@ -399,6 +438,7 @@ document.addEventListener('DOMContentLoaded', function() {
         abortBtn.style.display = 'inline-block';
         abortBtn.disabled = false;
         abortBtn.textContent = 'Abort Migration';
+        limitDisplay.textContent = '';
 
         abortBtn.addEventListener('click', function() {
             abortMigration = true;
@@ -409,6 +449,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(form);
         let fileIds = formData.get('file_ids').trim();
         let userProvidedIds = fileIds !== '';
+
+        // Get transfer limit and priority from form
+        const transferLimitGb = parseFloat(document.getElementById('transferLimitInput').value) || 0;
+        const transferPriority = document.getElementById('transferPriority').value;
 
         // Always get the full file list for progress tracking
         progressLabel.textContent = 'Getting file list...';
@@ -429,6 +473,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             fileList = data.files;
+
+            // Sort files by priority
+            if (transferPriority === 'smallest_first') {
+                fileList.sort((a, b) => a.filesize - b.filesize);
+            } else if (transferPriority === 'largest_first') {
+                fileList.sort((a, b) => b.filesize - a.filesize);
+            } else if (transferPriority === 'newest_first') {
+                fileList.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+            } else if (transferPriority === 'oldest_first') {
+                fileList.sort((a, b) => new Date(a.uploaded_at) - new Date(b.uploaded_at));
+            }
+
             totalSize = fileList.reduce((sum, f) => sum + f.filesize, 0);
         } catch (error) {
             alert('Error getting files');
@@ -463,10 +519,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const startTime = Date.now();
         let lastUpdateTime = startTime;
         let processedSize = 0;
+        let limitReached = false;
 
         $('#progressBar').progress({ percent: 0, total: total });
 
+        // Show limit info if set
+        if (transferLimitGb > 0) {
+            limitDisplay.textContent = `Limit: 0 GB / ${transferLimitGb} GB`;
+        }
+
         for (let i = 0; i < ids.length; i++) {
+            // Check if limit has been reached
+            const limitInBytes = transferLimitGb * 1024 * 1024 * 1024;
+            if (transferLimitGb > 0 && processedSize >= limitInBytes) {
+                limitReached = true;
+                progressLabel.textContent = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i}/${total})`;
+                break;
+            }
+
             const id = ids[i];
             const file = fileList.find(f => f.id == id);
             const migrateData = new FormData();
@@ -474,6 +544,12 @@ document.addEventListener('DOMContentLoaded', function() {
             migrateData.append('from_connector', formData.get('from_connector'));
             migrateData.append('to_connector', formData.get('to_connector'));
             migrateData.append('file_ids', id);
+
+            // Add transfer limit and priority parameters
+            if (transferLimitGb > 0) {
+                migrateData.append('transfer_limit_gb', transferLimitGb);
+            }
+            migrateData.append('transfer_priority', transferPriority);
 
             try {
                 const response = await fetch('/admin/settings/storage', {
@@ -485,14 +561,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     migrated += data.results.migrated || 0;
                     skipped += data.results.skipped || 0;
                     errors += data.results.errors ? data.results.errors.length : 0;
-                    if (data.results.migrated > 0 || data.results.skipped > 0) {
+                    // Only count actually migrated files toward the limit, NOT skipped files
+                    if (data.results.migrated > 0) {
                         processedSize += file.filesize;
+                    }
+                    // Check if backend indicates limit reached
+                    if (data.results.limit_reached) {
+                        limitReached = true;
                     }
                 } else if (data.error) {
                     errors++;
                 }
             } catch (error) {
                 errors++;
+            }
+
+            // Update limit display
+            if (transferLimitGb > 0) {
+                const currentGb = (processedSize / (1024 * 1024 * 1024)).toFixed(2);
+                limitDisplay.textContent = `Limit: ${currentGb} GB / ${transferLimitGb} GB`;
             }
 
             const currentTime = Date.now();
@@ -511,7 +598,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        if (!abortMigration) {
+        if (limitReached) {
+            progressLabel.textContent = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+        } else if (!abortMigration) {
             progressLabel.textContent = `Migration completed! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
         } else {
             progressLabel.textContent = `Migration aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;

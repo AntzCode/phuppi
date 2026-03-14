@@ -496,6 +496,8 @@ class SettingsController
         $fromConnector = $data->from_connector ?? '';
         $toConnector = $data->to_connector ?? '';
         $fileIds = null;
+        $transferLimitGb = (float) ($data->transfer_limit_gb ?? 0);
+        $transferPriority = $data->transfer_priority ?? 'smallest_first';
 
         if (!empty($data->file_ids)) {
             $ids = array_map('intval', array_filter(array_map('trim', explode(',', $data->file_ids))));
@@ -508,7 +510,7 @@ class SettingsController
         }
 
         try {
-            $results = \Phuppi\Storage\StorageFactory::migrate($fromConnector, $toConnector, $fileIds);
+            $results = \Phuppi\Storage\StorageFactory::migrate($fromConnector, $toConnector, $fileIds, $transferLimitGb, $transferPriority);
             Flight::json(['results' => $results]);
         } catch (\Exception $e) {
             Flight::json(['error' => 'Migration failed: ' . $e->getMessage()], 500);
@@ -525,6 +527,7 @@ class SettingsController
     {
         $fromConnector = $data->from_connector ?? '';
         $toConnector = $data->to_connector ?? '';
+        $transferPriority = $data->transfer_priority ?? 'smallest_first';
 
         if (empty($fromConnector) || empty($toConnector)) {
             Flight::json(['error' => 'Source and destination connectors required'], 400);
@@ -538,7 +541,8 @@ class SettingsController
             $fileData = array_map(fn($file) => [
                 'id' => $file->id,
                 'display_filename' => $file->display_filename,
-                'filesize' => $file->filesize
+                'filesize' => $file->filesize,
+                'uploaded_at' => $file->uploaded_at
             ], $files);
             Flight::json(['file_ids' => $fileIds, 'files' => $fileData]);
 

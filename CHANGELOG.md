@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-03-14
+### Added
+- Storage migration advanced features
+- Transfer limit control (slider + text input, 0-100GB) for managing S3 free tier bandwidth
+- Transfer priority options: smallest first, largest first, newest first, oldest first
+- Real-time progress display showing transfer vs limit
+- Auto-stop when transfer limit is reached
+- Migration tool now skips existing files without counting toward limit
+
+## [2.2.1] - 2026-03-12
+### Added
+- Digital Ocean Spaces support (S3-compatible cloud storage)
+- Storage connector management UI
+- Migration tool for moving files between storage connectors
+
 ## [2.1.0] - 2026-02-28
 ### Added
 - Automatic preview thumbnails for images, videos, and documents

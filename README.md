@@ -42,6 +42,18 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 - Docker-ready configuration for dev & prod
 - Automatic preview thumbnails for files (images, videos, documents) with configurable background queue processing (CLI worker or AJAX for shared hosting) [(↗️ screenshot)](./assets/screenshots/preview.png)
 
+## ☁️ Supported Cloud Storage Providers
+
+Phuppi supports multiple storage backends, making it easy to keep your data in the cloud:
+
+- **Local Filesystem** - Default storage on your server
+- **Amazon S3** - AWS Simple Storage Service
+- **Digital Ocean Spaces** - S3-compatible object storage
+- **MinIO** - Self-hosted S3-compatible storage (great for local development)
+- **Any S3-Compatible Provider** - Works with any service implementing the S3 API
+
+All cloud storage options support the migration tool for moving data between connectors, including the new transfer limit feature for managing bandwidth usage.
+
 ## 🏗️ Under the Hood
 
 Phuppi is made to be easy for owners to upload and modify. It has a lean file structure and avoids bloated libraries and complicated build tools. You can make changes to the code using the most modern libraries and techniques, and your changes are reflected as soon as you refresh the page!

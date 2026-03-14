@@ -98,16 +98,21 @@ class StorageFactory
 
     /**
      * Migrate files from one connector to another
-     * 
+     *
      * @param string $fromConnector The name of the connector to migrate from
      * @param string $toConnector The name of the connector to migrate to
      * @param array|null $fileIds The IDs of the files to migrate
+     * @param float $transferLimitGb Transfer limit in GB (0 = no limit)
+     * @param string $transferPriority Priority for sorting: 'smallest_first', 'largest_first', 'newest_first', 'oldest_first'
      * @return array
      */
-    public static function migrate(string $fromConnector, string $toConnector, ?array $fileIds=null): array
+    public static function migrate(string $fromConnector, string $toConnector, ?array $fileIds=null, float $transferLimitGb = 0, string $transferPriority = 'smallest_first'): array
     {
         $fromStorage = self::createConnectorByName($fromConnector);
         $toStorage = self::createConnectorByName($toConnector);
+
+        // Convert GB to bytes
+        $limitBytes = $transferLimitGb * 1024 * 1024 * 1024;
 
         // Get files to migrate
         if ($fileIds === null) {
@@ -119,9 +124,19 @@ class StorageFactory
             $files = array_filter($files); // Remove nulls
         }
 
-        // Sort files by size ascending (smallest first)
-        usort($files, function ($a, $b) {
-            return $a->filesize <=> $b->filesize;
+        // Sort files by priority
+        usort($files, function ($a, $b) use ($transferPriority) {
+            switch ($transferPriority) {
+                case 'largest_first':
+                    return $b->filesize <=> $a->filesize;
+                case 'newest_first':
+                    return strtotime($b->uploaded_at) <=> strtotime($a->uploaded_at);
+                case 'oldest_first':
+                    return strtotime($a->uploaded_at) <=> strtotime($b->uploaded_at);
+                case 'smallest_first':
+                default:
+                    return $a->filesize <=> $b->filesize;
+            }
         });
 
         $totalSize = array_sum(array_map(fn($f) => $f->filesize, $files));
@@ -129,8 +144,21 @@ class StorageFactory
         $startTime = microtime(true);
         $currentFile = null;
         $currentSize = 0;
+        $limitReached = false;
 
-        $results = ['migrated' => 0, 'skipped' => 0, 'errors' => [], 'total_size' => $totalSize, 'processed_size' => 0, 'current_file' => null, 'current_size' => 0, 'eta' => 0];
+        $results = [
+            'migrated' => 0,
+            'skipped' => 0,
+            'errors' => [],
+            'total_size' => $totalSize,
+            'processed_size' => 0,
+            'current_file' => null,
+            'current_size' => 0,
+            'eta' => 0,
+            'limit_reached' => false,
+            'limit_bytes' => $limitBytes,
+            'limit_bytes_remaining' => $limitBytes
+        ];
 
         foreach ($files as $file) {
 
@@ -156,9 +184,17 @@ class StorageFactory
 
                     if ($sourceSize !== null && $destSize !== null && $sourceSize === $destSize) {
                         $results['skipped']++;
-                        $processedSize += $file->filesize;
+                        // Skipped files don't count toward limit
                         continue;
                     }
+                }
+
+                // Check if adding this file would exceed the limit (if limit is set)
+                if ($limitBytes > 0 && ($processedSize + $file->filesize) > $limitBytes) {
+                    $limitReached = true;
+                    $results['limit_reached'] = true;
+                    $results['limit_bytes_remaining'] = max(0, $limitBytes - $processedSize);
+                    break;
                 }
 
                 // Get file stream from source
@@ -222,10 +258,14 @@ class StorageFactory
                 // Also migrate preview image if it exists
                 self::migratePreviewImage($file, $fromStorage, $toStorage, $results);
 
+                // Also migrate video preview if it exists (and count its size toward limit)
+                $videoPreviewSize = self::migrateVideoPreview($file, $fromStorage, $toStorage, $results);
+
                 // Update file record with new connector (if we add a field for it)
                 // For now, just count as migrated
                 $results['migrated']++;
-                $processedSize += $file->filesize;
+                $processedSize += $file->filesize + $videoPreviewSize;
+                $results['limit_bytes_remaining'] = $limitBytes > 0 ? max(0, $limitBytes - $processedSize) : 0;
                 
             } catch (\Exception $e) {
                 $results['errors'][] = "Error migrating {$file->filename}: " . $e->getMessage();
@@ -316,5 +356,118 @@ class StorageFactory
         }
 
         unlink($tempPath);
+    }
+
+    /**
+     * Migrate video preview for a file
+     *
+     * @param \Phuppi\UploadedFile $file The file to migrate video preview for
+     * @param StorageInterface $fromStorage Source storage
+     * @param StorageInterface $toStorage Destination storage
+     * @param array $results Results array to update
+     * @return int Total size of video previews migrated (for limit counting)
+     */
+    private static function migrateVideoPreview(\Phuppi\UploadedFile $file, StorageInterface $fromStorage, StorageInterface $toStorage, array &$results): int
+    {
+        $totalSize = 0;
+
+        // Migrate video preview MP4 file
+        if (!empty($file->video_preview_filename)) {
+            $totalSize += self::migrateSingleVideoPreview($file, $fromStorage, $toStorage, $results, 'video_preview_filename', 'video-previews');
+        }
+
+        // Migrate video preview poster image if it exists
+        if (!empty($file->video_preview_poster_filename)) {
+            $totalSize += self::migrateSingleVideoPreview($file, $fromStorage, $toStorage, $results, 'video_preview_poster_filename', 'video-previews');
+        }
+
+        return $totalSize;
+    }
+
+    /**
+     * Migrate a single video preview file (MP4 or poster)
+     *
+     * @param \Phuppi\UploadedFile $file The file to migrate preview for
+     * @param StorageInterface $fromStorage Source storage
+     * @param StorageInterface $toStorage Destination storage
+     * @param array $results Results array to update
+     * @param string $fieldName The field name (video_preview_filename or video_preview_poster_filename)
+     * @param string $folder The folder name (video-previews)
+     * @return int Size of the file that was migrated (0 if skipped or failed)
+     */
+    private static function migrateSingleVideoPreview(\Phuppi\UploadedFile $file, StorageInterface $fromStorage, StorageInterface $toStorage, array &$results, string $fieldName, string $folder): int
+    {
+        $filename = $file->$fieldName;
+        if (empty($filename)) {
+            return 0;
+        }
+
+        $username = $file->getUsername();
+        $previewPath = $username . '/' . $folder . '/' . $filename;
+
+        // Check if preview exists in source
+        if (!$fromStorage->exists($previewPath)) {
+            return 0;
+        }
+
+        // Get source size for counting toward limit
+        $sourceSize = $fromStorage->size($previewPath);
+        if ($sourceSize === null) {
+            $sourceSize = 0;
+        }
+
+        // Check if preview already exists in destination
+        if ($toStorage->exists($previewPath)) {
+            $destSize = $toStorage->size($previewPath);
+            if ($sourceSize !== 0 && $destSize !== null && $sourceSize === $destSize) {
+                return 0; // Already exists with same size - don't count toward limit
+            }
+        }
+
+        // Get preview stream from source
+        $stream = $fromStorage->getStream($previewPath);
+        if (!$stream) {
+            $results['errors'][] = "Could not read video preview {$previewPath} from source connector";
+            return 0;
+        }
+
+        // Create temp file for transfer
+        $tempPath = tempnam(sys_get_temp_dir(), 'video_preview_migration_');
+        $tempHandle = fopen($tempPath, 'w');
+
+        if (is_resource($stream)) {
+            stream_copy_to_stream($stream, $tempHandle);
+            fclose($stream);
+        } elseif (method_exists($stream, 'detach')) {
+            $resource = $stream->detach();
+            if (is_resource($resource)) {
+                stream_copy_to_stream($resource, $tempHandle);
+                fclose($resource);
+            } else {
+                fclose($tempHandle);
+                unlink($tempPath);
+                return 0;
+            }
+        } elseif (method_exists($stream, 'getContents')) {
+            fwrite($tempHandle, $stream->getContents());
+        } else {
+            fclose($tempHandle);
+            unlink($tempPath);
+            return 0;
+        }
+
+        fclose($tempHandle);
+
+        // Put preview to destination
+        if (!$toStorage->put($previewPath, $tempPath)) {
+            $results['errors'][] = "Could not write video preview {$previewPath} to destination connector";
+            unlink($tempPath);
+            return 0;
+        }
+
+        unlink($tempPath);
+
+        // Return the size of the migrated file for limit counting
+        return $sourceSize;
     }
 }
