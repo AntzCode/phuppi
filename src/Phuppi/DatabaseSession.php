@@ -193,8 +193,20 @@ class DatabaseSession implements SessionHandlerInterface
             $serialized = serialize($this->data);
         }
 
-        $stmt = $this->db->prepare("INSERT OR REPLACE INTO {$this->table} (session_id, session_data, updated_at) VALUES (?, ?, datetime('now'))");
-        return $stmt->execute([$id, $serialized]);
+        try {
+            $stmt = $this->db->prepare("INSERT OR REPLACE INTO {$this->table} (session_id, session_data, updated_at) VALUES (?, ?, datetime('now'))");
+            return $stmt->execute([$id, $serialized]);
+        } catch (\PDOException $e) {
+            // Log the error but don't throw - the response has already been sent
+            // and throwing here would corrupt the output (e.g., JSON responses)
+            $errorMsg = 'DatabaseSession: Failed to write session - ' . $e->getMessage();
+            if (class_exists('Flight') && method_exists(\Flight::logger(), 'error')) {
+                \Flight::logger()->error($errorMsg);
+            } else {
+                error_log($errorMsg);
+            }
+            return false;
+        }
     }
 
     /**

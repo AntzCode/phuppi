@@ -192,6 +192,7 @@ class StorageFactory
             'errors' => [],
             'total_size' => $totalSize,
             'processed_size' => 0,
+            'bytes_transferred' => 0,  // Track bytes actually transferred from source
             'current_file' => null,
             'current_size' => 0,
             'eta' => 0,
@@ -244,17 +245,15 @@ class StorageFactory
                     continue;
                 }
 
-                // Record ingress transfer (reading from source connector)
-                self::recordMigrationStats($file, $fromConnector, TransferStats::DIRECTION_INGRESS, $file->filesize);
-
                 // Create temp file for transfer
                 $tempPath = tempnam(sys_get_temp_dir(), 'migration_');
                 $tempHandle = fopen($tempPath, 'w');
                 $streamClosed = false;
+                $bytesTransferred = 0;  // Track actual bytes read from source
 
                 if (is_resource($stream)) {
 
-                    stream_copy_to_stream($stream, $tempHandle);
+                    $bytesTransferred = stream_copy_to_stream($stream, $tempHandle);
                     fclose($stream);
                     $streamClosed = true;
 
@@ -264,7 +263,7 @@ class StorageFactory
                     $resource = $stream->detach();
 
                     if (is_resource($resource)) {
-                        stream_copy_to_stream($resource, $tempHandle);
+                        $bytesTransferred = stream_copy_to_stream($resource, $tempHandle);
                         fclose($resource);
                         $streamClosed = true;
                     } else {
@@ -276,8 +275,9 @@ class StorageFactory
 
                 } elseif (method_exists($stream, 'getContents')) {
                     // Fallback for objects, but try to avoid memory issues
-
-                    fwrite($tempHandle, $stream->getContents());
+                    $contents = $stream->getContents();
+                    $bytesTransferred = strlen($contents);
+                    fwrite($tempHandle, $contents);
 
                 } else {
                     $results['errors'][] = "Unsupported stream type for file {$filePath}";
@@ -288,15 +288,28 @@ class StorageFactory
 
                 fclose($tempHandle);
 
+                // Ensure we have a valid byte count (fallback to file size if needed)
+                if ($bytesTransferred === 0 && $file->filesize > 0) {
+                    $bytesTransferred = $file->filesize;
+                }
+
+                // Record ingress transfer (reading from source connector)
+                // This counts toward the transfer limit regardless of whether the full transfer succeeds
+                self::recordMigrationStats($file, $fromConnector, TransferStats::DIRECTION_INGRESS, $bytesTransferred);
+
                 // Put file to destination
                 if (!$toStorage->put($filePath, $tempPath)) {
+                    // Transfer failed - but we still read bytes from source, so count them toward limit
                     $results['errors'][] = "Could not write file {$filePath} to destination connector";
+                    $results['bytes_transferred'] += $bytesTransferred;
+                    $results['processed_size'] += $bytesTransferred;
+                    $results['limit_bytes_remaining'] = $limitBytes > 0 ? max(0, $limitBytes - $results['processed_size']) : 0;
                     unlink($tempPath);
                     continue;
                 }
 
                 // Record egress transfer (writing to destination connector)
-                self::recordMigrationStats($file, $toConnector, TransferStats::DIRECTION_EGRESS, $file->filesize);
+                self::recordMigrationStats($file, $toConnector, TransferStats::DIRECTION_EGRESS, $bytesTransferred);
 
                 // Clean up temp file
                 unlink($tempPath);
@@ -310,11 +323,16 @@ class StorageFactory
                 // Update file record with new connector (if we add a field for it)
                 // For now, just count as migrated
                 $results['migrated']++;
-                $processedSize += $file->filesize + $videoPreviewSize;
+                $results['bytes_transferred'] += $bytesTransferred + $videoPreviewSize;
+                $processedSize += $bytesTransferred + $videoPreviewSize;
                 $results['limit_bytes_remaining'] = $limitBytes > 0 ? max(0, $limitBytes - $processedSize) : 0;
                 
             } catch (\Exception $e) {
                 $results['errors'][] = "Error migrating {$file->filename}: " . $e->getMessage();
+                // Clean up temp file if it exists and wasn't already cleaned up
+                if (isset($tempPath) && file_exists($tempPath)) {
+                    @unlink($tempPath);
+                }
             }
         }
 

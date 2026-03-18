@@ -137,6 +137,32 @@
         </div>
     </div>
 
+    <!-- Migration Error Details Modal -->
+    <div class="ui modal" id="migrationErrorModal">
+        <div class="header">
+            Migration Error Details
+            <button class="ui right floated button" id="closeErrorModalBtn" style="margin-right: 10px;">Close</button>
+        </div>
+        <div class="content">
+            <table class="ui celled table" id="errorDetailsTable">
+                <thead>
+                    <tr>
+                        <th>File ID</th>
+                        <th>Filename</th>
+                        <th>Filesize</th>
+                        <th>Error Message</th>
+                    </tr>
+                </thead>
+                <tbody id="errorDetailsBody">
+                    <!-- Error rows will be populated here -->
+                </tbody>
+            </table>
+            <div id="noErrorsMessage" class="ui info message" style="display: none;">
+                No errors to display.
+            </div>
+        </div>
+    </div>
+
     <!-- Data Repair Tab -->
     <div class="ui bottom attached tab segment" data-tab="data-repair">
         <div class="ui divider"></div>
@@ -534,11 +560,57 @@ document.addEventListener('DOMContentLoaded', function() {
         let migrated = 0;
         let skipped = 0;
         let errors = 0;
+        window.migrationErrorDetails = []; // Array to store error details
         const total = ids.length;
         const startTime = Date.now();
         let lastUpdateTime = startTime;
         let processedSize = 0;
         let limitReached = false;
+
+        // Helper function to get the error info icon HTML
+        window.getErrorInfoIcon = function() {
+            if (window.migrationErrorDetails && window.migrationErrorDetails.length > 0) {
+                return ' <i class="info circle icon" style="cursor: pointer; color: #f0ad4e;" onclick="showMigrationErrorModal()" title="View error details"></i>';
+            }
+            return '';
+        };
+
+        // Helper function to update progress label with errors
+        window.updateProgressLabelWithErrors = function(migrated, skipped, errors, current, total) {
+            const progressLabel = document.getElementById('progressLabel');
+            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
+        };
+
+        // Update error modal with current error details
+        window.updateErrorModal = function() {
+            const tbody = document.getElementById('errorDetailsBody');
+            const noErrorsMsg = document.getElementById('noErrorsMessage');
+            const table = document.getElementById('errorDetailsTable');
+
+            if (window.migrationErrorDetails.length === 0) {
+                table.style.display = 'none';
+                noErrorsMsg.style.display = 'block';
+            } else {
+                table.style.display = 'table';
+                noErrorsMsg.style.display = 'none';
+
+                // Build table rows
+                tbody.innerHTML = window.migrationErrorDetails.map(function(err) {
+                    return `<tr>
+                        <td>${err.id}</td>
+                        <td>${err.filename}</td>
+                        <td>${formatFileSize(err.filesize)}</td>
+                        <td>${err.error}</td>
+                    </tr>`;
+                }).join('');
+            }
+        };
+
+        // Show the error modal - make it global so onclick works
+        window.showMigrationErrorModal = function() {
+            window.updateErrorModal();
+            $('#migrationErrorModal').modal('show');
+        };
 
         $('#progressBar').progress({ percent: 0, total: total });
 
@@ -552,7 +624,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const limitInBytes = transferLimitGb * 1024 * 1024 * 1024;
             if (transferLimitGb > 0 && processedSize >= limitInBytes) {
                 limitReached = true;
-                progressLabel.textContent = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i}/${total})`;
+                progressLabel.innerHTML = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i}/${total})`;
                 break;
             }
 
@@ -579,9 +651,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.results) {
                     migrated += data.results.migrated || 0;
                     skipped += data.results.skipped || 0;
-                    errors += data.results.errors ? data.results.errors.length : 0;
-                    // Only count actually migrated files toward the limit, NOT skipped files
-                    if (data.results.migrated > 0) {
+                    const errorCount = data.results.errors ? data.results.errors.length : 0;
+                    errors += errorCount;
+
+                    // Track error details
+                    if (data.results.errors && data.results.errors.length > 0) {
+                        data.results.errors.forEach(function(errorMsg) {
+                            window.migrationErrorDetails.push({
+                                id: file.id,
+                                filename: file.display_filename,
+                                filesize: file.filesize,
+                                error: errorMsg
+                            });
+                        });
+                        // Update modal and info icon immediately
+                        window.updateErrorModal();
+                        window.updateProgressLabelWithErrors(migrated, skipped, errors, i + 1, total);
+                    }
+
+                    // Count bytes actually transferred from source (includes failed transfers that read some data)
+                    // The backend now returns bytes_transferred which includes:
+                    // - On success: actual bytes read from source
+                    // - On failure: bytes that were read from source before the failure occurred
+                    if (data.results.bytes_transferred > 0) {
+                        processedSize += data.results.bytes_transferred;
+                    } else if (data.results.migrated > 0) {
+                        // Fallback for backward compatibility
                         processedSize += file.filesize;
                     }
                     // Check if backend indicates limit reached
@@ -590,9 +685,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 } else if (data.error) {
                     errors++;
+                    // Track error details for fetch errors too
+                    window.migrationErrorDetails.push({
+                        id: file.id,
+                        filename: file.display_filename,
+                        filesize: file.filesize,
+                        error: data.error
+                    });
+                    window.updateErrorModal();
+                    window.updateProgressLabelWithErrors(migrated, skipped, errors, i + 1, total);
                 }
             } catch (error) {
                 errors++;
+                // Track error details for catch errors
+                window.migrationErrorDetails.push({
+                    id: file.id,
+                    filename: file.display_filename,
+                    filesize: file.filesize,
+                    error: error.message || 'Network error'
+                });
+                window.updateErrorModal();
+                window.updateProgressLabelWithErrors(migrated, skipped, errors, i + 1, total);
             }
 
             // Update limit display
@@ -608,21 +721,21 @@ document.addEventListener('DOMContentLoaded', function() {
             const eta = remaining / rate;
 
             $('#progressBar').progress({ percent: ((i + 1) / total) * 100 });
-            progressLabel.textContent = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+            window.updateProgressLabelWithErrors(migrated, skipped, errors, i + 1, total);
             etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining, Migrating: ${file.display_filename} (${formatFileSize(file.filesize)})`;
 
             if (abortMigration) {
-                progressLabel.textContent = `Migration aborted. Copied: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+                progressLabel.innerHTML = `Migration aborted. Copied: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
                 break;
             }
         }
 
         if (limitReached) {
-            progressLabel.textContent = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+            progressLabel.innerHTML = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
         } else if (!abortMigration) {
-            progressLabel.textContent = `Migration completed! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}`;
+            progressLabel.innerHTML = `Migration completed! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
         } else {
-            progressLabel.textContent = `Migration aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors} (${i + 1}/${total})`;
+            progressLabel.innerHTML = `Migration aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
         }
         etaDisplay.textContent = '';
         startBtn.disabled = false;
@@ -634,6 +747,56 @@ document.addEventListener('DOMContentLoaded', function() {
             startBtn.textContent = 'Start Migration';
             progressDiv.style.display = 'none';
         }
+
+        // Helper function to get the error info icon HTML
+        window.getErrorInfoIcon = function() {
+            if (window.migrationErrorDetails && window.migrationErrorDetails.length > 0) {
+                return ' <i class="info circle icon" style="cursor: pointer; color: #f0ad4e;" onclick="showMigrationErrorModal()" title="View error details"></i>';
+            }
+            return '';
+        };
+
+        // Helper function to update progress label with errors
+        window.updateProgressLabelWithErrors = function(migrated, skipped, errors, current, total) {
+            const progressLabel = document.getElementById('progressLabel');
+            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
+        };
+
+        // Update error modal with current error details
+        window.updateErrorModal = function() {
+            const tbody = document.getElementById('errorDetailsBody');
+            const noErrorsMsg = document.getElementById('noErrorsMessage');
+            const table = document.getElementById('errorDetailsTable');
+
+            if (window.migrationErrorDetails.length === 0) {
+                table.style.display = 'none';
+                noErrorsMsg.style.display = 'block';
+            } else {
+                table.style.display = 'table';
+                noErrorsMsg.style.display = 'none';
+
+                // Build table rows
+                tbody.innerHTML = window.migrationErrorDetails.map(function(err) {
+                    return `<tr>
+                        <td>${err.id}</td>
+                        <td>${err.filename}</td>
+                        <td>${formatFileSize(err.filesize)}</td>
+                        <td>${err.error}</td>
+                    </tr>`;
+                }).join('');
+            }
+        };
+
+        // Show the error modal - make it global so onclick works
+        window.showMigrationErrorModal = function() {
+            window.updateErrorModal();
+            $('#migrationErrorModal').modal('show');
+        };
+
+        // Close modal button handler
+        document.getElementById('closeErrorModalBtn').addEventListener('click', function() {
+            $('#migrationErrorModal').modal('hide');
+        });
     });
 
     // Preview Settings Form - AJAX submit

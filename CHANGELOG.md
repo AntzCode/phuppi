@@ -13,9 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [`DeleteTransferStatsJob`](src/Phuppi/Queue/DeleteTransferStatsJob.php) class and queue system for asynchronous processing
 - Migration 009: `delete_transfer_stats_jobs` table for queue job management
 - CLI queue worker now processes delete transfer stats jobs
+- Error details modal for storage connector migration - when errors occur during migration, an info icon appears next to the error count. Clicking it shows a modal with file id, filename, filesize, and error message for each error encountered. The modal updates dynamically as errors occur.
 
 ### Fixed
 - Database connection handling in TransferStats service - now uses `Flight::transferStatsDb()` consistently for all operations
+- Transfer limit counting to include bytes transferred from source even when transfers fail - previously, when a transfer failed partway through, the bytes already read from source were not counted against the transfer limit, causing discrepancies between source egress stats and the displayed transfer limit usage.
 
 ## [2.2.2] - 2026-03-14
 ### Added
