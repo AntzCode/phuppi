@@ -43,7 +43,7 @@ class Helper
      */
     public static function getPhuppiVersion(): string
     {
-        return '2.2.2';
+        return '2.2.3';
     }
 
     /**
@@ -158,7 +158,7 @@ class Helper
      */
     public static function convertMarkdownToHtml(string $content): string
     {
-        
+
         $environment = new Environment([
             'html_input' => 'strip',
             'allow_unsafe_links' => false
@@ -166,8 +166,27 @@ class Helper
         $environment->addExtension(new CommonMarkCoreExtension());
         $environment->addExtension(new GithubFlavoredMarkdownExtension());
         $converter = new MarkdownConverter($environment);
-        
+
         return $converter->convert($content);
+    }
+
+    /**
+     * Formats bytes as human-readable string
+     *
+     * @param int|float $bytes The number of bytes
+     * @return string Formatted string (e.g., "1.5 MB", "3.2 GB")
+     */
+    public static function formatBytes($bytes): string
+    {
+        if ($bytes === 0) {
+            return '0 B';
+        }
+
+        $k = 1024;
+        $sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        $i = floor(log($bytes, $k));
+
+        return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
     }
 
 }

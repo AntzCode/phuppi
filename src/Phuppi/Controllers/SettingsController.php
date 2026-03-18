@@ -17,6 +17,7 @@ namespace Phuppi\Controllers;
 
 use Flight;
 use Phuppi\Helper;
+use Phuppi\Service\TransferStats;
 use Phuppi\User;
 
 class SettingsController
@@ -33,13 +34,55 @@ class SettingsController
         $previewSettings = $this->getPreviewSettings();
         $videoPreviewSettings = $this->getVideoPreviewSettings();
         $queueWorkerStatus = $this->getQueueWorkerStatus();
+
+        // Calculate transfer stats
+        $connectorStats = $this->getConnectorStats($connectors);
+
         Flight::render('settings.latte', [
             'connectors' => $connectors,
             'activeConnector' => $activeConnector,
             'previewSettings' => $previewSettings,
             'videoPreviewSettings' => $videoPreviewSettings,
-            'queueWorkerStatus' => $queueWorkerStatus
+            'queueWorkerStatus' => $queueWorkerStatus,
+            'connectorStats' => $connectorStats,
         ]);
+    }
+
+    /**
+     * Get transfer statistics for all connectors
+     *
+     * @param array $connectors List of connectors
+     * @return array Stats keyed by connector name, each containing 'month' and 'week' arrays with 'ingress' and 'egress' keys
+     */
+    private function getConnectorStats(array $connectors): array
+    {
+        $transferStats = new TransferStats();
+        $now = new \DateTime();
+        $stats = [];
+
+        // Calculate date ranges
+        // This calendar month (from 1st of current month to now)
+        $monthStart = new \DateTime('first day of this month 00:00:00');
+        $monthEnd = clone $now;
+
+        // Past 7 days (from 7 days ago to now)
+        $weekStart = new \DateTime('7 days ago 00:00:00');
+        $weekEnd = clone $now;
+
+        foreach ($connectors as $connectorName => $config) {
+            // Get this month's stats
+            $monthStats = $transferStats->getStatsForConnector($connectorName, $monthStart, $monthEnd);
+
+            // Get past 7 days stats
+            $weekStats = $transferStats->getStatsForConnector($connectorName, $weekStart, $weekEnd);
+
+            $stats[$connectorName] = [
+                'month' => $monthStats,
+                'week' => $weekStats,
+            ];
+        }
+
+        return $stats;
     }
 
     /**

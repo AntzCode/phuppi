@@ -23,6 +23,7 @@ use Phuppi\BatchFileToken;
 use Phuppi\ShortLink;
 use Phuppi\Queue\QueueManager;
 use Phuppi\Permissions\FilePermission;
+use Phuppi\Service\TransferStats;
 use Phuppi\Storage\LocalStorage;
 use Phuppi\Storage\S3Storage;
 use Aws\S3\Exception\S3Exception;
@@ -215,6 +216,123 @@ class FileController
     }
 
     /**
+     * Records transfer statistics for file downloads/streams.
+     *
+     * @param UploadedFile $file The file being transferred.
+     * @param string $operationType The type of operation (download, stream, preview_serve).
+     * @return void
+     */
+    private function recordTransferStats(UploadedFile $file, string $operationType): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            $transferStats->recordEgress(
+                $transferStats->getCurrentConnectorName(),
+                $file->id,
+                $user->id ?? null,
+                $voucher->id ?? null,
+                $operationType,
+                $file->filesize
+            );
+        } catch (\Exception $e) {
+            // Log but don't fail the download if stats recording fails
+            Flight::logger()->warning('Failed to record transfer stats: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Records transfer statistics for preview/image serving.
+     *
+     * @param UploadedFile $file The original file.
+     * @param string $previewKey The storage key of the preview.
+     * @return void
+     */
+    private function recordPreviewTransferStats(UploadedFile $file, string $previewKey): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            // Get preview file size
+            $previewSize = Flight::storage()->size($previewKey);
+
+            $transferStats->recordEgress(
+                $transferStats->getCurrentConnectorName(),
+                $file->id,
+                $user->id ?? null,
+                $voucher->id ?? null,
+                TransferStats::OPERATION_PREVIEW_SERVE,
+                $previewSize
+            );
+        } catch (\Exception $e) {
+            // Log but don't fail the preview serving if stats recording fails
+            Flight::logger()->warning('Failed to record preview transfer stats: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Records transfer statistics for multi-file zip downloads.
+     *
+     * @param array $files Array of UploadedFile objects.
+     * @param int $zipSize The size of the generated zip file.
+     * @return void
+     */
+    private function recordMultiFileDownloadStats(array $files, int $zipSize): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            // Get the first file's ID as reference (or null if no files)
+            $fileId = !empty($files) ? $files[0]->id : null;
+
+            $transferStats->recordEgress(
+                $transferStats->getCurrentConnectorName(),
+                $fileId,
+                $user->id ?? null,
+                $voucher->id ?? null,
+                TransferStats::OPERATION_DOWNLOAD,
+                $zipSize
+            );
+        } catch (\Exception $e) {
+            // Log but don't fail the download if stats recording fails
+            Flight::logger()->warning('Failed to record multi-file download stats: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Records transfer statistics for file uploads.
+     *
+     * @param UploadedFile $file The uploaded file.
+     * @return void
+     */
+    private function recordUploadStats(UploadedFile $file): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            $transferStats->recordIngress(
+                $transferStats->getCurrentConnectorName(),
+                $file->id,
+                $file->user_id,
+                $file->voucher_id,
+                TransferStats::OPERATION_UPLOAD,
+                $file->filesize
+            );
+        } catch (\Exception $e) {
+            // Log but don't fail the upload if stats recording fails
+            Flight::logger()->warning('Failed to record upload stats: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Streams a file directly from S3 to the client.
      * This avoids presigned URL expiration issues by using S3 credentials directly.
      *
@@ -231,6 +349,9 @@ class FileController
         if (!$storage instanceof S3Storage) {
             throw new \Exception('S3Storage required for streaming');
         }
+
+        // Record transfer stats
+        $this->recordTransferStats($file, $disposition === 'attachment' ? TransferStats::OPERATION_DOWNLOAD : TransferStats::OPERATION_STREAM);
 
         $key = Flight::storage()->getRelativePath($file->getUsername() . '/' . $file->filename);
         $s3Client = $storage->getS3Client();
@@ -361,6 +482,9 @@ class FileController
     {
         set_time_limit(0);
         ignore_user_abort(true);
+
+        // Record transfer stats
+        $this->recordTransferStats($file, $disposition === 'attachment' ? TransferStats::OPERATION_DOWNLOAD : TransferStats::OPERATION_STREAM);
 
         $key = $file->getUsername() . '/' . $file->filename;
         $totalLength = $file->filesize;
@@ -521,13 +645,16 @@ class FileController
                 $file->extension = pathinfo($name, PATHINFO_EXTENSION);
 
                 if ($file->save()) {
+                    // Record transfer stats for the upload
+                    $this->recordUploadStats($file);
+
                     QueueManager::createJob($file->id);
-                    
+
                     // Also queue video preview job for video files
                     if (strpos($file->mimetype, 'video/') === 0) {
                         QueueManager::createVideoPreviewJob($file->id);
                     }
-                    
+
                     $results[] = [
                         'id' => $file->id,
                         'message' => 'File uploaded: ' . $name,
@@ -610,6 +737,8 @@ class FileController
             Flight::storage()->delete($file->getUsername() . '/' . $file->filename);
             if ($file->delete()) {
                 $deleted++;
+                // Queue a job to delete transfer stats for this file asynchronously
+                QueueManager::createDeleteTransferStatsJob($file->id);
             } else {
                 $errors[] = "Failed to delete file $id";
             }
@@ -795,6 +924,9 @@ class FileController
             Flight::json(['error' => 'Zip file was not created successfully'], 500);
             return;
         }
+
+        // Record transfer stats for the zip download
+        $this->recordMultiFileDownloadStats($files, filesize($zipPath));
 
         // Stream the zip
         while (ob_get_level()) {
@@ -1092,13 +1224,16 @@ class FileController
         $file->extension = $extension;
 
         if ($file->save()) {
+            // Record transfer stats for the upload
+            $this->recordUploadStats($file);
+
             QueueManager::createJob($file->id);
-            
+
             // Also queue video preview job for video files
             if (strpos($mimetype, 'video/') === 0) {
                 QueueManager::createVideoPreviewJob($file->id);
             }
-            
+
             Flight::json([
                 'id' => $file->id,
                 'message' => 'File registered: ' . $displayFilename,
@@ -1138,6 +1273,9 @@ class FileController
             $this->serveFiletypeIcon($file->extension);
             return;
         }
+
+        // Record transfer stats for preview serving
+        $this->recordPreviewTransferStats($file, $previewKey);
 
         $extension = strtolower(pathinfo($file->preview_filename, PATHINFO_EXTENSION));
         $contentType = match($extension) {
@@ -1419,6 +1557,9 @@ class FileController
             $this->serveFiletypeIcon($file->extension);
             return;
         }
+
+        // Record transfer stats for video poster serving
+        $this->recordPreviewTransferStats($file, $posterKey);
 
         // Clear output buffers
         while (ob_get_level()) {

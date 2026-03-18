@@ -16,6 +16,7 @@
 namespace Phuppi\Storage;
 
 use Flight;
+use Phuppi\Service\TransferStats;
 
 class StorageFactory
 {
@@ -58,7 +59,7 @@ class StorageFactory
 
     /**
      * Create a connector instance
-     * 
+     *
      * @param string $type The type of connector to create
      * @param array $config The configuration for the connector
      * @return StorageInterface
@@ -73,6 +74,45 @@ class StorageFactory
                 return new S3Storage($config);
             default:
                 throw new \InvalidArgumentException("Unsupported storage type: $type");
+        }
+    }
+
+    /**
+     * Records transfer statistics for migration operations.
+     *
+     * @param \Phuppi\UploadedFile $file The file being migrated.
+     * @param string $connectorName The connector name.
+     * @param string $direction Direction of transfer (TransferStats::DIRECTION_INGRESS or EGRESS).
+     * @param int $bytesTransferred Bytes transferred.
+     * @return void
+     */
+    private static function recordMigrationStats(\Phuppi\UploadedFile $file, string $connectorName, string $direction, int $bytesTransferred): void
+    {
+        try {
+            $transferStats = new TransferStats();
+
+            if ($direction === TransferStats::DIRECTION_INGRESS) {
+                $transferStats->recordIngress(
+                    $connectorName,
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    TransferStats::OPERATION_MIGRATION_INGRESS,
+                    $bytesTransferred
+                );
+            } else {
+                $transferStats->recordEgress(
+                    $connectorName,
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    TransferStats::OPERATION_MIGRATION_EGRESS,
+                    $bytesTransferred
+                );
+            }
+        } catch (\Exception $e) {
+            // Log but don't fail migration if stats recording fails
+            Flight::logger()->warning('Failed to record migration transfer stats: ' . $e->getMessage());
         }
     }
 
@@ -204,6 +244,9 @@ class StorageFactory
                     continue;
                 }
 
+                // Record ingress transfer (reading from source connector)
+                self::recordMigrationStats($file, $fromConnector, TransferStats::DIRECTION_INGRESS, $file->filesize);
+
                 // Create temp file for transfer
                 $tempPath = tempnam(sys_get_temp_dir(), 'migration_');
                 $tempHandle = fopen($tempPath, 'w');
@@ -251,6 +294,9 @@ class StorageFactory
                     unlink($tempPath);
                     continue;
                 }
+
+                // Record egress transfer (writing to destination connector)
+                self::recordMigrationStats($file, $toConnector, TransferStats::DIRECTION_EGRESS, $file->filesize);
 
                 // Clean up temp file
                 unlink($tempPath);

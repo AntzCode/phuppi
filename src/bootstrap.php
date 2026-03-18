@@ -96,6 +96,7 @@ $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages
 $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
 $latte->addFunction('voucher_id', [Phuppi\Helper::class, 'getVoucherId']);
 $latte->addFunction('user_can', [Phuppi\Helper::class, 'can']);
+$latte->addFilter('format_bytes', [Phuppi\Helper::class, 'formatBytes']);
 
 Flight::map('render', function (string $template, array $data = [], ?string $block = null): void {
     $latte = Flight::latte();
@@ -186,6 +187,27 @@ function register_flight_db() {
 }
 
 register_flight_db();
+
+/**
+ * register transfer stats database
+ */
+function register_transfer_stats_db() {
+    $dataPath = Flight::get('flight.data.path');
+    $transfersDbPath = $dataPath . DIRECTORY_SEPARATOR . 'transfers.sqlite';
+
+    Flight::register('transferStatsDb', 'PDO', array('sqlite:' . $transfersDbPath), function ($db) {
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // WAL mode for high-write performance
+        $db->exec('PRAGMA journal_mode = WAL');
+        $db->exec('PRAGMA busy_timeout = 5000');
+        $db->exec('PRAGMA synchronous = FULL');
+        $db->exec('PRAGMA cache_size = -10000');
+        $db->exec('PRAGMA wal_autocheckpoint = 1000');
+    });
+}
+
+register_transfer_stats_db();
 
 // Load storage connectors configuration from database
 $db = Flight::db();

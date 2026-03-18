@@ -18,6 +18,7 @@ use Flight;
 use PDO;
 use Phuppi\UploadedFile;
 use Phuppi\Helper;
+use Phuppi\Service\TransferStats;
 use Exception;
 
 class VideoPreviewGenerator
@@ -49,6 +50,47 @@ class VideoPreviewGenerator
     public function __construct()
     {
         $this->config = $this->getConfig();
+    }
+
+    /**
+     * Records transfer statistics for video preview generation.
+     *
+     * @param UploadedFile $file The file being processed.
+     * @param string $direction Direction of transfer (TransferStats::DIRECTION_INGRESS or EGRESS).
+     * @param int $bytesTransferred Bytes transferred.
+     * @param string $operationType Type of operation.
+     * @return void
+     */
+    private function recordTransferStats(UploadedFile $file, string $direction, int $bytesTransferred, string $operationType): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            if ($direction === TransferStats::DIRECTION_INGRESS) {
+                $transferStats->recordIngress(
+                    $transferStats->getCurrentConnectorName(),
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    $operationType,
+                    $bytesTransferred
+                );
+            } else {
+                $transferStats->recordEgress(
+                    $transferStats->getCurrentConnectorName(),
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    $operationType,
+                    $bytesTransferred
+                );
+            }
+        } catch (\Exception $e) {
+            // Log but don't fail video preview generation if stats recording fails
+            Flight::logger()->warning('Failed to record video preview transfer stats: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -96,6 +138,9 @@ class VideoPreviewGenerator
             return false;
         }
 
+        // Record ingress transfer (reading original video from storage)
+        $this->recordTransferStats($file, TransferStats::DIRECTION_INGRESS, $file->filesize, TransferStats::OPERATION_PREVIEW_GENERATE_INGRESS);
+
         try {
             // Transcode to MP4
             $tempMp4 = tempnam(sys_get_temp_dir(), 'video_preview_mp4_') . '.mp4';
@@ -119,6 +164,10 @@ class VideoPreviewGenerator
                 throw new Exception('Failed to save transcoded video to storage');
             }
 
+            // Record egress transfer (writing video preview MP4 to storage)
+            $mp4Size = filesize($tempMp4);
+            $this->recordTransferStats($file, TransferStats::DIRECTION_EGRESS, $mp4Size, TransferStats::OPERATION_PREVIEW_GENERATE_EGRESS);
+
             // Save poster to storage if generated
             $posterKey = null;
             if ($tempPoster) {
@@ -127,6 +176,10 @@ class VideoPreviewGenerator
                     Flight::logger()->warning("Failed to save poster to storage for file ID $fileId");
                     unlink($tempPoster);
                     $tempPoster = null;
+                } else {
+                    // Record egress transfer (writing video poster to storage)
+                    $posterSize = filesize($tempPoster);
+                    $this->recordTransferStats($file, TransferStats::DIRECTION_EGRESS, $posterSize, TransferStats::OPERATION_PREVIEW_GENERATE_EGRESS);
                 }
             }
 

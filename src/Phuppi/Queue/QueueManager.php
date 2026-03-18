@@ -19,6 +19,7 @@ use Phuppi\Service\PreviewGenerator;
 use Phuppi\Service\VideoPreviewGenerator;
 use Phuppi\UploadedFile;
 use Exception;
+use Phuppi\Queue\DeleteTransferStatsJob;
 
 class QueueManager
 {
@@ -49,6 +50,16 @@ class QueueManager
     {
         $job = VideoPreviewJob::createForFile($fileId);
         Flight::logger()->info("Created video preview job {$job->id} for file $fileId");
+        return $job;
+    }
+
+    /**
+     * Create delete transfer stats job for file
+     */
+    public static function createDeleteTransferStatsJob(int $fileId): DeleteTransferStatsJob
+    {
+        $job = DeleteTransferStatsJob::createForFile($fileId);
+        Flight::logger()->info("Created delete transfer stats job {$job->id} for file $fileId");
         return $job;
     }
 
@@ -227,6 +238,93 @@ class QueueManager
         
         return null;
     }
+
+    /**
+     * Claim next delete transfer stats job (CLI mode) with transaction handling and retry logic
+     */
+    public function claimNextDeleteTransferStatsJob(int $maxRetries = 3): ?DeleteTransferStatsJob
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxRetries) {
+            try {
+                $db = Flight::db();
+                
+                // Begin immediate transaction for SQLite locking
+                $db->exec('BEGIN IMMEDIATE');
+                
+                // Cleanup expired locks first
+                $this->cleanupExpiredLocks($db);
+                
+                // Try to claim delete transfer stats job and acquire lock (oldest first)
+                $stmt = $db->prepare('
+                    SELECT dtj.id FROM delete_transfer_stats_jobs dtj
+                    WHERE dtj.status = "pending"
+                    AND NOT EXISTS (
+                        SELECT 1 FROM queue_locks ql
+                        WHERE ql.job_id = dtj.id
+                        AND ql.expires_at > datetime("now")
+                    )
+                    ORDER BY dtj.created_at ASC
+                    LIMIT 1
+                ');
+                $stmt->execute();
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if (!$row) {
+                    $db->exec('ROLLBACK');
+                    return null;
+                }
+                
+                $jobId = (int)$row['id'];
+                
+                // Update job status
+                $updateStmt = $db->prepare('
+                    UPDATE delete_transfer_stats_jobs
+                    SET status = "processing", attempts = attempts + 1
+                    WHERE id = ?
+                ');
+                $updateStmt->execute([$jobId]);
+                
+                // Acquire lock
+                $lockToken = bin2hex(random_bytes(32));
+                $expiresAt = date('Y-m-d H:i:s', strtotime("+{$this->lockTimeoutMinutes} minutes"));
+                $lockStmt = $db->prepare('
+                    INSERT INTO queue_locks (job_id, lock_token, expires_at)
+                    VALUES (?, ?, ?)
+                ');
+                $lockStmt->execute([$jobId, $lockToken, $expiresAt]);
+                
+                // Commit transaction
+                $db->exec('COMMIT');
+                
+                // Fetch and return the claimed job
+                $job = DeleteTransferStatsJob::findById($jobId);
+                if ($job) {
+                    Flight::logger()->info("Claimed delete transfer stats job {$job->id} for file {$job->uploaded_file_id}");
+                }
+                return $job;
+                
+            } catch (\PDOException $e) {
+                $attempt++;
+                try {
+                    Flight::db()->exec('ROLLBACK');
+                } catch (\Exception $rollbackEx) {
+                    // Ignore rollback errors
+                }
+                
+                if ($attempt >= $maxRetries) {
+                    Flight::logger()->error("Failed to claim delete transfer stats job after {$attempt} attempts: " . $e->getMessage());
+                    return null;
+                }
+                
+                // Wait before retry (exponential backoff)
+                usleep(50000 * $attempt); // 50ms, 100ms, 150ms...
+            }
+        }
+        
+        return null;
+    }
     
     /**
      * Process batch of jobs (AJAX mode)
@@ -363,6 +461,13 @@ class QueueManager
         // Also cleanup video preview jobs
         $db->exec('
             UPDATE video_preview_jobs
+            SET status = "failed", last_error = "Lock expired - job timed out", processed_at = datetime("now")
+            WHERE status = "processing"
+            AND id IN (SELECT job_id FROM queue_locks WHERE expires_at < datetime("now"))
+        ');
+        // Also cleanup delete transfer stats jobs
+        $db->exec('
+            UPDATE delete_transfer_stats_jobs
             SET status = "failed", last_error = "Lock expired - job timed out", processed_at = datetime("now")
             WHERE status = "processing"
             AND id IN (SELECT job_id FROM queue_locks WHERE expires_at < datetime("now"))

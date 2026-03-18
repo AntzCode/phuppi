@@ -18,6 +18,7 @@ use Flight;
 use PDO;
 use Phuppi\UploadedFile;
 use Phuppi\Helper;
+use Phuppi\Service\TransferStats;
 use Exception;
 
 class PreviewGenerator
@@ -27,6 +28,47 @@ class PreviewGenerator
     public function __construct()
     {
         $this->config = $this->getConfig();
+    }
+
+    /**
+     * Records transfer statistics for preview generation.
+     *
+     * @param UploadedFile $file The file being processed.
+     * @param string $direction Direction of transfer (TransferStats::DIRECTION_INGRESS or EGRESS).
+     * @param int $bytesTransferred Bytes transferred.
+     * @param string $operationType Type of operation.
+     * @return void
+     */
+    private function recordTransferStats(UploadedFile $file, string $direction, int $bytesTransferred, string $operationType): void
+    {
+        try {
+            $transferStats = new TransferStats();
+            $user = Flight::user();
+            $voucher = Flight::voucher();
+
+            if ($direction === TransferStats::DIRECTION_INGRESS) {
+                $transferStats->recordIngress(
+                    $transferStats->getCurrentConnectorName(),
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    $operationType,
+                    $bytesTransferred
+                );
+            } else {
+                $transferStats->recordEgress(
+                    $transferStats->getCurrentConnectorName(),
+                    $file->id,
+                    $file->user_id,
+                    $file->voucher_id,
+                    $operationType,
+                    $bytesTransferred
+                );
+            }
+        } catch (\Exception $e) {
+            // Log but don't fail preview generation if stats recording fails
+            Flight::logger()->warning('Failed to record preview transfer stats: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -71,6 +113,9 @@ class PreviewGenerator
             return false;
         }
 
+        // Record ingress transfer (reading original file from storage)
+        $this->recordTransferStats($file, TransferStats::DIRECTION_INGRESS, $file->filesize, TransferStats::OPERATION_PREVIEW_GENERATE_INGRESS);
+
         try {
             $tempPreview = null;
             if (str_starts_with($mime, 'image/')) {
@@ -95,6 +140,10 @@ class PreviewGenerator
             if (!$storage->put($previewKey, $tempPreview)) {
                 throw new Exception('Failed to save preview to storage');
             }
+
+            // Record egress transfer (writing preview to storage)
+            $previewSize = filesize($tempPreview);
+            $this->recordTransferStats($file, TransferStats::DIRECTION_EGRESS, $previewSize, TransferStats::OPERATION_PREVIEW_GENERATE_EGRESS);
 
             unlink($tempOriginal);
             unlink($tempPreview);

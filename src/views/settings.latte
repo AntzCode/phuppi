@@ -45,6 +45,25 @@
                 <div class="content">
                     <div class="header">{$config['name']}</div>
                     <div class="description">Type: {$config['type']}</div>
+                    {if isset($connectorStats[$name])}
+                    <div class="description" style="margin-top: 0.5em;">
+                        <div class="ui left action input" style="border: solid 1px #e5e5e5; border-radius: 4px; margin-bottom: 0.5em;">
+                            <label class="ui label flex flex-center" style="margin: auto;" title="Month to Date" 
+                                ontouchend="alert('Month to date')">Month</label>
+                            <div class="ui small flex flex-container" style="margin: auto; padding: 0 0 0 0.5em;"><i class="icon arrow up"></i>{$connectorStats[$name]['month']['ingress']|format_bytes}</div>
+                            <div class="divider">&nbsp;</div>
+                            <div class="ui small flex flex-container" style="margin: auto; padding: 0 0.5em 0 0;"><i class="icon arrow down"></i>{$connectorStats[$name]['month']['egress']|format_bytes}</div>
+                        </div>
+                        
+                        <div class="ui left action input" style="border: solid 1px #e5e5e5; border-radius: 4px; margin-bottom: 0.5em;">
+                            <label class="ui label flex flex-center" style="margin: auto;" title="Past 7 days" ontouchend="alert('Past 7 days')">Week</label>
+                            <div class="ui small flex flex-center" style="margin: auto; padding: 0 0 0 0.5em;"><i class="icon arrow up"></i>{$connectorStats[$name]['week']['ingress']|format_bytes}</div>
+                            <div class="divider">&nbsp;</div>
+                            <div class="ui small flex flex-center" style="margin: auto; padding: 0 0.5em 0 0;"><i class="icon arrow down"></i>{$connectorStats[$name]['week']['egress']|format_bytes}</div>
+                        </div>
+                        
+                    </div>
+                    {/if}
                 </div>
             </div>
             {/foreach}

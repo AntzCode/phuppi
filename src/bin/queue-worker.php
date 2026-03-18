@@ -3,7 +3,8 @@
 /**
  * queue-worker.php
  *
- * CLI queue worker for processing preview generation jobs (images and videos).
+ * CLI queue worker for processing preview generation jobs (images and videos)
+ * and delete transfer stats jobs.
  *
  * Usage: php bin/queue-worker.php
  *
@@ -18,6 +19,8 @@
 require_once __DIR__ . '/../bootstrap.php';
 
 use Phuppi\Queue\QueueManager;
+use Phuppi\Queue\DeleteTransferStatsJob;
+use Phuppi\Service\TransferStats;
 use Phuppi\Helper;
 
 if (!Helper::isCli()) {
@@ -32,6 +35,8 @@ $imageProcessed = 0;
 $imageFailed = 0;
 $videoProcessed = 0;
 $videoFailed = 0;
+$statsProcessed = 0;
+$statsFailed = 0;
 
 declare(ticks = 1);
 pcntl_signal(SIGTERM, function() use (&$running) { $running = false; });
@@ -80,6 +85,32 @@ while ($running) {
         continue;
     }
     
+    // Process delete transfer stats jobs
+    $statsJob = $queue->claimNextDeleteTransferStatsJob();
+    if ($statsJob) {
+        echo "[Stats Job {$statsJob->id}] Deleting stats for file {$statsJob->uploaded_file_id}...\n";
+        
+        try {
+            $transferStats = new TransferStats();
+            $deleted = $transferStats->deleteByFileId($statsJob->uploaded_file_id);
+            
+            if ($deleted >= 0) {
+                $statsJob->markComplete();
+                $statsProcessed++;
+                echo "[Stats Job {$statsJob->id}] Completed ✓ (deleted $deleted records)\n";
+            } else {
+                $statsJob->markFailed('Failed to delete transfer stats');
+                $statsFailed++;
+                echo "[Stats Job {$statsJob->id}] Failed ✗\n";
+            }
+        } catch (Exception $e) {
+            $statsJob->markFailed($e->getMessage());
+            $statsFailed++;
+            echo "[Stats Job {$statsJob->id}] Failed ✗ ({$e->getMessage()})\n";
+        }
+        continue;
+    }
+    
     echo "No pending jobs. Sleeping 5s...\n";
     sleep(5);
 }
@@ -92,3 +123,4 @@ if (file_exists($pidFile)) {
 echo "\nWorker stopped.\n";
 echo "Image previews - Processed: $imageProcessed, Failed: $imageFailed\n";
 echo "Video previews - Processed: $videoProcessed, Failed: $videoFailed\n";
+echo "Transfer stats - Processed: $statsProcessed, Failed: $statsFailed\n";

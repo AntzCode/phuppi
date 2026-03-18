@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-03-18
+### Added
+- Record file transfer statistics for all ingress/egress data from data storage connectors
+- Display file transfer statistics on storage connector list: data in/out since Calendar Month started and past 7 days
+- Async deletion of transfer stats when files are deleted - prevents orphaned records and improves performance for large tables
+- [`deleteByFileId()`](src/Phuppi/Service/TransferStats.php) method in TransferStats service for batch deletion of stats by file ID
+- [`DeleteTransferStatsJob`](src/Phuppi/Queue/DeleteTransferStatsJob.php) class and queue system for asynchronous processing
+- Migration 009: `delete_transfer_stats_jobs` table for queue job management
+- CLI queue worker now processes delete transfer stats jobs
+
+### Fixed
+- Database connection handling in TransferStats service - now uses `Flight::transferStatsDb()` consistently for all operations
+
 ## [2.2.2] - 2026-03-14
 ### Added
 - Storage migration advanced features
