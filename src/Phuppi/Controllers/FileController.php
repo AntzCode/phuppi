@@ -950,7 +950,42 @@ class FileController
     }
 
     /**
+     * Calculates the expiration date based on duration string.
+     *
+     * @param string $duration Duration string (1h, 1d, 1w, 1m, 3m, 6m, 1y, 3y, forever)
+     * @return string|null Expiration timestamp or null for forever
+     * @throws \Exception If invalid duration
+     */
+    private function calculateExpiresAt(string $duration): ?string
+    {
+        switch ($duration) {
+            case '1h':
+                return date('Y-m-d H:i:s', strtotime('+1 hour'));
+            case '1d':
+                return date('Y-m-d H:i:s', strtotime('+1 day'));
+            case '1w':
+                return date('Y-m-d H:i:s', strtotime('+1 week'));
+            case '1m':
+                return date('Y-m-d H:i:s', strtotime('+1 month'));
+            case '3m':
+                return date('Y-m-d H:i:s', strtotime('+3 months'));
+            case '6m':
+                return date('Y-m-d H:i:s', strtotime('+6 months'));
+            case '1y':
+                return date('Y-m-d H:i:s', strtotime('+1 year'));
+            case '3y':
+                return date('Y-m-d H:i:s', strtotime('+3 years'));
+            case 'forever':
+                return null;
+            default:
+                Flight::halt(400, 'Invalid duration');
+                return null;
+        }
+    }
+
+    /**
      * Generates a share token for a file.
+     * Now uses BatchFileToken for unified share page handling.
      *
      * @param int $id The file ID.
      * @return void
@@ -970,106 +1005,23 @@ class FileController
         $data = Flight::request()->data;
         $duration = $data->duration ?? '1h'; // default 1 hour
 
-        // Calculate expires_at
-        $expiresAt = null;
-        switch ($duration) {
-            case '1h':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 hour'));
-                break;
-            case '1d':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 day'));
-                break;
-            case '1w':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 week'));
-                break;
-            case '1m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 month'));
-                break;
-            case '3m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 months'));
-                break;
-            case '6m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+6 months'));
-                break;
-            case '1y':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 year'));
-                break;
-            case '3y':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 years'));
-                break;
-            case 'forever':
-                $expiresAt = null;
-                break;
-            default:
-                Flight::halt(400, 'Invalid duration');
-        }
-
-        // Generate unique token
-        $token = bin2hex(random_bytes(32));
-
-        $voucher = Flight::voucher();
-
-        $fileToken = new UploadedFileToken();
-        $fileToken->uploaded_file_id = $file->id;
-        $fileToken->voucher_id = $voucher->id ?? null;
-        $fileToken->token = $token;
-        $fileToken->expires_at = $expiresAt;
-
-        if ($fileToken->save()) {
-            $shareUrl = Flight::request()->getScheme() . '://' . Flight::request()->servername . '/files/' . $file->id . '?token=' . $token;
-            Flight::json(['share_url' => $shareUrl, 'expires_at' => $expiresAt]);
-        } else {
-            Flight::halt(500, 'Failed to generate share token');
-        }
+        // Reuse batch share logic by passing single file ID
+        // This internally calls calculateExpiresAt() and creates a BatchFileToken
+        $this->generateBatchShareTokenInternal([$file->id], $duration);
     }
 
     /**
-     * Generates a batch share token for multiple files.
+     * Internal method to generate batch share token.
+     * Used by both generateBatchShareToken() and generateShareToken().
      *
+     * @param array $ids Array of file IDs to share
+     * @param string $duration Duration string
      * @return void
      */
-    public function generateBatchShareToken(): void
+    private function generateBatchShareTokenInternal(array $ids, string $duration): void
     {
-        $data = Flight::request()->data;
-        $ids = $data->ids ?? [];
         if (empty($ids) || !is_array($ids)) {
             Flight::halt(400, 'Invalid or missing file IDs');
-        }
-
-        $duration = $data->duration ?? '1h';
-
-        // Calculate expires_at
-        $expiresAt = null;
-        switch ($duration) {
-            case '1h':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 hour'));
-                break;
-            case '1d':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 day'));
-                break;
-            case '1w':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 week'));
-                break;
-            case '1m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 month'));
-                break;
-            case '3m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 months'));
-                break;
-            case '6m':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+6 months'));
-                break;
-            case '1y':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+1 year'));
-                break;
-            case '3y':
-                $expiresAt = date('Y-m-d H:i:s', strtotime('+3 years'));
-                break;
-            case 'forever':
-                $expiresAt = null;
-                break;
-            default:
-                Flight::halt(400, 'Invalid duration');
         }
 
         // Validate files
@@ -1079,6 +1031,9 @@ class FileController
                 Flight::halt(403, 'Forbidden or file not found: ' . $id);
             }
         }
+
+        // Calculate expires_at using shared helper method
+        $expiresAt = $this->calculateExpiresAt($duration);
 
         // Generate unique token
         $token = bin2hex(random_bytes(32));
@@ -1092,7 +1047,8 @@ class FileController
         $batchToken->expires_at = $expiresAt;
 
         if ($batchToken->save()) {
-            $shareUrl = Flight::request()->getScheme() . '://' . Flight::request()->servername . '/files/batch/' . $token;
+            // Use new unified /files/shared/{token} URL format
+            $shareUrl = Flight::request()->getScheme() . '://' . Flight::request()->servername . '/files/shared/' . $token;
             Flight::json(['share_url' => $shareUrl, 'expires_at' => $expiresAt]);
         } else {
             Flight::halt(500, 'Failed to generate batch share token');
@@ -1100,30 +1056,87 @@ class FileController
     }
 
     /**
+     * Generates a batch share token for multiple files.
+     *
+     * @return void
+     */
+    public function generateBatchShareToken(): void
+    {
+        $data = Flight::request()->data;
+        $ids = $data->ids ?? [];
+        $duration = $data->duration ?? '1h';
+
+        // Delegate to internal method
+        $this->generateBatchShareTokenInternal($ids, $duration);
+    }
+
+    /**
+     * Shows a shared file page (unified endpoint for single and batch shares).
+     * Handles both BatchFileToken and UploadedFileToken for backward compatibility.
+     *
+     * @param string $token The share token.
+     * @return void
+     */
+    public function showSharedFile($token): void
+    {
+        $files = [];
+        $batchToken = null;
+        $isSingleFile = false;
+
+        // First check for BatchFileToken (new format)
+        $batchToken = BatchFileToken::findByToken($token);
+        
+        if ($batchToken) {
+            foreach ($batchToken->file_ids as $id) {
+                $file = UploadedFile::findById((int)$id);
+                if ($file) {
+                    $files[] = $file;
+                }
+            }
+            $isSingleFile = count($files) === 1;
+        } else {
+            // @deprecated since 2.5.0, will be removed on 2027-03-20
+            // @TODO: Remove this block after 2027-03-20 when all existing share tokens have expired.
+            // Check for legacy UploadedFileToken (backward compatibility)
+            $fileToken = UploadedFileToken::findByToken($token);
+            if ($fileToken) {
+                $file = UploadedFile::findById($fileToken->uploaded_file_id);
+                if ($file) {
+                    $files[] = $file;
+                    $isSingleFile = true;
+                    
+                    // Create a fake batch token for the view
+                    $batchToken = new \stdClass();
+                    $batchToken->token = $token;
+                    $batchToken->expires_at = $fileToken->expires_at;
+                    $batchToken->created_at = $fileToken->created_at;
+                    $batchToken->file_ids = [$file->id];
+                }
+            }
+        }
+
+        if (!$batchToken || empty($files)) {
+            Flight::halt(404, 'Shared file not found or expired');
+        }
+
+        Flight::render('batch-share.latte', [
+            'batchToken' => $batchToken,
+            'files' => $files,
+            'isSingleFile' => $isSingleFile
+        ]);
+    }
+
+    /**
      * Shows a batch share page.
+     * @deprecated since 2.5.0, use showSharedFile() instead
      *
      * @param string $token The batch token.
      * @return void
      */
     public function showBatchShare($token): void
     {
-        $batchToken = BatchFileToken::findByToken($token);
-        if (!$batchToken) {
-            Flight::halt(404, 'Batch share not found or expired');
-        }
-
-        $files = [];
-        foreach ($batchToken->file_ids as $id) {
-            $file = UploadedFile::findById((int)$id);
-            if ($file) {
-                $files[] = $file;
-            }
-        }
-
-        Flight::render('batch-share.latte', [
-            'batchToken' => $batchToken,
-            'files' => $files
-        ]);
+        // Delegate to unified method
+        $this->showSharedFile($token);
     }
 
     /**

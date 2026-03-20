@@ -11,6 +11,9 @@
  * @license GPLv3
  * @link https://github.com/AntzCode/phuppi/
  * @since 2.0.0
+ * @deprecated since 2.5.0, will be removed on 2027-03-20
+ * @TODO: Remove this class after 2027-03-20 when all existing share tokens have expired.
+ *       Use BatchFileToken instead for all file sharing (both single and batch).
  */
 
 namespace Phuppi;

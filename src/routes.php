@@ -289,15 +289,56 @@ if ($userCount < 1) {
         return $file && Helper::can(FilePermission::VIEW, $file);
     });
 
-    Flight::router()->get('/files/batch/@token', [FileController::class, 'showBatchShare'])->addMiddleware(function ($args) {
+    /**
+     * NEW: Unified shared file endpoint
+     * Handles both single and multiple file shares
+     * @since 2.5.0
+     */
+    Flight::router()->get('/files/shared/@token', [FileController::class, 'showSharedFile'])->addMiddleware(function ($args) {
         $token = $args['token'];
         if (strlen($token) <= 255) {
+            // Check BatchFileToken first (new format)
             $batchToken = BatchFileToken::findByToken($token);
             if ($batchToken) {
                 return true;
             }
+            // @deprecated since 2.5.0, will be removed on 2027-03-20
+            // @TODO: Remove this block after 2027-03-20 when all existing share tokens have expired.
+            // Also check UploadedFileToken (legacy format - for backward compatibility)
+            $fileToken = UploadedFileToken::findByToken($token);
+            if ($fileToken) {
+                return true;
+            }
         }
         Flight::halt(403, 'Invalid or expired token');
+    });
+
+    /**
+     * DEPRECATED: Batch share endpoint
+     * @deprecated since 2.5.0, will be removed on 2027-03-20
+     * @TODO: Remove this route after 2027-03-20 when all existing share tokens have expired
+     * Use /files/shared/{token} instead
+     * Note: findByToken() already filters out expired tokens via cleanupExpired()
+     */
+    Flight::router()->get('/files/batch/@token', function ($args) {
+        $token = $args['token'];
+        if (strlen($token) <= 255) {
+            // Check if it's a batch token (findByToken already filters expired)
+            $batchToken = BatchFileToken::findByToken($token);
+            if ($batchToken) {
+                // Redirect to new unified endpoint
+                Flight::redirect('/files/shared/' . $token, 301);
+                return;
+            }
+            // Check if it's an old UploadedFileToken (findByToken already filters expired)
+            $fileToken = UploadedFileToken::findByToken($token);
+            if ($fileToken) {
+                // Redirect to new unified endpoint
+                Flight::redirect('/files/shared/' . $token, 301);
+                return;
+            }
+        }
+        Flight::halt(404, 'Invalid or expired token');
     });
 
     Flight::router()->group('/duplicates', function ($router) {
