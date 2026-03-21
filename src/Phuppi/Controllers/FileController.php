@@ -1119,9 +1119,28 @@ class FileController
             Flight::halt(404, 'Shared file not found or expired');
         }
 
+        // Convert files to array for JSON serialization
+        $filesArray = array_map(function ($file) {
+            return [
+                'id' => $file->id,
+                'display_filename' => $file->display_filename,
+                'filename' => $file->filename,
+                'filesize' => $file->filesize,
+                'mimetype' => $file->mimetype,
+                'extension' => $file->extension,
+                'uploaded_at' => $file->uploaded_at,
+                'notes' => $file->notes,
+                'preview_status' => $file->preview_status ?? 'pending',
+                'video_preview_status' => $file->video_preview_status ?? 'pending',
+                'video_preview_filename' => $file->video_preview_filename,
+                'video_preview_poster_filename' => $file->video_preview_poster_filename,
+            ];
+        }, $files);
+
         Flight::render('batch-share.latte', [
             'batchToken' => $batchToken,
             'files' => $files,
+            'filesJson' => json_encode($filesArray),
             'isSingleFile' => $isSingleFile
         ]);
     }
@@ -1271,7 +1290,9 @@ class FileController
             Flight::halt(404, 'File not found');
         }
 
-        if (!Helper::can(FilePermission::VIEW, $file)) {
+        // Skip permission check if token is present (middleware already validated it)
+        $hasToken = isset(Flight::request()->query['token']);
+        if (!$hasToken && !Helper::can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -1367,7 +1388,9 @@ class FileController
             Flight::halt(404, 'File not found');
         }
 
-        if (!Helper::can(FilePermission::VIEW, $file)) {
+        // Skip permission check if token is present (middleware already validated it)
+        $hasToken = isset(Flight::request()->query['token']);
+        if (!$hasToken && !Helper::can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
 
@@ -1553,7 +1576,9 @@ class FileController
             Flight::halt(404, 'File not found');
         }
 
-        if (!Helper::can(FilePermission::VIEW, $file)) {
+        // Skip permission check if token is present (middleware already validated it)
+        $hasToken = isset(Flight::request()->query['token']);
+        if (!$hasToken && !Helper::can(FilePermission::VIEW, $file)) {
             Flight::halt(403, 'Forbidden');
         }
 

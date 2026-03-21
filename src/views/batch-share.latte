@@ -1,48 +1,130 @@
 {extends 'layout.latte'}
 
-{block title}Batch Shared Files{/block}
+{block title}Shared Files{/block}
 
 {block content}
 <div class="ui container">
     <div class="ui segment">
         <h1 class="ui header">
             <i class="files icon"></i>
-            Batch Shared Files
-            <div class="sub header">{count($files)} files{if $batchToken->expires_at} • Expires {$batchToken->expires_at|date:'Y-m-d H:i:s'}{/if}</div>
+            Shared Files
+            <div class="sub header">{count($files)} file(s){if $batchToken->expires_at} • Expires {$batchToken->expires_at|date:'Y-m-d H:i:s'}{/if}</div>
         </h1>
         {if $batchToken->expires_at}
         <div class="ui orange message">
             <i class="clock icon"></i>
-            This batch share expires on {$batchToken->expires_at|date:'Y-m-d H:i:s'}.
+            This share expires on {$batchToken->expires_at|date:'Y-m-d H:i:s'}.
         </div>
         {/if}
         <div class="ui divider"></div>
-        <div class="ui divided items">
-            {foreach $files as $file}
-            <div class="item">
-                <div class="ui image tiny">
-                    <img width="40" height="40" src="/assets/images/filetype-icons/{$file->extension}.png" alt="{$file->extension|upper:'FILE'}" />
-                </div>
-                <div class="content">
-                    <div class="header">{$file->display_filename}</div>
-                    <div class="meta">
-                        <span>{if $file->filesize < 1024}{$file->filesize} B{elseif $file->filesize < 1048576}{round($file->filesize / 1024, 1)} KB{elseif $file->filesize < 1073741824}{round($file->filesize / 1048576, 1)} MB{else}{round($file->filesize / 1073741824, 1)} GB{/if} • {$file->mimetype}</span>
-                        {if $file->notes}
-                        <div class="ui tiny header" style="margin-top: 0.5em;">Notes</div>
-                        <p>{$file->notes}</p>
-                        {/if}
-                        <span>Uploaded: {$file->uploaded_at}</span>
-                    </div>
-                    <div class="extra">
-                        <a class="ui primary labeled icon button" href="/files/{$file->id}?token={$batchToken->token}">
-                            <i class="download icon"></i>
-                            Download
-                        </a>
+    </div>
+</div>
+
+<div id="batch-share-container" data-files="{$filesJson|noescape}" data-token="{$batchToken->token|noescape}"></div>
+
+<script type="module" n:syntax="off">
+    import { html, render, useState, useEffect } from '/assets/preact/htm-standalone.mjs';
+
+    const container = document.getElementById('batch-share-container');
+    const files = JSON.parse(container.dataset.files);
+    const batchToken = container.dataset.token;
+
+    const readableSize = (size) => {
+        if (size < 1024) {
+            return `${size} bytes`;
+        } else if (size < 1024 * 1024) {
+            return `${(size / 1024).toFixed(2)} KB`;
+        } else if (size < 1024 * 1024 * 1024) {
+            return `${(size / 1024 / 1024).toFixed(2)} MB`;
+        } else {
+            return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+        }
+    };
+
+    const BatchShareList = ({ }) => {
+        const [modalOpen, setModalOpen] = useState(false);
+        const [previewFileData, setPreviewFileData] = useState(null);
+        const cacheBreak = Date.now();
+
+        const previewFile = (file) => {
+            setPreviewFileData(file);
+            setModalOpen(true);
+        };
+
+        return html`
+            <div class="ui container">
+                <div class="ui segment">
+                    <div class="ui divided items">
+                        ${files.map(file => html`
+                            <div class="ui item">
+                                <div class="ui tiny rounded image clickable raised" style="padding: 1em; align-self: center; min-width: 150px; min-height: 150px;" onClick=${() => previewFile(file)}>
+                                    <img src=${'/files/preview/' + file.id + '?token=' + batchToken + '&t=' + cacheBreak}
+                                         alt="Preview"
+                                         style="width: 150px; height: 150px; object-fit: cover;"
+                                    />
+                                </div>
+                                <div class="content">
+                                    <div class="header">${file.display_filename}</div>
+                                    <div class="meta">
+                                        <span>${readableSize(file.filesize)} • ${file.mimetype}</span>
+                                        ${file.notes ? html`<div class="ui tiny header" style="margin-top: 0.5em;">Notes</div><p>${file.notes}</p>` : ''}
+                                        <span>Uploaded: ${file.uploaded_at}</span>
+                                    </div>
+                                    <div class="extra">
+                                        <a class="ui primary labeled icon button" href=${'/files/' + file.id + '?token=' + batchToken}>
+                                            <i class="download icon"></i>
+                                            Download
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        `)}
+                        ${modalOpen && html`
+                            <div class="ui dimmer modals page transition visible active">
+                                <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; width: 90%; max-width: 900px;">
+                                    <div class="header">${previewFileData.display_filename}</div>
+                                    <div class="content" style="text-align: center;">
+                                        ${previewFileData.mimetype.startsWith('image/')
+                                        ? html`<img src=${'/files/stream/' + previewFileData.id + '?token=' + batchToken}
+                                                  style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;"
+                                            />`
+                                        : previewFileData.mimetype.startsWith('video/')
+                                        ? html`<video
+                                            src="${previewFileData.video_preview_status === 'completed' && previewFileData.video_preview_filename
+                                                ? '/files/video-preview/' + previewFileData.id + '?token=' + batchToken
+                                                : '/files/stream/' + previewFileData.id + '?token=' + batchToken}"
+                                            poster="${previewFileData.video_preview_status === 'completed' && previewFileData.video_preview_poster_filename
+                                                ? '/files/video-poster/' + previewFileData.id + '?token=' + batchToken
+                                                : ''}"
+                                            controls preload="metadata" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto;"
+                                        />`
+                                        : previewFileData.mimetype === 'application/pdf'
+                                        ? html`<iframe src=${'/files/stream/' + previewFileData.id + '?token=' + batchToken} style="width: 100%; height: 80vh; border: none; background: white;"></iframe>`
+                                        : html`<div class="ui message">
+                                            <p>Preview not available for this file type.</p>
+                                            <a class="ui button primary" href=${'/files/' + previewFileData.id + '?token=' + batchToken}>
+                                                <i class="download icon"></i>
+                                                Download to View
+                                            </a>
+                                        </div>`
+                                        }
+                                    </div>
+                                    <div class="actions">
+                                        <button class="ui button" onClick=${() => setModalOpen(false)}>Close</button>
+                                        <a class="ui primary labeled icon button" href=${'/files/' + previewFileData.id + '?token=' + batchToken}>
+                                            <i class="download icon"></i>
+                                            Download
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        `}
                     </div>
                 </div>
             </div>
-            {/foreach}
-        </div>
-    </div>
-</div>
+        `;
+    };
+
+    render(html`<${BatchShareList} />`, container);
+</script>
 {/block}
