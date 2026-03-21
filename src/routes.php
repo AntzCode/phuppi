@@ -310,7 +310,8 @@ if ($userCount < 1) {
                 return true;
             }
         }
-        Flight::halt(403, 'Invalid or expired token');
+        // Let the request pass through to the controller to render the error page with the phuppi layout
+        // instead of showing a plain white screen
     });
 
     /**
@@ -338,7 +339,8 @@ if ($userCount < 1) {
                 return;
             }
         }
-        Flight::halt(404, 'Invalid or expired token');
+        // Redirect to the unified endpoint which will show the error with the phuppi layout
+        Flight::redirect('/files/shared/' . $token, 302);
     });
 
     Flight::router()->group('/duplicates', function ($router) {

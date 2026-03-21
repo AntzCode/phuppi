@@ -43,7 +43,7 @@ class Helper
      */
     public static function getPhuppiVersion(): string
     {
-        return '2.2.3';
+        return '2.5.0';
     }
 
     /**

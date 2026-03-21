@@ -1115,8 +1115,9 @@ class FileController
             }
         }
 
-        if (!$batchToken || empty($files)) {
-            Flight::halt(404, 'Shared file not found or expired');
+        if(!$batchToken || empty($files)) {
+            Flight::render('batch-share-invalid-token.latte');
+            Flight::halt(404);
         }
 
         // Convert files to array for JSON serialization

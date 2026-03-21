@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-03-21
+### Added
+- Batch share thumbnails in file list - users can now see preview thumbnails when accessing batch shares via valid token
+- Preview modal for batch shares - clicking on a file thumbnail opens a modal showing image/video/PDF previews
+- Video playback support in batch share modal - uses transcoded video preview if available, falls back to original video
+- Token-based access fixes - resolved 403 errors when accessing previews via batch share tokens by skipping redundant permission checks in preview endpoints
+
+### Changed
+- Updated batch-share.latte to use Preact with htm-standalone for interactive file list with preview modal
+- Modified FileController to pass file metadata as JSON to batch-share template
+- Unified share endpoints: single file shares now reuse batch share view/functionality for consistent UX - both `/files/shared/@token` and `/files/batch/@token` now render the same batch-share.latte template
+
+### Fixed
+- Invalid share token error page now uses phuppi layout template - when accessing `/files/shared/{token}` with an invalid or expired token, users see a styled error page with the phuppi logo, navigation, and error message instead of a plain white screen with error message
+
 ## [2.2.3] - 2026-03-18
 ### Added
 - Record file transfer statistics for all ingress/egress data from data storage connectors
