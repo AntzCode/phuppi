@@ -105,6 +105,9 @@ class SettingsController
             case 'regenerate_all':
                 $this->regenerateAllPreviews();
                 break;
+            case 'regenerate_failed_previews':
+                $this->regenerateFailedPreviews();
+                break;
             case 'regenerate_all_video_previews':
                 $this->regenerateAllVideoPreviews();
                 break;
@@ -241,6 +244,56 @@ class SettingsController
         }
    
         Flight::json(['message' => "All previews reset and requeued. Created $jobCount preview jobs."]);
+    }
+
+    /**
+     * Regenerates failed previews.
+     *
+     * @return void
+     */
+    private function regenerateFailedPreviews(): void
+    {
+        $db = Flight::db();
+        $storage = Flight::storage();
+
+        // Get files with failed preview status (only 'failed', not 'not_supported')
+        $failedFilesStmt = $db->query('
+            SELECT uf.id, uf.preview_filename, u.username, v.voucher_code
+            FROM uploaded_files uf
+            LEFT JOIN users u ON uf.user_id = u.id
+            LEFT JOIN vouchers v ON uf.voucher_id = v.id
+            WHERE uf.preview_status = "failed"
+        ');
+
+        $failedCount = 0;
+        while ($row = $failedFilesStmt->fetch(\PDO::FETCH_ASSOC)) {
+            // Delete failed preview file from storage if it exists
+            if (!empty($row['preview_filename'])) {
+                $username = !empty($row['username']) ? $row['username'] : 'voucher_' . $row['voucher_code'];
+                $previewKey = $username . '/previews/' . $row['preview_filename'];
+                try {
+                    $storage->delete($previewKey);
+                } catch (\Exception $e) {
+                    Flight::logger()->warning("Failed to delete failed preview file $previewKey: " . $e->getMessage());
+                }
+            }
+
+            // Reset status to pending
+            $updateStmt = $db->prepare('UPDATE uploaded_files SET preview_filename = NULL, preview_status = "pending", preview_generated_at = NULL WHERE id = ?');
+            $updateStmt->execute([$row['id']]);
+
+            // Delete any existing failed jobs for this file
+            $deleteJobStmt = $db->prepare('DELETE FROM preview_jobs WHERE uploaded_file_id = ?');
+            $deleteJobStmt->execute([$row['id']]);
+
+            // Create new preview job
+            $queueManager = new \Phuppi\Queue\QueueManager();
+            $queueManager->createJob((int)$row['id']);
+
+            $failedCount++;
+        }
+
+        Flight::json(['message' => "Requeued $failedCount failed preview(s) for regeneration."]);
     }
 
     /**

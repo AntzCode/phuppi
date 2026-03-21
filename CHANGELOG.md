@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-03-21
+### Added
+- Advanced options for file upload - collapsible section with textarea for entering file notes. Notes are saved to the database and visible only to the file owner.
+- Per-file storage connector tracking - the system now records which storage connector (local, MinIO, S3, DO Spaces) was used when uploading each file. Preview generation now uses the correct connector for each file, fixing issues where preview generation failed after switching between storage connectors.
+- "Regenerate Failed Previews" button in Preview Settings - allows requeuing files that failed to render previews for retry
+- Skip unsupported file types from preview generation - audio files and other unsupported types are now automatically skipped during preview generation (marked as completed without attempting preview creation)
+
+### Fixed
+- Batch share modal file list now collapsible - on mobile devices with many selected files, the modal was unusable because the file list pushed the textarea and submit button off-screen. File list is now collapsed by default with toggle to show/hide, and has max-height with scroll.
+- File notes are now private - notes are no longer displayed on batch shared pages. Notes were being exposed to anyone with the share link, but they should only be visible to the file owner.
+- Notes list empty/500 error when importing notes from another server - added robust UTF-8 encoding detection and conversion in NoteController. Notes imported from databases with different character encoding (e.g., ISO-8859-1) now display correctly. Uses mb_check_encoding() to detect invalid UTF-8, then mb_convert_encoding() with ISO-8859-1 fallback, then iconv with //IGNORE as final fallback.
+
 ## [2.5.0] - 2026-03-21
 ### Added
 - Batch share thumbnails in file list - users can now see preview thumbnails when accessing batch shares via valid token

@@ -36,8 +36,33 @@ class QueueManager
     /**
      * Create preview job for file
      */
-    public static function createJob(int $fileId): PreviewJob
+    public static function createJob(int $fileId): ?PreviewJob
     {
+        $db = Flight::db();
+
+        // Check if file type is supported for preview generation
+        $stmt = $db->prepare('SELECT mimetype FROM uploaded_files WHERE id = ?');
+        $stmt->execute([$fileId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            Flight::logger()->warning("Cannot create preview job: file $fileId not found");
+            return null;
+        }
+
+        $mime = $row['mimetype'];
+        $isSupported = str_starts_with($mime, 'image/') ||
+                       str_starts_with($mime, 'video/') ||
+                       $mime === 'application/pdf';
+
+        if (!$isSupported) {
+            // File type not supported for preview - mark as completed (no preview will be generated)
+            $updateStmt = $db->prepare('UPDATE uploaded_files SET preview_status = "completed" WHERE id = ?');
+            $updateStmt->execute([$fileId]);
+            Flight::logger()->info("Skipped preview job for file $fileId: unsupported mime type $mime");
+            return null;
+        }
+
         $job = PreviewJob::createForFile($fileId);
         Flight::logger()->info("Created preview job {$job->id} for file $fileId");
         return $job;

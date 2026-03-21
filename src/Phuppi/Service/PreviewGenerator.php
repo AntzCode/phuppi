@@ -18,6 +18,7 @@ use Flight;
 use PDO;
 use Phuppi\UploadedFile;
 use Phuppi\Helper;
+use Phuppi\Storage\StorageFactory;
 use Phuppi\Service\TransferStats;
 use Exception;
 
@@ -92,7 +93,16 @@ class PreviewGenerator
             return false;
         }
 
-        $storage = Flight::storage();
+        // Use the storage connector that was used when the file was uploaded
+        // Fall back to active connector if storage_connector is not set (legacy files)
+        $connectorName = $file->storage_connector ?? StorageFactory::getActiveConnector();
+        try {
+            $storage = StorageFactory::createConnectorByName($connectorName);
+        } catch (\InvalidArgumentException $e) {
+            // Fall back to active connector if the stored connector is no longer available
+            Flight::logger()->warning("PreviewGenerator: Stored connector '$connectorName' not available, using active connector");
+            $storage = Flight::storage();
+        }
         $originalKey = $file->getUsername() . '/' . $file->filename;
         if (!$storage->exists($originalKey)) {
             Flight::logger()->error("PreviewGenerator: Original file not found $originalKey");
@@ -125,7 +135,6 @@ class PreviewGenerator
             } elseif ($mime === 'application/pdf') {
                 $tempPreview = $this->generatePdfPreview($tempOriginal);
             } else {
-            
                 throw new Exception('Unsupported mime type for preview: ' . $mime);
             }
 

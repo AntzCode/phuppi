@@ -247,7 +247,10 @@
     
         <div class="ui divider"></div>
         <h3>Preview Management</h3>
-        <button class="ui orange button" id="regenerateAllBtn">Regenerate All Previews</button>
+        <div class="ui buttons">
+            <button class="ui orange button" id="regenerateAllBtn">Regenerate All Previews</button>
+            <button class="ui red button" id="regenerateFailedBtn">Regenerate Failed Previews</button>
+        </div>
         <div id="previewActionResult" style="margin-top: 10px;"></div>
     </div>
 
@@ -908,14 +911,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Regenerate All Previews
     document.getElementById('regenerateAllBtn').addEventListener('click', function() {
         if (!confirm('Are you sure you want to regenerate all previews? This will queue all files for preview generation.')) return;
-        
+
         const resultDiv = document.getElementById('previewActionResult');
         this.disabled = true;
         this.textContent = 'Processing...';
-        
+
         const formData = new FormData();
         formData.append('action', 'regenerate_all');
-        
+
         fetch('/admin/settings/preview', {
             method: 'POST',
             body: formData
@@ -935,6 +938,39 @@ document.addEventListener('DOMContentLoaded', function() {
         .finally(() => {
             this.disabled = false;
             this.textContent = 'Regenerate All Previews';
+        });
+    });
+
+    // Regenerate Failed Previews
+    document.getElementById('regenerateFailedBtn').addEventListener('click', function() {
+        if (!confirm('Are you sure you want to regenerate failed previews? This will requeue files that failed to generate previews.')) return;
+
+        const resultDiv = document.getElementById('previewActionResult');
+        this.disabled = true;
+        this.textContent = 'Processing...';
+
+        const formData = new FormData();
+        formData.append('action', 'regenerate_failed_previews');
+
+        fetch('/admin/settings/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                resultDiv.innerHTML = '<div class="ui positive message"><div class="header">Success</div><p>' + data.message + '</p></div>';
+            } else if (data.error) {
+                resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>' + data.error + '</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Failed to regenerate failed previews</p></div>';
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.textContent = 'Regenerate Failed Previews';
         });
     });
 

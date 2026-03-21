@@ -577,6 +577,7 @@ class FileController
     public function uploadFile(): void
     {
         $uploads = Flight::request()->files['file'] ?? null;
+        $notes = Flight::request()->data['notes'] ?? null;
 
         if (!$uploads) {
             Flight::halt(400, 'No file uploaded');
@@ -623,7 +624,8 @@ class FileController
                     'mimetype' => $uploads['type'][$index],
                     'extension' => pathinfo($name, PATHINFO_EXTENSION),
                     'user_id' => $user->id ?? $voucher->user_id,
-                    'voucher_id' => $voucher->id ?: null
+                    'voucher_id' => $voucher->id ?: null,
+                    'notes' => $notes
                 ];
                 continue;
             }
@@ -643,6 +645,8 @@ class FileController
                 $file->filesize = $uploads['size'][$index];
                 $file->mimetype = $uploads['type'][$index];
                 $file->extension = pathinfo($name, PATHINFO_EXTENSION);
+                $file->notes = $notes;
+                $file->storage_connector = \Phuppi\Storage\StorageFactory::getActiveConnector();
 
                 if ($file->save()) {
                     // Record transfer stats for the upload
@@ -1121,6 +1125,7 @@ class FileController
         }
 
         // Convert files to array for JSON serialization
+        // Note: notes are NOT included - they are private for the owner only
         $filesArray = array_map(function ($file) {
             return [
                 'id' => $file->id,
@@ -1130,7 +1135,6 @@ class FileController
                 'mimetype' => $file->mimetype,
                 'extension' => $file->extension,
                 'uploaded_at' => $file->uploaded_at,
-                'notes' => $file->notes,
                 'preview_status' => $file->preview_status ?? 'pending',
                 'video_preview_status' => $file->video_preview_status ?? 'pending',
                 'video_preview_filename' => $file->video_preview_filename,
@@ -1226,12 +1230,13 @@ class FileController
     public function registerUploadedFile(): void
     {
         $data = Flight::request()->data;
-        
+
         $filename = $data->filename ?? null;
         $displayFilename = $data->display_filename ?? null;
         $filesize = $data->filesize ?? null;
         $mimetype = $data->mimetype ?? null;
         $extension = $data->extension ?? null;
+        $notes = $data->notes ?? null;
 
         if (!$filename || !$displayFilename || !$filesize || !$mimetype) {
             Flight::halt(400, 'Missing required fields');
@@ -1255,6 +1260,8 @@ class FileController
         $file->filesize = $filesize;
         $file->mimetype = $mimetype;
         $file->extension = $extension;
+        $file->notes = $notes;
+        $file->storage_connector = \Phuppi\Storage\StorageFactory::getActiveConnector();
 
         if ($file->save()) {
             // Record transfer stats for the upload

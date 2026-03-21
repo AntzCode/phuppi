@@ -77,10 +77,23 @@ class NoteController
         $totalPages = ceil($total / $limit);
 
         $noteData = array_map(function ($note) {
+            // Ensure content is valid UTF-8 to prevent JSON encoding errors
+            // Try multiple encodings commonly used when importing data
+            $content = $note->content;
+            if (!mb_check_encoding($content, 'UTF-8')) {
+                // Try ISO-8859-1 first
+                $converted = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+                if (mb_check_encoding($converted, 'UTF-8')) {
+                    $content = $converted;
+                } else {
+                    // Fallback: use iconv to force UTF-8, replacing invalid characters
+                    $content = iconv('ISO-8859-1', 'UTF-8//IGNORE', $content);
+                }
+            }
             return [
                 'id' => $note->id,
                 'filename' => $note->filename,
-                'content' => substr($note->content, 0, 100) . (strlen($note->content) > 100 ? '...' : ''),
+                'content' => mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '...' : ''),
                 'created_at' => $note->created_at,
                 'updated_at' => $note->updated_at
             ];
@@ -122,10 +135,23 @@ class NoteController
             }
         }
 
+        // Ensure content is valid UTF-8 to prevent JSON encoding errors
+        $content = $note->content;
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            // Try ISO-8859-1 first
+            $converted = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+            if (mb_check_encoding($converted, 'UTF-8')) {
+                $content = $converted;
+            } else {
+                // Fallback: use iconv to force UTF-8, replacing invalid characters
+                $content = iconv('ISO-8859-1', 'UTF-8//IGNORE', $content);
+            }
+        }
+
         Flight::json([
             'id' => $note->id,
             'filename' => $note->filename,
-            'content' => $note->content,
+            'content' => $content,
             'created_at' => $note->created_at,
             'updated_at' => $note->updated_at
         ]);

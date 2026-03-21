@@ -68,13 +68,17 @@ $userCan = [
         const [shareDuration, setShareDuration] = useState('1h');
         const [batchShareModalOpen, setBatchShareModalOpen] = useState(false);
         const [batchShareData, setBatchShareData] = useState([]);
+        const [batchShareListCollapsed, setBatchShareListCollapsed] = useState(true);
         const [batchShareUrl, setBatchShareUrl] = useState('');
         const [shortBatchShareUrl, setShortBatchShareUrl] = useState('');
         const [batchShareExpiresAt, setBatchShareExpiresAt] = useState(null);
         const [batchShareDuration, setBatchShareDuration] = useState('1h');
         const [tagModalOpen, setTagModalOpen] = useState(false);
         const [tagFiles, setTagFiles] = useState([]);
+        const [tagListCollapsed, setTagListCollapsed] = useState(true);
         const [commonNotes, setCommonNotes] = useState('');
+        const [uploadNotes, setUploadNotes] = useState('');
+        const [uploadAdvancedCollapsed, setUploadAdvancedCollapsed] = useState(true);
         const [sort, setSort] = useState(getCookie('filelist_sort') || 'date_newest');
         const [keyword, setKeyword] = useState('');
         const [page, setPage] = useState(1);
@@ -682,7 +686,8 @@ $userCan = [
                                         mimetype: presignedData.mimetype,
                                         extension: presignedData.extension,
                                         user_id: presignedData.user_id,
-                                        voucher_id: presignedData.voucher_id
+                                        voucher_id: presignedData.voucher_id,
+                                        notes: uploadNotes
                                     })
                                 }).then(regResponse => {
                                     if (regResponse.ok) {
@@ -703,6 +708,9 @@ $userCan = [
                         const xhr = new XMLHttpRequest();
                         const formData = new FormData();
                         formData.append('file', file);
+                        if (uploadNotes) {
+                            formData.append('notes', uploadNotes);
+                        }
                         xhr.open('POST', '/files');
 
                         xhr.upload.onprogress = (e) => {
@@ -737,9 +745,21 @@ $userCan = [
                         <div class="ui field stackable grid">
                             <label for="upload">Upload Files</label>
                             <input type="file" id="upload" multiple onchange=${handleFilePickerChange} />
-                            ${filepickerStats.total > 0 && html`<p>${filepickerStats.total} files, ${readableSize(filepickerStats.size)} 
+                            ${filepickerStats.total > 0 && html`<p>${filepickerStats.total} files, ${readableSize(filepickerStats.size)}
                             ${!uploading && html`<i class="red close icon clickable" style="margin-left: 0.25em" onClick=${clearFilePicker} title="Deselect"></i>`}
                         </p>`}
+                        </div>
+                        <div class="ui field" style="margin-top: 1em;">
+                            <a href="#" onClick=${(e) => { e.preventDefault(); setUploadAdvancedCollapsed(!uploadAdvancedCollapsed); }}>
+                                <i class="${uploadAdvancedCollapsed ? 'caret right' : 'caret down'} icon"></i>
+                                ${uploadAdvancedCollapsed ? 'Show' : 'Hide'} Advanced Options
+                            </a>
+                            <div style="display: ${uploadAdvancedCollapsed ? 'none' : 'block'}; margin-top: 0.5em;">
+                                <div class="ui field">
+                                    <label>Notes</label>
+                                    <textarea value=${uploadNotes} onChange=${(e) => setUploadNotes(e.target.value)} placeholder="Enter notes to apply to uploaded files"></textarea>
+                                </div>
+                            </div>
                         </div>
                         <div class="field" id="uploadFileProgressContainer" style="display: none;">
                             <div class="ui small progress green top attached" id="uploadOverallProgress" data-percent="0">
@@ -985,9 +1005,18 @@ $userCan = [
                     </div>
                 </div>`}
                 ${batchShareModalOpen && html`<div class="ui dimmer modals page transition visible active">
-                    <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+                    <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-height: 90vh; overflow-y: auto;">
                         <div class="header">Batch Share ${batchShareData.length} Files<i class="close icon clickable" style="float: right;" onClick=${() => { setBatchShareModalOpen(false); setBatchShareUrl(''); setBatchShareExpiresAt(null); }}></i></div>
                         <div class="content">
+                            <div class="ui field">
+                                <a href="#" onClick=${(e) => { e.preventDefault(); setBatchShareListCollapsed(!batchShareListCollapsed); }}>
+                                    <i class="${batchShareListCollapsed ? 'caret right' : 'caret down'} icon"></i>
+                                    ${batchShareListCollapsed ? 'Show' : 'Hide'} file list (${batchShareData.length} files)
+                                </a>
+                                <ul style="max-height: 150px; overflow-y: auto; display: ${batchShareListCollapsed ? 'none' : 'block'}; margin-top: 0.5em; padding-left: 1.5em;">
+                                    ${files.filter(f => batchShareData.includes(f.id)).map(file => html`<li style="word-break: break-all;">${file.display_filename}</li>`)}
+                                </ul>
+                            </div>
                             ${shortBatchShareUrl ? html`
                                 <div class="ui form">
                                     <div class="field">
@@ -1032,7 +1061,7 @@ $userCan = [
                     </div>
                 </div>`}
                 ${tagModalOpen && html`<div class="ui dimmer modals page transition visible active">
-                    <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+                    <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-height: 90vh; overflow-y: auto;">
                         <div class="header">Manage Notes for Selected Files</div>
                         <div class="content">
                             <div class="ui form">
@@ -1041,9 +1070,12 @@ $userCan = [
                                     <textarea value=${commonNotes} onChange=${(e) => setCommonNotes(e.target.value)} placeholder="Enter notes to apply to all selected files"></textarea>
                                 </div>
                                 <div class="field">
-                                    <label>Files</label>
-                                    <ul>
-                                        ${tagFiles.map(file => html`<li>${file.display_filename}</li>`)}
+                                    <a href="#" onClick=${(e) => { e.preventDefault(); setTagListCollapsed(!tagListCollapsed); }}>
+                                        <i class="${tagListCollapsed ? 'caret right' : 'caret down'} icon"></i>
+                                        ${tagListCollapsed ? 'Show' : 'Hide'} file list (${tagFiles.length} files)
+                                    </a>
+                                    <ul style="max-height: 150px; overflow-y: auto; display: ${tagListCollapsed ? 'none' : 'block'}; margin-top: 0.5em; padding-left: 1.5em;">
+                                        ${tagFiles.map(file => html`<li style="word-break: break-all;">${file.display_filename}</li>`)}
                                     </ul>
                                 </div>
                             </div>
