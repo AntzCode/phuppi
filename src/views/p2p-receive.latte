@@ -1,0 +1,382 @@
+{extends 'layout.latte'}
+
+{block title}P2P File Transfer{/block}
+
+{block content}
+<div class="ui container">
+    <div class="ui segment">
+        <h1 class="ui header">
+            <i class="download icon"></i>
+            <div class="content">
+                P2P File Transfer
+                <div class="sub header">Receive files directly from sender via P2P</div>
+            </div>
+        </h1>
+        
+        <div class="ui divider"></div>
+        
+        {if !$pinVerified}
+        <!-- PIN Entry Screen -->
+        <div id="pin-entry-section">
+            <div class="ui segment">
+                <h2 class="ui header">
+                    <i class="lock icon"></i>
+                    Enter Security PIN
+                </h2>
+                
+                <div class="ui yellow message">
+                    <i class="info icon"></i>
+                    Ask the sender for their PIN code
+                </div>
+                
+                <div class="ui form">
+                    <div class="field">
+                        <label>PIN (2 digits)</label>
+                        <input type="text" id="pin-input" maxlength="2" pattern="[0-9]{2}" placeholder="00" style="text-align: center; font-size: 2em; width: 100px;" />
+                    </div>
+                    
+                    <div id="pin-error" class="ui negative message" style="display: none;"></div>
+                    <div id="pin-locked" class="ui red message" style="display: none;"></div>
+                    
+                    <button id="verify-pin-btn" class="ui primary button">
+                        <i class="check icon"></i>
+                        Verify PIN
+                    </button>
+                </div>
+            </div>
+        </div>
+        {else}
+        <div id="pin-entry-section" style="display: none;">
+            <div class="ui segment"></div>
+        </div>
+        {/if}
+        
+        {if $pinVerified}
+        <div id="download-section">
+
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="wifi icon"></i>
+                    Connection Status
+                </h3>
+                <div id="connection-status" class="ui yellow message">
+                    <i class="loading spinner icon"></i>
+                    Connecting to sender...
+                </div>
+            </div>
+            
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="download icon"></i>
+                    Received Files
+                </h3>
+                <div id="received-files-list" class="ui list">
+                    <div class="item">
+                        <i class="info icon"></i>
+                        <div class="content">
+                            <div class="header">Waiting for files...</div>
+                            <div class="description">Files will appear here when received</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="files icon"></i>
+                    Files to Receive
+                </h3>
+                
+                <div class="ui divided list">
+                    {foreach $files as $file}
+                    <div class="item">
+                        <i class="file icon"></i>
+                        <div class="content">
+                            <div class="header">{$file['name']}</div>
+                            <div class="description">{$file['size']|format_bytes}</div>
+                        </div>
+                    </div>
+                    {/foreach}
+                </div>
+                
+                <div class="ui basic label">
+                    Total: {$totalSize|format_bytes}
+                </div>
+            </div>
+            
+        </div>
+        {/if}
+        
+    </div>
+</div>
+
+<div id="p2p-receive-data" 
+     data-token="{$token}" 
+     data-peerid="{$peerjsId}"
+     data-files="{$filesJson}"
+     data-pin-verified="{if $pinVerified}true{else}false{/if}">
+</div>
+
+<script src="/assets/peerjs/peerjs.min.js"></script>
+<script src="/assets/jszip/jszip.min.js"></script>
+<script src="/assets/filesaver/filesaver.min.js"></script>
+<script n:syntax="off">
+(function() {
+    
+    const dataEl = document.getElementById('p2p-receive-data');
+    if (!dataEl) {
+        console.error('p2p-receive-data element not found');
+        return;
+    }
+    
+    const token = dataEl.dataset.token;
+    const peerId = dataEl.dataset.peerid;
+    const files = JSON.parse(dataEl.dataset.files);
+    const pinVerified = dataEl.dataset.pinVerified === 'true';
+    
+    if (!pinVerified) {
+        // PIN verification logic
+        document.getElementById('verify-pin-btn').addEventListener('click', verifyPin);
+        document.getElementById('pin-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                verifyPin();
+            }
+        });
+        
+        function verifyPin() {
+            const pin = document.getElementById('pin-input').value;
+            const errorEl = document.getElementById('pin-error');
+            const lockedEl = document.getElementById('pin-locked');
+            const btn = document.getElementById('verify-pin-btn');
+            
+            errorEl.style.display = 'none';
+            lockedEl.style.display = 'none';
+            
+            if (pin.length !== 2 || !/^\d{2}$/.test(pin)) {
+                errorEl.textContent = 'Please enter a valid 2-digit PIN';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            btn.classList.add('loading');
+            btn.disabled = true;
+            
+            fetch('/api/p2p/' + token + '/verify-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ pin: pin })
+            })
+            .then(response => response.json())
+            .then(data => {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                
+                if (data.locked) {
+                    lockedEl.textContent = 'Too many failed attempts. Please try again later.';
+                    lockedEl.style.display = 'block';
+                } else if (data.valid) {
+                    // PIN correct - reload page to show download screen
+                    window.location.reload();
+                } else {
+                    errorEl.textContent = 'Incorrect PIN. ' + data.attemptsRemaining + ' attempts remaining.';
+                    errorEl.style.display = 'block';
+                    document.getElementById('pin-input').value = '';
+                    document.getElementById('pin-input').focus();
+                }
+            })
+            .catch(err => {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                errorEl.textContent = 'Error verifying PIN. Please try again.';
+                errorEl.style.display = 'block';
+            });
+        }
+    } else {
+        // P2P receive logic
+        initializeP2PReceive();
+    }
+    
+    function initializeP2PReceive() {
+        // Initialize PeerJS
+        const peer = new Peer(null, { debug: 2 });
+        
+        peer.on('open', function(id) {
+            
+            // Connect to sender
+            if (peerId) {
+                connectToSender(peerId);
+            } else {
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="info icon"></i> Waiting for sender to come online...';
+            }
+        });
+        
+        function connectToSender(senderId) {
+            const conn = peer.connect(senderId, { reliable: true });
+            
+            conn.on('open', function() {
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="check circle icon"></i> Connected! Receiving files...';
+                
+                // Request files
+                conn.send({ type: 'request-files' });
+            });
+            
+            conn.on('data', function(data) {
+                handleDataMessage(data, conn);
+            });
+            
+            conn.on('close', function() {
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="info circle icon"></i> Transfer complete!';
+            });
+            
+            conn.on('error', function(err) {
+                console.error('Connection error:', err);
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="exclamation circle icon"></i> Error: ' + err.message;
+            });
+        }
+        
+        peer.on('error', function(err) {
+            console.error('PeerJS error:', err);
+            if (err.type === 'peer-unavailable') {
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="info icon"></i> Sender is not online yet. Refresh to try again.';
+            } else {
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="exclamation circle icon"></i> Connection error. Please refresh.';
+            }
+        });
+        
+        // Store received file data
+        const receivedFiles = [];
+        
+        function handleDataMessage(data, conn) {
+            
+            if (data.type === 'file-start') {
+                // Start receiving a new file
+                receivedFiles.push({
+                    name: data.name,
+                    size: data.size,
+                    mimeType: data.mimeType,
+                    chunks: []
+                });
+                updateStatus('Receiving ' + data.name + '...');
+            }
+            else if (data.type === 'file-chunk') {
+                // Receive file chunk
+                const file = receivedFiles[receivedFiles.length - 1];
+                if (file) {
+                    // Decode base64
+                    const binary = atob(data.data);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    file.chunks.push(bytes);
+                    
+                    // Update progress
+                    const progress = Math.round((data.offset + data.data.length) / data.total * 100);
+                    updateStatus('Receiving ' + file.name + '... ' + progress + '%');
+                }
+            }
+            else if (data.type === 'file-complete') {
+                // File complete
+                updateStatus('Received ' + data.name);
+            }
+            else if (data.type === 'all-complete') {
+                // All files received
+                finishTransfer();
+            }
+        }
+        
+        function updateStatus(message) {
+            document.getElementById('connection-status').className = 'ui blue message';
+            document.getElementById('connection-status').innerHTML = 
+                '<i class="loading spinner icon"></i> ' + message;
+        }
+        
+        function finishTransfer() {
+            
+            document.getElementById('connection-status').className = 'ui green message';
+            document.getElementById('connection-status').innerHTML = 
+                '<i class="check circle icon"></i> All files received!';
+            
+            // Show received files
+            const listEl = document.getElementById('received-files-list');
+            listEl.innerHTML = '';
+            
+            if (receivedFiles.length === 0) {
+                listEl.innerHTML = '<div class="item"><div class="content"><div class="header">No files received</div><div class="description">The file list is empty - check console for errors</div></div></div>';
+                return;
+            }
+            
+            receivedFiles.forEach(file => {
+                
+                // Reconstruct file from chunks
+                const totalLength = file.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                const blob = new Blob(file.chunks, { type: file.mimeType });
+                
+                const item = document.createElement('div');
+                item.className = 'item';
+                item.innerHTML = `
+                    <i class="file icon"></i>
+                    <div class="content">
+                        <div class="header">${file.name}</div>
+                        <div class="description">${formatBytes(file.size)}</div>
+                        <button class="ui primary button" onclick="downloadFile('${file.name}', '${file.mimeType}')">
+                            <i class="download icon"></i>
+                            Download
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(item);
+                
+                // Store blob for download
+                file.blob = blob;
+            });
+            
+            // Add download all button
+            const downloadAllBtn = document.createElement('button');
+            downloadAllBtn.className = 'ui primary button';
+            downloadAllBtn.style.marginTop = '1em';
+            downloadAllBtn.innerHTML = '<i class="archive icon"></i> Download All as ZIP';
+            downloadAllBtn.onclick = function() {
+                const zip = new JSZip();
+                receivedFiles.forEach(file => {
+                    zip.file(file.name, file.blob);
+                });
+                
+                zip.generateAsync({ type: 'blob' }).then(function(content) {
+                    saveAs(content, 'shared-files.zip');
+                });
+            };
+            listEl.appendChild(downloadAllBtn);
+        }
+        
+        // Make downloadFile available globally
+        window.downloadFile = function(name, mimeType) {
+            const file = receivedFiles.find(f => f.name === name);
+            if (file && file.blob) {
+                saveAs(file.blob, name);
+            }
+        };
+        
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+            else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        }
+    }
+})();
+</script>
+{/block}

@@ -1,0 +1,488 @@
+{extends 'layout.latte'}
+
+{block title}P2P File Share{/block}
+
+{block content}
+<div class="ui container">
+    <div class="ui segment">
+        <h1 class="ui header">
+            <i class="share alternate icon"></i>
+            <div class="content">
+                P2P File Share
+            <div class="sub header">Share files directly between devices - no upload to server</div>
+            </div>
+        </h1>
+        
+        <div class="ui yellow message">
+            <i class="info icon"></i>
+            <strong>How it works:</strong> Select files from your device, then the recipient can download them directly from your browser via P2P connection.
+        </div>
+        
+        <div class="ui divider"></div>
+        
+        <div id="p2p-sender-app">
+            <!-- File Selection Section -->
+            <div id="file-selection-section">
+                <div class="ui segment">
+                    <h3 class="ui header">
+                        <i class="file icon"></i>
+                        Select Files
+                    </h3>
+                    
+                    <div class="ui form">
+                        <div class="field">
+                            <label>Choose files from your device:</label>
+                            <input type="file" id="file-input" multiple class="ui button" />
+                        </div>
+                    </div>
+                    
+                    <div id="selected-files-list" class="ui list" style="margin-top: 1em;"></div>
+                    
+                    <div class="ui segment" id="total-size" style="display: none;">
+                        <strong>Total: </strong><span id="total-size-value">0 bytes</span>
+                    </div>
+                    
+                    <button id="create-share-btn" class="ui primary button" style="margin-top: 1em;" disabled>
+                        <i class="share icon"></i>
+                        Create P2P Share
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Share Section (shown after creating share) -->
+            <div id="share-section" style="display: none;">
+
+                <div class="ui segment">
+                    <h3 class="ui header">
+                        <i class="wifi icon"></i>
+                        Connection Status
+                    </h3>
+                    <div id="connection-status" class="ui yellow message">
+                        <i class="loading spinner icon"></i>
+                        Waiting for recipient to connect...
+                    </div>
+                </div>
+                
+                <div class="ui grid">
+                    <div class="two column row">
+                        <div class="column">
+                            <div class="ui segment">
+                                <h3 class="ui header">
+                                    <i class="lock icon"></i>
+                                    Security PIN
+                                </h3>
+                                <div class="ui massive center aligned basic label" style="font-size: 3em; padding: 0.5em;" id="pin-display">
+                                    --
+                                </div>
+                                <p class="ui message">Tell this PIN to the recipient</p>
+                            </div>
+                        </div>
+                        
+                        <div class="column">
+                            <div class="ui segment">
+                                <h3 class="ui header">
+                                    <i class="qrcode icon"></i>
+                                    Scan to Connect
+                                </h3>
+                                <div id="qrcode-target" style="text-align: center; padding: 1em; min-height: 256px; min-width: 256px; background: #fff; border: 1px solid #ccc;"></div>
+                                <div id="qr-status" style="font-size: 0.8em; color: #666;">Generating QR...</div>
+                                <p class="ui message">Recipient scans this QR code</p>
+                            </div>
+                            
+                            <div class="ui segment">
+                                <h3 class="ui header">
+                                    <i class="linkify icon"></i>
+                                    Share Link
+                                </h3>
+                                <div class="ui action input" style="width: 100%;">
+                                    <input type="text" id="share-url" value="" readonly />
+                                    <button class="ui button" id="copy-url-btn">
+                                        <i class="copy icon"></i>
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="ui segment">
+                    <h3 class="ui header">
+                        <i class="files icon"></i>
+                        Files Being Shared
+                    </h3>
+                    <div id="shared-files-list" class="ui list"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="/assets/qrcode/qrcode.min.js"></script>
+<script>
+// Override canvas detection to force table-based rendering
+// This must be done BEFORE loading the QR library
+(function() {
+    var originalFunction = function() { return false; };
+    // Force table-based rendering by making canvas unavailable
+    window._forceTableQR = function() {
+        // Override the canvas detection after library loads
+        setTimeout(function() {
+            if (typeof QRCode !== 'undefined' && QRCode.prototype) {
+                // Force table rendering by patching
+                var originalDraw = QRCode.prototype.make;
+                if (originalDraw) {
+                    // The library will use table rendering automatically if canvas fails
+                }
+            }
+        }, 100);
+    };
+})();
+</script>
+<script src="/assets/peerjs/peerjs.min.js"></script>
+<script src="/assets/jszip/jszip.min.js"></script>
+<script n:syntax="off">
+(function() {
+    const fileInput = document.getElementById('file-input');
+    const selectedFilesList = document.getElementById('selected-files-list');
+    const totalSizeSection = document.getElementById('total-size');
+    const totalSizeValue = document.getElementById('total-size-value');
+    const createShareBtn = document.getElementById('create-share-btn');
+    const fileSelectionSection = document.getElementById('file-selection-section');
+    const shareSection = document.getElementById('share-section');
+    const pinDisplay = document.getElementById('pin-display');
+    const sharedFilesList = document.getElementById('shared-files-list');
+    const newShareBtn = document.getElementById('new-share-btn');
+    
+    let selectedFiles = [];
+    let peer = null;
+    let token = null;
+    let pin = null;
+    
+    // Format bytes
+    const formatBytes = (bytes) => {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+        else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    };
+    
+    // Handle file selection
+    fileInput.addEventListener('change', (e) => {
+        selectedFiles = Array.from(e.target.files);
+        renderSelectedFiles();
+    });
+    
+    function renderSelectedFiles() {
+        selectedFilesList.innerHTML = '';
+        
+        if (selectedFiles.length === 0) {
+            createShareBtn.disabled = true;
+            totalSizeSection.style.display = 'none';
+            return;
+        }
+        
+        let totalSize = 0;
+        
+        selectedFiles.forEach((file, index) => {
+            totalSize += file.size;
+            
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.innerHTML = `
+                <i class="file icon"></i>
+                <div class="content">
+                    <div class="header">${file.name}</div>
+                    <div class="description">${formatBytes(file.size)} - ${file.type || 'unknown type'}</div>
+                </div>
+            `;
+            selectedFilesList.appendChild(item);
+        });
+        
+        totalSizeValue.textContent = formatBytes(totalSize);
+        totalSizeSection.style.display = 'block';
+        createShareBtn.disabled = false;
+    }
+    
+    // Create P2P Share
+    createShareBtn.addEventListener('click', async () => {
+        if (selectedFiles.length === 0) return;
+        
+        // Prepare file metadata
+        const filesMetadata = selectedFiles.map(f => ({
+            name: f.name,
+            size: f.size,
+            type: f.type || 'application/octet-stream'
+        }));
+        
+        try {
+            const response = await fetch('/api/p2p/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ files: filesMetadata }),
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create share');
+            }
+            
+            const data = await response.json();
+            token = data.token;
+            pin = data.pin;
+            
+            // Show share section
+            showShareSection(data);
+            
+        } catch (error) {
+            alert('Error creating P2P share: ' + error.message);
+        }
+    });
+    
+    function showShareSection(data) {
+        fileSelectionSection.style.display = 'none';
+        shareSection.style.display = 'block';
+        
+        // Show PIN
+        pinDisplay.textContent = data.pin;
+        
+        // Render shared files
+        sharedFilesList.innerHTML = '';
+        let totalSize = 0;
+        
+        data.files.forEach(file => {
+            totalSize += file.size;
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.innerHTML = `
+                <i class="file icon"></i>
+                <div class="content">
+                    <div class="header">${file.name}</div>
+                    <div class="description">${formatBytes(file.size)}</div>
+                </div>
+            `;
+            sharedFilesList.appendChild(item);
+        });
+        
+        // Generate QR Code
+        const baseUrl = window.location.origin;
+        const shareUrl = baseUrl + '/p2p/' + data.shortcode;
+        
+        document.getElementById('share-url').value = shareUrl;
+        
+        // Store shortcode for QR fallback
+        window._shareShortcode = data.shortcode;
+        
+        const qrData = {
+            token: data.token,
+            type: 'phuppi_p2p',
+            version: 1,
+            peerId: '', // Will be filled after PeerJS connects
+            files: {
+                count: data.files.length,
+                totalSize: totalSize,
+                names: data.files.map(f => f.name)
+            }
+        };
+        
+        // Generate QR Code using table-based renderer
+        const qrContainer = document.getElementById('qrcode-target');
+        const qrStatus = document.getElementById('qr-status');
+        
+        if (!qrContainer) {
+            console.error('QR container not found');
+            if (qrStatus) qrStatus.textContent = 'Error: container not found';
+        } else {
+            // Clear container
+            qrContainer.innerHTML = '';
+            
+            // Create QR code with just the token
+            const qrText = token;
+            
+            try {
+                // First try table-based rendering approach
+                // Clear container
+                qrContainer.innerHTML = '';
+                
+                // Try using QRCode library with element reference
+                const qrcode = new QRCode(qrContainer, {
+                    text: qrText,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.L
+                });
+                
+                // Update status
+                if (qrStatus) qrStatus.textContent = 'QR generated!';
+
+                // Check what's rendered after a delay
+                setTimeout(function() {
+                    const table = qrContainer.querySelector('table');
+                    const canvas = qrContainer.querySelector('canvas');
+                    const img = qrContainer.querySelector('img');
+                    
+                    // If canvas is blank/white, try fallback
+                    if (canvas && !table) {
+                        const dataUrl = canvas.toDataURL();
+                        // Check if image is mostly white (blank)
+                        if (dataUrl && dataUrl.length < 5000) {
+                            // Canvas is blank - need fallback
+                            console.log('Error (unsupported browser): Canvas is blank, QR will show as link instead');
+                            qrContainer.innerHTML = '<div style="padding:20px; text-align:center; background:#f0f0f0; border:1px solid #ccc;">' +
+                                '<p style="margin:0 0 10px;">QR unavailable - use URL below</p>' +
+                                '<input type="text" value="' + window.location.origin + '/p2p/' + window._shareShortcode + '" ' +
+                                'style="width:100%; padding:8px; text-align:center;" readonly />' +
+                                '</div>';
+                        }
+                    }
+                }, 300);
+            } catch(e) {
+                console.error('Error creating QR:', e);
+                qrContainer.innerHTML = '<p style="color:red;">Error: ' + e.message + '</p>';
+                if (qrStatus) qrStatus.textContent = 'Error: ' + e.message;
+            }
+        }
+        
+        // Initialize PeerJS
+        initializePeerJS(data);
+    }
+    
+    function initializePeerJS(data) {
+        peer = new Peer(null, {
+            debug: 2
+        });
+        
+        peer.on('open', function(id) {
+            
+            // Update QR code with peer ID
+            const qrContainer = document.getElementById('qrcode-target');
+            const qrStatus = document.getElementById('qr-status');
+            if (qrContainer && typeof generateQRTable === 'function') {
+                qrContainer.innerHTML = '';
+                
+                // Use simple format: token plus peerId
+                const qrText = token + '|' + id;
+                
+                try {
+                    generateQRTable(qrContainer, qrText, 256);
+                    if (qrStatus) qrStatus.textContent = 'QR updated!';
+                } catch(e) {
+                    console.error('Error updating QR:', e);
+                }
+            }
+            
+            // Register peer ID with server
+            fetch('/api/p2p/' + data.token + '/connect', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ peerjs_id: id })
+            }).then(response => response.json())
+              .then(result => {
+                  console.log('Connected to server:', result);
+              });
+        });
+        
+        peer.on('connection', function(conn) {
+            
+            conn.on('open', function() {
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="check circle icon"></i> Recipient connected! Sending files...';
+                
+                // Send files via data channel
+                sendFiles(conn);
+            });
+            
+            conn.on('close', function() {
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="info circle icon"></i> Transfer complete!';
+            });
+        });
+        
+        peer.on('error', function(err) {
+            console.error('PeerJS error:', err);
+            document.getElementById('connection-status').className = 'ui red message';
+            document.getElementById('connection-status').innerHTML = 
+                '<i class="exclamation circle icon"></i> Connection error: ' + err.type;
+        });
+    }
+    
+    async function sendFiles(conn) {
+        const CHUNK_SIZE = 16 * 1024; // 16KB chunks
+        
+        for (const file of selectedFiles) {
+            // Send file metadata first
+            conn.send({
+                type: 'file-start',
+                name: file.name,
+                size: file.size,
+                mimeType: file.type
+            });
+            
+            // Read file and send in chunks
+            const arrayBuffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+            
+            for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+                const chunk = bytes.slice(offset, offset + CHUNK_SIZE);
+                
+                // Convert to base64 for transmission
+                let binary = '';
+                const chunkBytes = new Uint8Array(chunk);
+                for (let i = 0; i < chunkBytes.length; i++) {
+                    binary += String.fromCharCode(chunkBytes[i]);
+                }
+                const base64 = btoa(binary);
+                
+                conn.send({
+                    type: 'file-chunk',
+                    data: base64,
+                    offset: offset,
+                    total: bytes.length
+                });
+                
+                // Update progress
+                const progress = Math.round((offset + chunk.length) / bytes.length * 100);
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="loading spinner icon"></i> Sending ' + file.name + '... ' + progress + '%';
+            }
+            
+            // Send completion
+            conn.send({
+                type: 'file-complete',
+                name: file.name
+            });
+        }
+        
+        conn.send({ type: 'all-complete' });
+        
+        document.getElementById('connection-status').className = 'ui green message';
+        document.getElementById('connection-status').innerHTML = 
+            '<i class="check circle icon"></i> All files sent successfully!';
+    }
+    
+    // Copy URL functionality
+    document.getElementById('copy-url-btn').addEventListener('click', function() {
+        const urlInput = document.getElementById('share-url');
+        urlInput.select();
+        document.execCommand('copy');
+        this.innerHTML = '<i class="check icon"></i> Copied!';
+        setTimeout(() => {
+            this.innerHTML = '<i class="copy icon"></i> Copy';
+        }, 2000);
+    });
+    
+    // New share button
+    newShareBtn.addEventListener('click', () => {
+        location.reload();
+    });
+})();
+</script>
+{/block}

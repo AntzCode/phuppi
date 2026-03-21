@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-03-21
+### Added
+- P2P File Sharing via QR Code and Browser - new feature allowing direct file transfer between devices without uploading to the server
+  - Select files from your device and share directly with another person via WebRTC P2P connection
+  - QR code for easy connection establishment
+  - 2-digit PIN for MITM (Man-in-the-Middle) protection
+  - Sender creates share session with files, generates QR code and PIN
+  - Recipient scans QR code, enters PIN, receives files directly over WebRTC
+  - Uses PeerJS for WebRTC signaling
+  - All dependencies downloaded and hosted locally (no CDNs)
+  - Database migration: `p2p_shared_files` table for share tokens and metadata
+
 ## [2.5.1] - 2026-03-21
 ### Added
 - Advanced options for file upload - collapsible section with textarea for entering file notes. Notes are saved to the database and visible only to the file owner.

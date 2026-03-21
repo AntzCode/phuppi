@@ -24,4 +24,18 @@ https://github.com/php-fig/log/archive/refs/tags/3.0.2.zip
 On 2025-12-31
 https://esm.sh/htm@3.1.1/es2022/preact/standalone.mjs
 
+## P2P File Sharing Dependencies
+On 2026-03-21
+
+### QRCode.js (QR Code Generation)
+https://github.com/davidshimjs/qrcodejs/zipball/master
+
+### JSZip (ZIP file creation)
+https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
+
+### FileSaver.js (File saving)
+https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js
+
+### PeerJS (WebRTC signaling)
+https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js
 

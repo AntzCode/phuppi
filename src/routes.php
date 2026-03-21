@@ -22,6 +22,7 @@ use Phuppi\Controllers\SettingsController;
 use Phuppi\Controllers\UserSettingsController;
 use Phuppi\Controllers\ShortLinkController;
 use Phuppi\Controllers\QueueController;
+use Phuppi\Controllers\P2PController;
 
 use Phuppi\Helper;
 use Phuppi\Note;
@@ -434,6 +435,16 @@ if ($userCount < 1) {
             ]);
         });
     }
+
+    // P2P File Sharing routes
+    Flight::route('GET /p2p', [P2PController::class, 'index'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/create', [P2PController::class, 'create'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p/@token', [P2PController::class, 'show']);
+    Flight::route('GET /p2p/sender/@shortcode', [P2PController::class, 'showSenderPage']);
+    Flight::route('GET /p2p/@shortcode', [P2PController::class, 'showPage']);
+    Flight::route('DELETE /api/p2p/@token', [P2PController::class, 'delete'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/@token/verify-pin', [P2PController::class, 'verifyPin']);
+    Flight::route('POST /api/p2p/@token/connect', [P2PController::class, 'connect']);
 
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);
