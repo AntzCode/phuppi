@@ -1,6 +1,8 @@
 # 🚀 Phuppi 2.0
 
-The PHP file-uppie thingy so you can share files and notes. Keep your data safe and accessible with top-notch security, passwords, vouchers and tokens. 
+A PHP file-uppie thingy. Share your files and notes easily. Keep your data safe with top-notch security. 
+
+– new feature: **mind-blowing P2P file sharing**!! transfer files directly between devices on the same network or hotspot - no need to install apps!
 
 ![Preview of Phuppi file uploader](./assets/screenshots/preview.png)
 
@@ -41,6 +43,7 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 - Local filesystem storage or S3-compatible API support [(↗️ screenshot)](./assets/screenshots/active-storage-connector.png)
 - Docker-ready configuration for dev & prod
 - Automatic preview thumbnails for files (images, videos, documents) with configurable background queue processing (CLI worker or AJAX for shared hosting) [(↗️ screenshot)](./assets/screenshots/preview.png)
+- P2P File Sharing – Share via QR code or URL, files flow straight from sender to receiver!
 
 ## ☁️ Supported Cloud Storage Providers
 

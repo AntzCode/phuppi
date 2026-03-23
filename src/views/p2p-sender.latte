@@ -3,134 +3,152 @@
 {block title}P2P File Share{/block}
 
 {block content}
-<div class="ui container">
-    <div class="ui segment">
-        <h1 class="ui header">
-            <i class="share alternate icon"></i>
-            <div class="content">
-                P2P File Share
-            <div class="sub header">Share files directly between devices - no upload to server</div>
-            </div>
-        </h1>
-        
-        <div class="ui yellow message">
-            <i class="info icon"></i>
-            <strong>How it works:</strong> Select files from your device, then the recipient can download them directly from your browser via P2P connection.
-        </div>
-        
-        <div class="ui divider"></div>
-        
-        <div id="p2p-sender-app">
-            <!-- File Selection Section -->
-            <div id="file-selection-section">
-                <div class="ui segment">
-                    <h3 class="ui header">
+
+<h1 class="ui header">
+    <i class="share alternate icon"></i>
+    <div class="content">
+        P2P File Share
+    </div>
+</h1>
+<div class="sub header">Share files directly between devices - no upload to server</div>
+<div class="ui yellow message" id="opfs-warning" style="display: none;">
+    <i class="exclamation triangle icon"></i>
+    <strong>Limited Persistence:</strong> Your browser doesn't support OPFS. Files will be lost if you refresh the page. Keep this tab open to complete the transfer.
+</div>
+
+<div class="ui yellow message">
+    <i class="info icon"></i>
+    <strong>How it works:</strong> Select files from your device, then the recipient can download them directly from your browser via P2P connection.
+</div>
+
+<div id="p2p-sender-app">
+    <!-- Session List Section (shown when there are existing sessions) -->
+
+    <!-- File Selection Section -->
+    <div id="file-selection-section">
+        <div class="ui segment">
+            <h3 class="ui header">
+                Select Files to Share
+            </h3>
+            
+            <div class="ui form">
+                <div class="field">
+                    <label id="file-input-label" for="file-input" class="ui button primary">
                         <i class="file icon"></i>
-                        Select Files
-                    </h3>
-                    
-                    <div class="ui form">
-                        <div class="field">
-                            <label>Choose files from your device:</label>
-                            <input type="file" id="file-input" multiple class="ui button" />
-                        </div>
-                    </div>
-                    
-                    <div id="selected-files-list" class="ui list" style="margin-top: 1em;"></div>
-                    
-                    <div class="ui segment" id="total-size" style="display: none;">
-                        <strong>Total: </strong><span id="total-size-value">0 bytes</span>
-                    </div>
-                    
-                    <button id="create-share-btn" class="ui primary button" style="margin-top: 1em;" disabled>
-                        <i class="share icon"></i>
-                        Create P2P Share
-                    </button>
+                        Choose Files
+                    </label>
+                    <input type="file" id="file-input" multiple style="display: none;" />
                 </div>
+
+                
             </div>
             
-            <!-- Share Section (shown after creating share) -->
-            <div id="share-section" style="display: none;">
-
-                <div class="ui segment">
-                    <h3 class="ui header">
-                        <i class="wifi icon"></i>
-                        Connection Status
-                    </h3>
-                    <div id="connection-status" class="ui yellow message">
-                        <i class="loading spinner icon"></i>
-                        Waiting for recipient to connect...
-                    </div>
-                </div>
+            <div class="ui segment" id="total-size" style="display: none;">
+                <div id="selected-files-list" class="ui divided very relaxed list" style="margin-top: 1em;"></div>
                 
-                <div class="ui grid">
-                    <div class="two column row">
-                        <div class="column">
-                            <div class="ui segment">
-                                <h3 class="ui header">
-                                    <i class="lock icon"></i>
-                                    Security PIN
-                                </h3>
-                                <div class="ui massive center aligned basic label" style="font-size: 3em; padding: 0.5em;" id="pin-display">
-                                    --
-                                </div>
-                                <p class="ui message">Tell this PIN to the recipient</p>
-                            </div>
-                        </div>
-                        
-                        <div class="column">
-                            <div class="ui segment">
-                                <h3 class="ui header">
-                                    <i class="qrcode icon"></i>
-                                    Scan to Connect
-                                </h3>
-                                <div id="qrcode-target" style="text-align: center; padding: 1em; min-height: 256px; min-width: 256px; background: #fff; border: 1px solid #ccc;"></div>
-                                <div id="qr-status" style="font-size: 0.8em; color: #666;">Generating QR...</div>
-                                <p class="ui message">Recipient scans this QR code</p>
-                            </div>
-                            
-                            <div class="ui segment">
-                                <h3 class="ui header">
-                                    <i class="linkify icon"></i>
-                                    Share Link
-                                </h3>
-                                <div class="ui action input" style="width: 100%;">
-                                    <input type="text" id="share-url" value="" readonly />
-                                    <button class="ui button" id="copy-url-btn">
-                                        <i class="copy icon"></i>
-                                        Copy
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
                 
-                <div class="ui segment">
-                    <h3 class="ui header">
-                        <i class="files icon"></i>
-                        Files Being Shared
-                    </h3>
-                    <div id="shared-files-list" class="ui list"></div>
+                <div class="ui right aligned header">
+                    <strong>Total: </strong><span id="total-size-value">0 bytes</span>
+                    <button id="clear-files-btn" class="ui red button clickable" style="margin-left: auto; margin-right: 0; display: none;" disabled>
+                        <i class="trash icon"></i>
+                        Clear Selected Files
+                    </button>
+                </div>
+                <div class="ui right aligned container">
+                    
                 </div>
             </div>
-        </div>
 
+            <div id="storage-progress-container" class="ui segment" style="display: none;">
+                <div class="ui progress" id="storage-progress">
+                    <div class="bar" style="width: 0%; transition: width 0.3s;">
+                        <div class="progress-text">Preparing files...</div>
+                    </div>
+                    <div class="label">Storing files for transfer</div>
+                </div>
+            </div>
+
+            <div class="ui center aligned container">
+                <button id="create-share-btn" class="ui primary button" style="margin: auto; margin-top: 1em; display: none" disabled>
+                    <i class="share icon"></i>
+                    Create P2P Share
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="session-list-section" class="ui container segment" style="margin: 1em 0;">
+        <h3 class="ui header">
+            Active Sessions
+        </h3>
+        <div class="ui very relaxed divided list segment" id="sessions-container">
+            {if count($sessions) == 0}<div class="ui message">No active sessions</div>{/if}
+        </div>
+    </div>
+
+    <!-- Share Section (shown after creating share) -->
+    <div id="share-section" style="display: none;">
+
+            <div id="connection-status" class="ui yellow message">
+                <i class="loading spinner icon"></i>
+                Waiting for recipient to connect...
+            </div>
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="lock icon"></i>
+                    Security PIN
+                </h3>
+                <p class="subheading">Tell this PIN to the recipient</p>
+                <div class="ui massive center aligned basic label" style="margin: auto; font-size: 3em; padding: 0.5em;" id="pin-display">
+                    --
+                </div>
+            </div>
+
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="linkify icon"></i>
+                    Share Link
+                </h3>
+                <p>Copy this link and send it to the recipient</p>
+                <div class="ui action input" style="width: 100%;">
+                    <input type="text" id="share-url" value="" readonly />
+                    <button class="ui button" id="copy-url-btn">
+                        <i class="copy icon"></i>
+                        Copy
+                    </button>
+                </div>
+
+                <div class="ui centered horizontal divider">or</div>
+                
+                <h3 class="ui header">
+                    <i class="qrcode icon"></i>
+                    Scan to Connect
+                </h3>
+                <p class="subheading">Recipient scans this QR code</p>
+                <div id="qrcode-target" style="text-align: left; padding: 1em; min-height: 256px; min-width: 256px; max-width: 512px; background: #fff;"></div>
+                
+            </div>
+                
+                
+        
+        <div class="ui segment">
+            <h3 class="ui header">
+                <i class="file icon"></i>
+                Files Being Shared
+            </h3>
+            <div id="shared-files-list" class="ui divided list"></div>
+        </div>
     </div>
 </div>
 
 <script src="/assets/qrcode/qrcode.min.js"></script>
 <script>
 // Override canvas detection to force table-based rendering
-// This must be done BEFORE loading the QR library
 (function() {
     var originalFunction = function() { return false; };
-    // Force table-based rendering by making canvas unavailable
     window._forceTableQR = function() {
-        // Override the canvas detection after library loads
         setTimeout(function() {
             if (typeof QRCode !== 'undefined' && QRCode.prototype) {
-                // Force table rendering by patching
                 var originalDraw = QRCode.prototype.make;
                 if (originalDraw) {
                     // The library will use table rendering automatically if canvas fails
@@ -142,25 +160,753 @@
 </script>
 <script src="/assets/peerjs/peerjs.min.js"></script>
 <script src="/assets/jszip/jszip.min.js"></script>
+<script src="/assets/p2p-chunk-storage.js"></script>
+<script>
+    // Pass sessions data from PHP
+    var initialSessionData = {$sessionsJson};
+</script>
 <script n:syntax="off">
 (function() {
+    
+    var initialSessions = JSON.parse(initialSessionData);
+
     const fileInput = document.getElementById('file-input');
+    const fileInputLabel = document.getElementById('file-input-label');
     const selectedFilesList = document.getElementById('selected-files-list');
     const totalSizeSection = document.getElementById('total-size');
     const totalSizeValue = document.getElementById('total-size-value');
     const createShareBtn = document.getElementById('create-share-btn');
     const fileSelectionSection = document.getElementById('file-selection-section');
     const shareSection = document.getElementById('share-section');
+    const sessionListSection = document.getElementById('session-list-section');
+    const sessionsContainer = document.getElementById('sessions-container');
     const pinDisplay = document.getElementById('pin-display');
     const sharedFilesList = document.getElementById('shared-files-list');
-    const newShareBtn = document.getElementById('new-share-btn');
     
     let selectedFiles = [];
     let peer = null;
     let token = null;
     let pin = null;
+    let shortcode = null;
+    let currentPeerId = null;
+    let sessions = initialSessions || [];
+    let opfsAvailable = false; // Track OPFS availability
     
-    // Format bytes
+    // OPFS Manager - handles Origin Private File System for file persistence
+    const OPFSManager = {
+        // Check if OPFS is available and initialize
+        init: async function() {
+            opfsAvailable = await P2PChunkStorage.isOPFSAvailable();
+            
+            // Show/hide warning based on OPFS availability
+            const opfsWarning = document.getElementById('opfs-warning');
+            if (opfsWarning) {
+                opfsWarning.style.display = opfsAvailable ? 'none' : 'block';
+            }
+            
+            return opfsAvailable;
+        },
+        
+        // Store files in OPFS when selected
+        storeFiles: async function(files) {
+            if (!opfsAvailable) {
+                return false;
+            }
+            
+            try {
+                for (const file of files) {
+                    // Generate fileId (same as used in sendFiles)
+                    const fileId = btoa(file.name + ':' + file.size + ':' + file.lastModified);
+                    
+                    // Store file in OPFS
+                    await P2PChunkStorage.storeFileInOPFS(fileId, file);
+                    
+                    // Save metadata to IndexedDB
+                    await P2PChunkStorage.saveSenderFileMetadata({
+                        fileId: fileId,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type || 'application/octet-stream',
+                        lastModified: file.lastModified
+                    });
+                    
+                }
+                return true;
+            } catch (e) {
+                return false;
+            }
+        },
+        
+        // Restore files from OPFS on page load
+        restoreFiles: async function() {
+            if (!opfsAvailable) {
+                return [];
+            }
+            
+            try {
+                const restoredFiles = await P2PChunkStorage.restoreSenderFiles();
+                return restoredFiles;
+            } catch (e) {
+                return [];
+            }
+        },
+        
+        // Clean up OPFS files and metadata
+        cleanup: async function() {
+            if (!opfsAvailable) {
+                return;
+            }
+            
+            try {
+                await P2PChunkStorage.cleanupSenderFiles();
+            } catch (e) {
+                console.error('Error cleaning up OPFS:', e);
+            }
+        }
+    };
+    
+    // Session Manager - handles multiple sessions and connections
+    const SessionManager = {
+        peerConnections: {},
+        
+        // Initialize session list and try to restore files from OPFS
+        init: async function() {
+            // Initialize OPFS
+            await OPFSManager.init();
+            
+            // Try to restore files from OPFS
+            const restoredFiles = await OPFSManager.restoreFiles();
+            if (restoredFiles.length > 0) {
+                // Restore the files to selectedFiles array
+                selectedFiles = restoredFiles;
+                renderSelectedFiles();
+            }
+            
+            this.renderSessions();
+            this.bindEvents();
+        },
+        
+        // Render session list
+        renderSessions: function() {
+            if (!sessionsContainer) return;
+
+            sessionsContainer.innerHTML = '';
+
+            if (sessions.length === 0) {
+                sessionsContainer.innerHTML = '<div class="ui message" style="margin: 1em 0;">No active sessions</div>';
+                return;
+            }
+
+            sessions.forEach(session => {
+                const item = document.createElement('div');
+                item.className = 'item session-item';
+                item.dataset.token = session.token;
+                item.dataset.shortcode = session.shortcode;
+                item.dataset.pin = session.pin;
+                item.dataset.peerjsid = session.peerjsId || '';
+
+                const connectionStatus = session.connectionCount > 0
+                    ? '<span class="ui green label">' + session.connectionCount + ' recipient(s)</span>'
+                    : '<span class="ui grey label">Waiting for connection</span>';
+
+                item.innerHTML = `
+                    <i class="large file middle aligned icon"></i>
+                    <div class="content">
+                        <div class="ui stackable grid">
+                            <div class="eleven wide column">
+                                <div class="header">
+                                    ${session.fileCount} file(s) - ${this.formatBytes(session.totalSize)} 
+                                </div>
+                                <div class="description">
+                                    <span class="ui label">PIN: ${session.pin}</span>
+                                    ${connectionStatus}
+                                </div>
+                            </div>
+                            <div class="five wide column center aligned">
+                                <div class="ui grid" style="padding: 0;">
+                                    <button class="ui primary button view-session-btn eight wide column" style="margin: 1em 0;" data-token="${session.token}">
+                                        <i class="eye icon"></i> View
+                                    </button>
+                                    <button class="ui red button cancel-session-btn eight wide column" style="margin: 1em 0;" data-token="${session.token}">
+                                        <i class="trash icon"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                `;
+
+                sessionsContainer.appendChild(item);
+            });
+
+            this.bindEvents();
+        },
+        
+        // Bind event listeners to session cards
+        bindEvents: function() {
+            // View session buttons - warn if no files selected
+            document.querySelectorAll('.view-session-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const token = btn.dataset.token;
+                    
+                    // Check if we have files selected - warn user if not
+                    if (selectedFiles.length === 0) {
+                        if (!confirm('Warning: No files are currently selected. The sender page must remain open with files selected to transfer files. Continue anyway?')) {
+                            return;
+                        }
+                    }
+                    
+                    this.loadSession(token);
+                };
+            });
+            
+            // Cancel session buttons
+            document.querySelectorAll('.cancel-session-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    if (confirm('Are you sure you want to cancel this session?')) {
+                        await this.cancelSession(btn.dataset.token);
+                    }
+                };
+            });
+        },
+        
+        // Load a specific session
+        loadSession: function(sessionToken) {
+            const session = sessions.find(s => s.token === sessionToken);
+            if (!session) return;
+            
+            token = session.token;
+            pin = session.pin;
+            shortcode = session.shortcode;
+            currentPeerId = session.peerjsId || null;
+            
+            // Show share section
+            this.showShareSection(session);
+            
+            // Initialize PeerJS for this session
+            this.initializePeerJS(session);
+        },
+        
+        // Show share section with session data
+        showShareSection: function(session) {
+            fileSelectionSection.style.display = 'none';
+            sessionListSection.style.display = 'none';
+            shareSection.style.display = 'block';
+            
+            // Show PIN
+            pinDisplay.textContent = session.pin;
+            
+            // Render shared files
+            sharedFilesList.innerHTML = '';
+            session.files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'item';
+                item.innerHTML = `
+                    <i class="file icon"></i>
+                    <div class="content">
+                        <div class="header">${file.name}</div>
+                        <div class="description">${this.formatBytes(file.size)}</div>
+                    </div>
+                `;
+                sharedFilesList.appendChild(item);
+            });
+            
+            // Generate QR Code
+            const baseUrl = window.location.origin;
+            const shareUrl = baseUrl + '/p2p/' + session.shortcode;
+            
+            document.getElementById('share-url').value = shareUrl;
+            
+            this.generateQRCode(shareUrl);
+        },
+        
+        // Generate QR code
+        generateQRCode: function(url) {
+            const qrContainer = document.getElementById('qrcode-target');
+            const qrStatus = document.getElementById('qr-status');
+            
+            if (!qrContainer) return;
+            
+            qrContainer.innerHTML = '';
+            
+            try {
+                const qrcode = new QRCode(qrContainer, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.L
+                });
+                
+                if (qrStatus) qrStatus.textContent = 'QR generated!';
+            } catch(e) {
+                console.error('Error creating QR:', e);
+                if (qrStatus) qrStatus.textContent = 'Error: ' + e.message;
+            }
+        },
+        
+        // Initialize PeerJS for the session
+        initializePeerJS: function(session) {
+            // Clean up existing peer
+            if (peer) {
+                try {
+                    peer.destroy();
+                } catch (e) {}
+            }
+            
+            // Create peer with named ID based on shortcode and token
+            const peerId = session.shortcode + '-' + session.token.substring(0, 8);
+            
+            // Configure ICE servers for better NAT/firewall traversal
+            // Note: TURN requires credentials - for mobile/CGNAT you need to deploy a TURN server
+            const iceServers = [
+                // STUN servers for IP discovery
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                { urls: 'stun:stun.stunprotocol.org:3478' }
+            ];
+
+            peer = new Peer(peerId, {
+                debug: 2,
+                config: {
+                    iceServers: iceServers,
+                    iceCandidatePoolSize: 10
+                }
+            });
+            
+            peer.on('open', (id) => {
+                currentPeerId = id;
+                
+                // Update status
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="wifi icon"></i> Ready! Waiting for recipient to connect...';
+                
+                // Register peer ID with server
+                this.registerPeerId(session.token, id);
+            });
+            
+            peer.on('connection', (conn) => {
+                this.handleNewConnection(conn, session);
+            });
+            
+            peer.on('error', (err) => {
+                
+                if (err.type === 'peer-unavailable') {
+                    // Normal when no one is connected yet
+                } else if (err.type === 'unavailable-id') {
+                    // Peer ID in use, try to reconnect
+                    document.getElementById('connection-status').className = 'ui yellow message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="loading spinner icon"></i> Reconnecting...';
+                    setTimeout(() => {
+                        if (peer && !peer.disconnected) peer.reconnect();
+                    }, 1000);
+                } else if (err.type === 'disconnected') {
+                    document.getElementById('connection-status').className = 'ui yellow message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="loading spinner icon"></i> Reconnecting...';
+                    peer.reconnect();
+                } else {
+                    document.getElementById('connection-status').className = 'ui red message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="exclamation circle icon"></i> Error: ' + err.type;
+                }
+            });
+            
+            peer.on('disconnected', () => {
+                console.log('[SENDER] PeerJS disconnected, attempting to reconnect...');
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="loading spinner icon"></i> Reconnecting...';
+                if (peer && !peer.disconnected) {
+                    peer.reconnect();
+                }
+            });
+            
+            // Note: peer.on('open') will re-register the peer ID after reconnection
+            // No need for separate reconnected handler
+        },
+        
+        // Register peer ID with server
+        registerPeerId: async function(token, peerId) {
+            try {
+                const response = await fetch('/api/p2p/' + token + '/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerjs_id: peerId })
+                });
+                const result = await response.json();
+            } catch (err) {
+                console.error('Error registering peer ID:', err);
+            }
+        },
+        
+        // Handle new incoming connection from recipient
+        handleNewConnection: function(conn, session) {
+            const connId = conn.peer;
+            console.log('New connection from:', connId);
+            
+            // Register connection with server
+            this.registerConnection(session.token, connId);
+            
+            // Initialize resume map for this connection
+            // This map tracks which chunks have been received by the recipient
+            let p2pResumeMap = null;
+            
+            let connOpen = false;
+            
+            // Handle incoming messages from recipient
+            conn.on('data', (message) => {
+                // Handle resume-request message from recipient
+                // This allows recipients to request resumption of interrupted transfers
+                if (message.type === 'resume-request') {
+                    
+                    // Build resume map: { fileId: Set(receivedChunkIndices) }
+                    const resumeMap = {};
+                    for (const fileInfo of message.files) {
+                        resumeMap[fileInfo.fileId] = new Set(fileInfo.receivedChunks);
+                    }
+                    
+                    // Store this for use during sending
+                    // This will be checked in sendFiles to skip already-sent chunks
+                    p2pResumeMap = resumeMap;
+                    
+                }
+
+                if(message.type === 'request-files') {
+                    const completedFileIds = message.completedFileIds ?? [];
+
+                    document.getElementById('connection-status').className = 'ui green message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="check circle icon"></i> Recipient connected! Sending files...';
+
+                    // Send files to this recipient, passing the connection for resume map access
+                    this.sendFiles(conn, session.files, p2pResumeMap, completedFileIds);
+                }
+
+
+            });
+            
+            conn.on('open', () => {
+                connOpen = true;
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="check circle icon"></i> Recipient connected!';
+                
+                this.peerConnections[connId] = conn;
+
+            });
+            
+            conn.on('close', () => {
+                connOpen = false;
+                this.peerConnections[connId] = null;
+                document.getElementById('connection-status').className = 'ui yellow message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="info circle icon"></i> Transfer complete! Waiting for new recipient...';
+                
+                this.unregisterConnection(session.token, connId);
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Connection error:', err);
+                connOpen = false;
+            });
+        },
+        
+        // Register connection with server
+        registerConnection: async function(token, peerId) {
+            try {
+                await fetch('/api/p2p/' + token + '/connections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ recipient_peerjs_id: peerId })
+                });
+            } catch (err) {
+                console.error('Error registering connection:', err);
+            }
+        },
+        
+        // Unregister connection from server
+        unregisterConnection: async function(token, connId) {
+            // We would need to track connection IDs - simplified for now
+        },
+        
+        // Store files in sessionStorage for persistence across page refreshes
+        // Note: File objects can't be stored, but we can re-prompt or use alternative
+        saveSelectedFiles: function() {
+            // Store file metadata only (not actual File objects which can't be serialized)
+            const fileMetadata = selectedFiles.map(f => ({
+                name: f.name,
+                size: f.size,
+                type: f.type
+            }));
+            try {
+                sessionStorage.setItem('p2p_selected_files', JSON.stringify(fileMetadata));
+            } catch (e) {
+                console.warn('Could not save files to sessionStorage');
+            }
+        },
+        
+        // Load files from session storage - returns metadata, user must re-select files
+        loadSelectedFiles: function() {
+            try {
+                const stored = sessionStorage.getItem('p2p_selected_files');
+                return stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                return [];
+            }
+        },
+        
+        // Send files to a recipient
+        // Supports resumable transfers via p2pResumeMap parameter
+        sendFiles: async function(conn, files, p2pResumeMap, completedFileIds) {
+            const CHUNK_SIZE = 16 * 1024;
+            
+            // Use window-level resume map if not passed directly (for late-arriving resume requests)
+            let resumeMap = p2pResumeMap;
+            
+            // Helper function to send data with connection check
+            function sendWithCheck(data) {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            }
+            
+            // Wait for connection to be established
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Use selectedFiles (actual File objects) if available, otherwise use session files metadata
+            let filesToSend = selectedFiles.length > 0 ? selectedFiles : [];
+            
+            // If no selectedFiles, we can't send actual file data - show error
+            if (filesToSend.length === 0) {
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML = 
+                    '<i class="exclamation circle icon"></i> Error: Files not available. Please create a new session with files.';
+                return;
+            }
+            
+            // Sort files by size (smallest first)
+            const sortedFiles = [...filesToSend].sort((a, b) => a.size - b.size);
+            
+            for (const file of sortedFiles) {
+                // Generate unique fileId for this file using name, size, and lastModified
+                // This must match the fileId generated on the receiver side for resume to work
+                const fileId = btoa(file.name + ':' + file.size + ':' + file.lastModified);
+
+                if(completedFileIds.includes(fileId)) {
+                    continue;
+                }
+                
+                // Send file-start message with fileId for resumable transfers
+                sendWithCheck({
+                    type: 'file-start',
+                    fileId: fileId,
+                    name: file.name,
+                    size: file.size,
+                    mimeType: file.type || 'application/octet-stream'
+                });
+                
+                // Read file and send in chunks
+                // Use streaming from OPFS if available, otherwise use arrayBuffer
+                try {
+                    let bytes;
+                    
+                    // Determine the actual file to read from:
+                    // - If file is a restored OPFS file (wrapper object with .file property), use that
+                    // - If file is a direct File object, use it directly
+                    // - Otherwise try to get from OPFS using fileId
+                    let fileToRead = file;
+                    let isRestoredFile = false;
+                    
+                    // Check if this is a restored OPFS file (wrapper object with nested file property)
+                    if (file.file && file.file instanceof File) {
+                        // This is a restored file from OPFS - use the nested file object directly
+                        fileToRead = file.file;
+                        isRestoredFile = true;
+                        console.log('Using restored OPFS file:', file.name);
+                    }
+                    
+                    if (opfsAvailable && fileToRead instanceof File) {
+                        // OPFS is available and we have a File object
+                        // Check if background storage has completed for this file
+                        const fileStored = BackgroundStorageManager.isFileReady(fileId);
+
+                        try {
+                            let arrayBuffer;
+                            if (isRestoredFile) {
+                                // Use the already-retrieved file from restoration
+                                arrayBuffer = await fileToRead.arrayBuffer();
+                            } else if (fileStored) {
+                                // Background storage complete - use OPFS for better performance
+                                const opfsFile = await P2PChunkStorage.getOPFSFileAsFile(fileId);
+                                arrayBuffer = await opfsFile.arrayBuffer();
+                            } else {
+                                // Storage not complete yet - use original File object
+                                arrayBuffer = await fileToRead.arrayBuffer();
+                            }
+                            bytes = new Uint8Array(arrayBuffer);
+                        } catch (opfsErr) {
+                            // Fallback to direct file access using the file object we determined above
+                            const arrayBuffer = await fileToRead.arrayBuffer();
+                            bytes = new Uint8Array(arrayBuffer);
+                        }
+                    } else if (fileToRead instanceof File) {
+                        // Direct file access (no OPFS available but we have a File object)
+                        const arrayBuffer = await fileToRead.arrayBuffer();
+                        bytes = new Uint8Array(arrayBuffer);
+                    } else {
+                        // Cannot read file - it's not a valid File object
+                        throw new Error('Invalid file object: not a File and no OPFS file available');
+                    }
+                    
+                    // Track how many chunks were skipped due to resume
+                    let skippedChunks = 0;
+                    let sentChunks = 0;
+                    
+                    for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+                        // Calculate chunkIndex from offset: chunkIndex = offset / CHUNK_SIZE
+                        const chunkIndex = Math.floor(offset / CHUNK_SIZE);
+                        const chunk = bytes.slice(offset, offset + CHUNK_SIZE);
+                        
+                        // Skip chunks that were already received (resume support)
+                        // Check both the passed resumeMap and window-level resumeMap
+                        const currentResumeMap = resumeMap || window.p2pResumeMap;
+                        if (currentResumeMap && currentResumeMap[fileId]?.has(chunkIndex)) {
+                            // This chunk was already received by the recipient, skip it
+                            skippedChunks++;
+                            continue;
+                        }
+                        
+                        // Send chunk as binary ArrayBuffer directly (no base64 encoding)
+                        // Using .buffer to get the underlying ArrayBuffer
+                        sendWithCheck({
+                            type: 'file-chunk',
+                            fileId: fileId,
+                            chunkIndex: chunkIndex,
+                            data: chunk.buffer,
+                            total: bytes.length
+                        });
+                        
+                        sentChunks++;
+                        
+                        // Update progress
+                        const progress = Math.round((offset + chunk.length) / bytes.length * 100);
+                        let statusMsg = '<i class="loading spinner icon"></i> Sending ' + file.name + '... ' + progress + '%';
+                        if (skippedChunks > 0) {
+                            statusMsg += ' (resuming, ' + skippedChunks + ' chunks already received)';
+                        }
+                        document.getElementById('connection-status').innerHTML = statusMsg;
+                    }
+                    
+                } catch (err) {
+                    console.error('Error reading file:', err);
+                }
+                
+                // Send file-complete message with fileId
+                sendWithCheck({
+                    type: 'file-complete',
+                    fileId: fileId,
+                    name: file.name
+                });
+            }
+            
+            sendWithCheck({ type: 'all-complete' });
+            
+            document.getElementById('connection-status').className = 'ui green message';
+            document.getElementById('connection-status').innerHTML = 
+                '<i class="check circle icon"></i> All files sent successfully!';
+        },
+        
+        // Cancel a session
+        cancelSession: async function(sessionToken) {
+            try {
+                const response = await fetch('/api/p2p/' + sessionToken, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    // Remove from local sessions array
+                    sessions = sessions.filter(s => s.token !== sessionToken);
+                    this.renderSessions();
+                    
+                    // Clean up OPFS files when session is cancelled
+                    await OPFSManager.cleanup();
+                    selectedFiles = [];
+                    renderSelectedFiles();
+                    
+                    // If this was the current session, go back to list
+                    if (token === sessionToken) {
+                        this.showSessionList();
+                    }
+                }
+            } catch (err) {
+                console.error('Error canceling session:', err);
+                alert('Failed to cancel session');
+            }
+        },
+        
+        // Show session list
+        showSessionList: function() {
+            if (peer) {
+                try {
+                    peer.destroy();
+                } catch (e) {}
+                peer = null;
+            }
+            
+            shareSection.style.display = 'none';
+            fileSelectionSection.style.display = 'none';
+            sessionListSection.style.display = 'block';
+            
+            token = null;
+            pin = null;
+            shortcode = null;
+        },
+        
+        // Format bytes
+        formatBytes: function(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+            else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        },
+        
+        // Start a new session (show file selection)
+        startNewSession: function() {
+            if (peer) {
+                try {
+                    peer.destroy();
+                } catch (e) {}
+                peer = null;
+            }
+            
+            sessionListSection.style.display = 'none';
+            shareSection.style.display = 'none';
+            fileSelectionSection.style.display = 'block';
+            
+            token = null;
+            pin = null;
+            shortcode = null;
+        }
+    };
+    
+    // Initialize Session Manager when DOM is ready
+    document.addEventListener('DOMContentLoaded', async function() {
+        await SessionManager.init();
+    });
+    
+    // Original file selection code (for creating new sessions)
     const formatBytes = (bytes) => {
         if (bytes < 1024) return bytes + ' bytes';
         else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
@@ -168,9 +914,98 @@
         else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
     };
     
-    // Handle file selection
-    fileInput.addEventListener('change', (e) => {
-        selectedFiles = Array.from(e.target.files);
+    // Background Storage Manager - handles lazy storage of files to OPFS
+    // Stores files in background after QR code is generated (during idle time)
+    const BackgroundStorageManager = {
+        // Track storage status per file: { fileId: 'pending' | 'storing' | 'ready' | 'error' }
+        fileStatus: {},
+
+        // Store all files in background after QR generated
+        // Sorts files by size (smallest first) and processes in parallel batches
+        storeAllFiles: async function(files, onProgress) {
+            if (!opfsAvailable) {
+                console.warn('OPFS not available, cannot store files');
+                if (onProgress) onProgress({ completed: files.length, total: files.length, percent: 100 });
+                return true;
+            }
+
+            // Sort files by size (smallest first) for faster streaming
+            const sortedFiles = [...files].sort((a, b) => a.size - b.size);
+
+            // Process in parallel batches of 3
+            const BATCH_SIZE = 3;
+            const totalFiles = sortedFiles.length;
+            let completedFiles = 0;
+
+            for (let i = 0; i < sortedFiles.length; i += BATCH_SIZE) {
+                const batch = sortedFiles.slice(i, i + BATCH_SIZE);
+
+                await Promise.all(batch.map(async (file) => {
+                    const fileId = btoa(file.name + ':' + file.size + ':' + file.lastModified);
+                    this.fileStatus[fileId] = 'storing';
+
+                    try {
+                        // Store file in OPFS
+                        await P2PChunkStorage.storeFileInOPFS(fileId, file);
+
+                        // Save metadata to IndexedDB
+                        await P2PChunkStorage.saveSenderFileMetadata({
+                            fileId: fileId,
+                            name: file.name,
+                            size: file.size,
+                            type: file.type || 'application/octet-stream',
+                            lastModified: file.lastModified
+                        });
+
+                        this.fileStatus[fileId] = 'ready';
+                    } catch (e) {
+                        this.fileStatus[fileId] = 'error';
+                    }
+
+                    completedFiles++;
+
+                    // Callback for UI update
+                    if (onProgress) {
+                        onProgress({
+                            file: file.name,
+                            completed: completedFiles,
+                            total: totalFiles,
+                            percent: Math.round((completedFiles / totalFiles) * 100)
+                        });
+                    }
+                }));
+            }
+
+            return true;
+        },
+
+        // Check if a specific file is ready in OPFS
+        isFileReady: function(fileId) {
+            return this.fileStatus[fileId] === 'ready';
+        },
+
+        // Get fileId from file object
+        getFileId: function(file) {
+            return btoa(file.name + ':' + file.size + ':' + file.lastModified);
+        },
+
+        // Reset status (call when clearing files)
+        reset: function() {
+            this.fileStatus = {};
+        }
+    };
+
+    // Handle file selection - just keep files in memory (lazy storage)
+    fileInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        // Just keep files in memory - OPFS storage happens after QR generated
+        selectedFiles = files;
+
+        // Reset any previous storage status
+        BackgroundStorageManager.reset();
+
         renderSelectedFiles();
     });
     
@@ -178,7 +1013,11 @@
         selectedFilesList.innerHTML = '';
         
         if (selectedFiles.length === 0) {
+            fileInputLabel.style.display = 'block';
             createShareBtn.disabled = true;
+            clearFilesBtn.style.display = 'none';
+            clearFilesBtn.disabled = true;
+            clearFilesBtn.style.display = 'none';
             totalSizeSection.style.display = 'none';
             return;
         }
@@ -191,7 +1030,7 @@
             const item = document.createElement('div');
             item.className = 'item';
             item.innerHTML = `
-                <i class="file icon"></i>
+                <i class="file icon ui avatar big image"></i>
                 <div class="content">
                     <div class="header">${file.name}</div>
                     <div class="description">${formatBytes(file.size)} - ${file.type || 'unknown type'}</div>
@@ -203,13 +1042,16 @@
         totalSizeValue.textContent = formatBytes(totalSize);
         totalSizeSection.style.display = 'block';
         createShareBtn.disabled = false;
+        createShareBtn.style.display = 'block';
+        clearFilesBtn.disabled = false;
+        clearFilesBtn.style.display = 'block';
+        fileInputLabel.style.display = 'none';
     }
     
     // Create P2P Share
     createShareBtn.addEventListener('click', async () => {
         if (selectedFiles.length === 0) return;
         
-        // Prepare file metadata
         const filesMetadata = selectedFiles.map(f => ({
             name: f.name,
             size: f.size,
@@ -232,241 +1074,94 @@
             const data = await response.json();
             token = data.token;
             pin = data.pin;
+            shortcode = data.shortcode;
             
-            // Show share section
-            showShareSection(data);
+            // Add to sessions list
+            sessions.unshift({
+                token: data.token,
+                shortcode: data.shortcode,
+                pin: data.pin,
+                files: data.files,
+                fileCount: data.files.length,
+                totalSize: data.files.reduce((sum, f) => sum + f.size, 0),
+                createdAt: new Date().toISOString(),
+                expiresAt: data.expiresAt,
+                connectionCount: 0,
+                peerjsId: null
+            });
             
+            // Show share section (QR code generated immediately)
+            SessionManager.showShareSection({
+                token: data.token,
+                shortcode: data.shortcode,
+                pin: data.pin,
+                files: data.files
+            });
+
+            // Initialize PeerJS for the new session
+            SessionManager.initializePeerJS(sessions[0]);
+
+            // Update session list (for when user goes back)
+            SessionManager.renderSessions();
+
+            // Start background storage of files to OPFS
+            // This happens while user is waiting for recipient to scan QR code
+            const storageProgressContainer = document.getElementById('storage-progress-container');
+            const storageProgress = document.getElementById('storage-progress');
+            const progressBar = storageProgress.querySelector('.bar');
+            const progressText = storageProgress.querySelector('.progress-text');
+            const progressLabel = storageProgress.querySelector('.label');
+
+            storageProgressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Starting...';
+            progressLabel.textContent = 'Storing files for transfer';
+
+            // Store files in background
+            await BackgroundStorageManager.storeAllFiles(selectedFiles, (progress) => {
+                // Update progress bar
+                progressBar.style.width = progress.percent + '%';
+                progressText.textContent = `Storing files... ${progress.completed}/${progress.total}`;
+
+                if (progress.percent === 100) {
+                    progressLabel.textContent = 'Files ready for transfer!';
+                }
+            });
+
         } catch (error) {
             alert('Error creating P2P share: ' + error.message);
         }
     });
     
-    function showShareSection(data) {
-        fileSelectionSection.style.display = 'none';
-        shareSection.style.display = 'block';
-        
-        // Show PIN
-        pinDisplay.textContent = data.pin;
-        
-        // Render shared files
-        sharedFilesList.innerHTML = '';
-        let totalSize = 0;
-        
-        data.files.forEach(file => {
-            totalSize += file.size;
-            const item = document.createElement('div');
-            item.className = 'item';
-            item.innerHTML = `
-                <i class="file icon"></i>
-                <div class="content">
-                    <div class="header">${file.name}</div>
-                    <div class="description">${formatBytes(file.size)}</div>
-                </div>
-            `;
-            sharedFilesList.appendChild(item);
-        });
-        
-        // Generate QR Code
-        const baseUrl = window.location.origin;
-        const shareUrl = baseUrl + '/p2p/' + data.shortcode;
-        
-        document.getElementById('share-url').value = shareUrl;
-        
-        // Store shortcode for QR fallback
-        window._shareShortcode = data.shortcode;
-        
-        const qrData = {
-            token: data.token,
-            type: 'phuppi_p2p',
-            version: 1,
-            peerId: '', // Will be filled after PeerJS connects
-            files: {
-                count: data.files.length,
-                totalSize: totalSize,
-                names: data.files.map(f => f.name)
-            }
-        };
-        
-        // Generate QR Code using table-based renderer
-        const qrContainer = document.getElementById('qrcode-target');
-        const qrStatus = document.getElementById('qr-status');
-        
-        if (!qrContainer) {
-            console.error('QR container not found');
-            if (qrStatus) qrStatus.textContent = 'Error: container not found';
-        } else {
-            // Clear container
-            qrContainer.innerHTML = '';
-            
-            // Create QR code with just the token
-            const qrText = token;
-            
-            try {
-                // First try table-based rendering approach
-                // Clear container
-                qrContainer.innerHTML = '';
-                
-                // Try using QRCode library with element reference
-                const qrcode = new QRCode(qrContainer, {
-                    text: qrText,
-                    width: 256,
-                    height: 256,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.L
-                });
-                
-                // Update status
-                if (qrStatus) qrStatus.textContent = 'QR generated!';
+    // Clear Files button handler
+    const clearFilesBtn = document.getElementById('clear-files-btn');
+    clearFilesBtn.addEventListener('click', async () => {
+        if (selectedFiles.length === 0) return;
 
-                // Check what's rendered after a delay
-                setTimeout(function() {
-                    const table = qrContainer.querySelector('table');
-                    const canvas = qrContainer.querySelector('canvas');
-                    const img = qrContainer.querySelector('img');
-                    
-                    // If canvas is blank/white, try fallback
-                    if (canvas && !table) {
-                        const dataUrl = canvas.toDataURL();
-                        // Check if image is mostly white (blank)
-                        if (dataUrl && dataUrl.length < 5000) {
-                            // Canvas is blank - need fallback
-                            console.log('Error (unsupported browser): Canvas is blank, QR will show as link instead');
-                            qrContainer.innerHTML = '<div style="padding:20px; text-align:center; background:#f0f0f0; border:1px solid #ccc;">' +
-                                '<p style="margin:0 0 10px;">QR unavailable - use URL below</p>' +
-                                '<input type="text" value="' + window.location.origin + '/p2p/' + window._shareShortcode + '" ' +
-                                'style="width:100%; padding:8px; text-align:center;" readonly />' +
-                                '</div>';
-                        }
-                    }
-                }, 300);
-            } catch(e) {
-                console.error('Error creating QR:', e);
-                qrContainer.innerHTML = '<p style="color:red;">Error: ' + e.message + '</p>';
-                if (qrStatus) qrStatus.textContent = 'Error: ' + e.message;
+        if (confirm('Are you sure you want to clear all selected files? This will remove them from storage.')) {
+            // Clean up OPFS storage
+            await OPFSManager.cleanup();
+
+            // Clear selected files
+            selectedFiles = [];
+
+            // Clear file input
+            fileInput.value = '';
+
+            // Reset background storage status
+            BackgroundStorageManager.reset();
+
+            // Hide progress container
+            const storageProgressContainer = document.getElementById('storage-progress-container');
+            if (storageProgressContainer) {
+                storageProgressContainer.style.display = 'none';
             }
+
+            // Re-render
+            renderSelectedFiles();
+
         }
-        
-        // Initialize PeerJS
-        initializePeerJS(data);
-    }
-    
-    function initializePeerJS(data) {
-        peer = new Peer(null, {
-            debug: 2
-        });
-        
-        peer.on('open', function(id) {
-            
-            // Update QR code with peer ID
-            const qrContainer = document.getElementById('qrcode-target');
-            const qrStatus = document.getElementById('qr-status');
-            if (qrContainer && typeof generateQRTable === 'function') {
-                qrContainer.innerHTML = '';
-                
-                // Use simple format: token plus peerId
-                const qrText = token + '|' + id;
-                
-                try {
-                    generateQRTable(qrContainer, qrText, 256);
-                    if (qrStatus) qrStatus.textContent = 'QR updated!';
-                } catch(e) {
-                    console.error('Error updating QR:', e);
-                }
-            }
-            
-            // Register peer ID with server
-            fetch('/api/p2p/' + data.token + '/connect', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ peerjs_id: id })
-            }).then(response => response.json())
-              .then(result => {
-                  console.log('Connected to server:', result);
-              });
-        });
-        
-        peer.on('connection', function(conn) {
-            
-            conn.on('open', function() {
-                document.getElementById('connection-status').className = 'ui green message';
-                document.getElementById('connection-status').innerHTML = 
-                    '<i class="check circle icon"></i> Recipient connected! Sending files...';
-                
-                // Send files via data channel
-                sendFiles(conn);
-            });
-            
-            conn.on('close', function() {
-                document.getElementById('connection-status').className = 'ui yellow message';
-                document.getElementById('connection-status').innerHTML = 
-                    '<i class="info circle icon"></i> Transfer complete!';
-            });
-        });
-        
-        peer.on('error', function(err) {
-            console.error('PeerJS error:', err);
-            document.getElementById('connection-status').className = 'ui red message';
-            document.getElementById('connection-status').innerHTML = 
-                '<i class="exclamation circle icon"></i> Connection error: ' + err.type;
-        });
-    }
-    
-    async function sendFiles(conn) {
-        const CHUNK_SIZE = 16 * 1024; // 16KB chunks
-        
-        for (const file of selectedFiles) {
-            // Send file metadata first
-            conn.send({
-                type: 'file-start',
-                name: file.name,
-                size: file.size,
-                mimeType: file.type
-            });
-            
-            // Read file and send in chunks
-            const arrayBuffer = await file.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuffer);
-            
-            for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
-                const chunk = bytes.slice(offset, offset + CHUNK_SIZE);
-                
-                // Convert to base64 for transmission
-                let binary = '';
-                const chunkBytes = new Uint8Array(chunk);
-                for (let i = 0; i < chunkBytes.length; i++) {
-                    binary += String.fromCharCode(chunkBytes[i]);
-                }
-                const base64 = btoa(binary);
-                
-                conn.send({
-                    type: 'file-chunk',
-                    data: base64,
-                    offset: offset,
-                    total: bytes.length
-                });
-                
-                // Update progress
-                const progress = Math.round((offset + chunk.length) / bytes.length * 100);
-                document.getElementById('connection-status').innerHTML = 
-                    '<i class="loading spinner icon"></i> Sending ' + file.name + '... ' + progress + '%';
-            }
-            
-            // Send completion
-            conn.send({
-                type: 'file-complete',
-                name: file.name
-            });
-        }
-        
-        conn.send({ type: 'all-complete' });
-        
-        document.getElementById('connection-status').className = 'ui green message';
-        document.getElementById('connection-status').innerHTML = 
-            '<i class="check circle icon"></i> All files sent successfully!';
-    }
+    });
     
     // Copy URL functionality
     document.getElementById('copy-url-btn').addEventListener('click', function() {
@@ -477,11 +1172,6 @@
         setTimeout(() => {
             this.innerHTML = '<i class="copy icon"></i> Copy';
         }, 2000);
-    });
-    
-    // New share button
-    newShareBtn.addEventListener('click', () => {
-        location.reload();
     });
 })();
 </script>

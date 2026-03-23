@@ -439,12 +439,16 @@ if ($userCount < 1) {
     // P2P File Sharing routes
     Flight::route('GET /p2p', [P2PController::class, 'index'])->addMiddleware(IsAuthenticated::class);
     Flight::route('POST /api/p2p/create', [P2PController::class, 'create'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p', [P2PController::class, 'listSessions'])->addMiddleware(IsAuthenticated::class);
     Flight::route('GET /api/p2p/@token', [P2PController::class, 'show']);
     Flight::route('GET /p2p/sender/@shortcode', [P2PController::class, 'showSenderPage']);
     Flight::route('GET /p2p/@shortcode', [P2PController::class, 'showPage']);
     Flight::route('DELETE /api/p2p/@token', [P2PController::class, 'delete'])->addMiddleware(IsAuthenticated::class);
     Flight::route('POST /api/p2p/@token/verify-pin', [P2PController::class, 'verifyPin']);
     Flight::route('POST /api/p2p/@token/connect', [P2PController::class, 'connect']);
+    Flight::route('GET /api/p2p/@token/connections', [P2PController::class, 'listConnections']);
+    Flight::route('POST /api/p2p/@token/connections', [P2PController::class, 'createConnection']);
+    Flight::route('DELETE /api/p2p/@token/connections/@id', [P2PController::class, 'deleteConnection']);
 
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);

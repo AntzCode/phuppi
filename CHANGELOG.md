@@ -15,6 +15,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Uses PeerJS for WebRTC signaling
   - All dependencies downloaded and hosted locally (no CDNs)
   - Database migration: `p2p_shared_files` table for share tokens and metadata
+  - Session management: view and manage active P2P sessions from the main P2P page
+  - Multiple recipients per session: sender can share files with multiple recipients simultaneously
+  - Connection tracking: database table `p2p_connections` tracks individual recipient connections with status (connected/disconnected/completed)
+  - New API endpoints for session and connection management:
+    - `GET /api/p2p` - List all active P2P sessions for current user
+    - `GET /api/p2p/@token/connections` - Get all connections for a session (owner only)
+    - `POST /api/p2p/@token/connections` - Register a new recipient connection
+    - `DELETE /api/p2p/@token/connections/@id` - Mark connection as disconnected
+  - [`P2PConnection`](src/Phuppi/P2PConnection.php) model with full CRUD operations and connection status tracking
+  - TURN server support planning - future feature to enable P2P connections in restricted network environments (behind corporate firewalls, CGNAT, symmetric NAT). See [`plans/p2p-turn-server-plan.md`](plans/p2p-turn-server-plan.md) and [`plans/p2p-turn-server-issue.md`](plans/p2p-turn-server-issue.md) for technical specification.
+
+### Fixed
+- Re-transfer bug: fixed race condition that caused already-downloaded files to be re-transferred when recipient refreshed the page. Completed files now load before P2P connection initializes, and the system properly skips already-completed files during transfer.
+- Resume-request optimization: filtered out already-completed files from resume requests to reduce unnecessary network traffic
 
 ## [2.5.1] - 2026-03-21
 ### Added

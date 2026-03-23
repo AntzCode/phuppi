@@ -3,111 +3,101 @@
 {block title}P2P File Transfer{/block}
 
 {block content}
-<div class="ui container">
-    <div class="ui segment">
-        <h1 class="ui header">
-            <i class="download icon"></i>
-            <div class="content">
-                P2P File Transfer
-                <div class="sub header">Receive files directly from sender via P2P</div>
-            </div>
-        </h1>
-        
-        <div class="ui divider"></div>
-        
-        {if !$pinVerified}
-        <!-- PIN Entry Screen -->
-        <div id="pin-entry-section">
-            <div class="ui segment">
-                <h2 class="ui header">
-                    <i class="lock icon"></i>
-                    Enter Security PIN
-                </h2>
-                
-                <div class="ui yellow message">
-                    <i class="info icon"></i>
-                    Ask the sender for their PIN code
-                </div>
-                
-                <div class="ui form">
-                    <div class="field">
-                        <label>PIN (2 digits)</label>
-                        <input type="text" id="pin-input" maxlength="2" pattern="[0-9]{2}" placeholder="00" style="text-align: center; font-size: 2em; width: 100px;" />
-                    </div>
-                    
-                    <div id="pin-error" class="ui negative message" style="display: none;"></div>
-                    <div id="pin-locked" class="ui red message" style="display: none;"></div>
-                    
-                    <button id="verify-pin-btn" class="ui primary button">
-                        <i class="check icon"></i>
-                        Verify PIN
-                    </button>
-                </div>
-            </div>
-        </div>
-        {else}
-        <div id="pin-entry-section" style="display: none;">
-            <div class="ui segment"></div>
-        </div>
-        {/if}
-        
-        {if $pinVerified}
-        <div id="download-section">
+<h1 class="ui header">
+    <i class="download icon"></i>
+    <div class="content">
+        P2P File Transfer
+        <div class="sub header">Receive files directly from sender via P2P</div>
+    </div>
+</h1>
 
-            <div class="ui segment">
-                <h3 class="ui header">
-                    <i class="wifi icon"></i>
-                    Connection Status
-                </h3>
-                <div id="connection-status" class="ui yellow message">
-                    <i class="loading spinner icon"></i>
-                    Connecting to sender...
-                </div>
-            </div>
-            
-            <div class="ui segment">
-                <h3 class="ui header">
-                    <i class="download icon"></i>
-                    Received Files
-                </h3>
-                <div id="received-files-list" class="ui list">
-                    <div class="item">
-                        <i class="info icon"></i>
-                        <div class="content">
-                            <div class="header">Waiting for files...</div>
-                            <div class="description">Files will appear here when received</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="ui segment">
-                <h3 class="ui header">
-                    <i class="files icon"></i>
-                    Files to Receive
-                </h3>
-                
-                <div class="ui divided list">
-                    {foreach $files as $file}
-                    <div class="item">
-                        <i class="file icon"></i>
-                        <div class="content">
-                            <div class="header">{$file['name']}</div>
-                            <div class="description">{$file['size']|format_bytes}</div>
-                        </div>
-                    </div>
-                    {/foreach}
-                </div>
-                
-                <div class="ui basic label">
-                    Total: {$totalSize|format_bytes}
-                </div>
-            </div>
-            
-        </div>
-        {/if}
+<div class="ui divider"></div>
+
+{if !$pinVerified}
+<!-- PIN Entry Screen -->
+<div id="pin-entry-section">
+    <div class="ui segment">
+        <h2 class="ui header">
+            <i class="lock icon"></i>
+            Enter Security PIN
+        </h2>
         
+        <div class="ui yellow message">
+            <i class="info icon"></i>
+            Ask the sender for their PIN code
+        </div>
+        
+        <div class="ui form">
+            <div class="field">
+                <label>PIN (2 digits)</label>
+                <input type="text" id="pin-input" maxlength="2" pattern="[0-9]{2}" placeholder="00" style="text-align: center; font-size: 2em; width: 100px;" />
+            </div>
+            
+            <div id="pin-error" class="ui negative message" style="display: none;"></div>
+            <div id="pin-locked" class="ui red message" style="display: none;"></div>
+            
+            <button id="verify-pin-btn" class="ui primary button">
+                <i class="check icon"></i>
+                Verify PIN
+            </button>
+        </div>
     </div>
 </div>
+{else}
+<div id="pin-entry-section" style="display: none;">
+    <div class="ui segment"></div>
+</div>
+{/if}
+
+{if $pinVerified}
+<div id="download-section">
+
+    <div id="connection-status" class="ui yellow message">
+        <i class="loading spinner icon"></i>
+        Connecting to sender...
+    </div>
+    
+    <div id="received-files-list-container" class="ui segment">
+        <h3 class="ui header">
+            <i class="download icon"></i>
+            Incoming Files
+        </h3>
+        <div class="subtitle">
+            Total: {$totalSize|format_bytes}
+        </div>
+        <div id="received-files-list" class="ui divided list segment">
+            {foreach $files as $file}
+            {var $lastMod = isset($file['lastModified']) ? $file['lastModified'] : time()}
+            <div class="item" id="received-file-{base64_encode($file['name'] . ':' . $file['size'] . ':' . $lastMod)}">
+                <i class="file icon ui avatar icon"></i>
+                <div class="content">
+                    <div class="header">{$file['name']}</div>
+                    <div class="description">{$file['size']|format_bytes}</div>
+                </div>
+            </div>
+            {/foreach}
+        </div>
+        
+    </div>
+
+    <div id="completed-files-list" class="ui divided list segment">
+        <div class="item">
+            <i class="info icon ui avatar icon"></i>
+            <div class="content">
+                <div class="header">No completed files yet</div>
+                <div class="description">Received files will appear here for download</div>
+            </div>
+        </div>
+    </div>
+    <div class="ui center aligned container">
+        <button id="download-all-zip-btn" class="ui primary button" style="margin-top: 1em;" onclick="downloadAllAsZip()">
+            <i class="archive icon"></i>
+            Download All as ZIP
+        </button>
+    </div>
+        
+</div>
+{/if}
 
 <div id="p2p-receive-data" 
      data-token="{$token}" 
@@ -117,6 +107,7 @@
 </div>
 
 <script src="/assets/peerjs/peerjs.min.js"></script>
+<script src="/assets/p2p-chunk-storage.js"></script>
 <script src="/assets/jszip/jszip.min.js"></script>
 <script src="/assets/filesaver/filesaver.min.js"></script>
 <script n:syntax="off">
@@ -129,7 +120,7 @@
     }
     
     const token = dataEl.dataset.token;
-    const peerId = dataEl.dataset.peerid;
+    let currentPeerId = dataEl.dataset.peerid;
     const files = JSON.parse(dataEl.dataset.files);
     const pinVerified = dataEl.dataset.pinVerified === 'true';
     
@@ -197,100 +188,540 @@
         initializeP2PReceive();
     }
     
-    function initializeP2PReceive() {
-        // Initialize PeerJS
-        const peer = new Peer(null, { debug: 2 });
+    async function initializeP2PReceive() {
+
+
+        // Store received file data
+        const receivedFiles = [];
+        
+        // Track completed file IDs to prevent re-downloading on page refresh
+        const completedFileIds = new Set();
+        
+        // CHUNK_SIZE from the storage module
+        const CHUNK_SIZE = P2PChunkStorage.CHUNK_SIZE;
+        
+
+        // FIRST: Load completed files from IndexedDB BEFORE starting P2P
+        // This populates completedFileIds Set so we can skip re-downloading
+        await loadCompletedFiles();
+        
+        // Configure ICE servers for better NAT/firewall traversal
+        // Note: TURN requires credentials - for mobile/CGNAT you need to deploy a TURN server
+        const iceServers = [
+            // STUN servers for IP discovery
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.stunprotocol.org:3478' }
+        ];
+
+        // Initialize PeerJS - after completed files are loaded
+        const peer = new Peer(null, {
+            debug: 2,
+            config: {
+                iceServers: iceServers,
+                iceCandidatePoolSize: 10
+            }
+        });
+        
+        // Track connection state to avoid duplicate connections
+        let isConnected = false;
+        let currentConnection = null;
+        let isConnecting = false; // Track if a connection attempt is in progress
+        let reconnectTimeout = null; // Store timeout for delayed reconnection
+        let lastConnectionAttempt = 0; // Track last connection attempt time
+        const RETRY_DELAY = 3000; // Minimum 3 seconds between reconnection attempts
+        
+        // Periodic flush interval to save buffered chunks even during active transfers
+        // This ensures chunks are persisted even if batch size isn't reached
+        const flushInterval = setInterval(() => {
+            P2PChunkStorage.flushAllChunkBuffers().catch(err => {
+                console.error('Periodic flush error:', err);
+            });
+        }, 2000); // Flush every 2 seconds
+        
+        // Also flush on page unload to ensure no data is lost
+        window.addEventListener('beforeunload', () => {
+            P2PChunkStorage.flushAllChunkBuffers();
+        });
         
         peer.on('open', function(id) {
             
             // Connect to sender
-            if (peerId) {
-                connectToSender(peerId);
+            if (currentPeerId) {
+                // Initial connection - skip retry delay since this is first attempt
+                connectToSender(currentPeerId, true);
             } else {
                 document.getElementById('connection-status').className = 'ui yellow message';
                 document.getElementById('connection-status').innerHTML = 
                     '<i class="info icon"></i> Waiting for sender to come online...';
             }
+            
+            // Start polling for peer ID updates
+            startPeerIdPolling(peer);
         });
         
-        function connectToSender(senderId) {
-            const conn = peer.connect(senderId, { reliable: true });
+        function connectToSender(senderId, skipRetryDelay = false) {
+            // Validate senderId before attempting connection
+            if (!senderId || typeof senderId !== 'string') {
+                return;
+            }
             
-            conn.on('open', function() {
+            // Check if already connected to this peer
+            if (isConnected && currentConnection && currentConnection.peer === senderId) {
+                return;
+            }
+            
+            // Check if connection attempt is already in progress
+            if (isConnecting) {
+                return;
+            }
+            
+            // Check retry delay to prevent rapid reconnection attempts
+            // BUT: Skip this check if we have a confirmed NEW peer ID from server (skipRetryDelay=true)
+            const now = Date.now();
+            if (!skipRetryDelay && now - lastConnectionAttempt < RETRY_DELAY) {
+                return;
+            }
+            
+            // Close existing connection if any
+            if (currentConnection) {
+                try {
+                    currentConnection.close();
+                } catch (e) {
+                    // Ignore close errors
+                }
+                currentConnection = null;
+            }
+            
+            // Mark connection attempt in progress
+            isConnecting = true;
+            lastConnectionAttempt = now;
+            
+            // Try both UDP and TCP transports for better connectivity
+            // TCP helps when UDP is blocked by firewalls
+            const conn = peer.connect(senderId, { 
+                reliable: true,
+                serialization: 'binary',
+                ssl: true
+            });
+            currentConnection = conn;
+            
+            conn.on('open', async function() {
+                isConnected = true;
+                isConnecting = false;
                 document.getElementById('connection-status').className = 'ui green message';
                 document.getElementById('connection-status').innerHTML = 
                     '<i class="check circle icon"></i> Connected! Receiving files...';
                 
+                // DEBUG: Reset network session tracking for each new connection
+                // This ensures we only count chunks received in THIS network session
+                receivedFiles.forEach(f => {
+                    f.networkReceivedChunks = new Set();
+                });
+                
+                // Validate connection is open before sending
+                if (!conn.open) {
+                    console.error('Connection closed unexpectedly');
+                    return;
+                }
+                
                 // Request files
-                conn.send({ type: 'request-files' });
+                conn.send({ type: 'request-files', completedFileIds: [...completedFileIds] });
+                
+                // On connection open, get all files we're tracking and send resume request
+                // This allows resuming interrupted transfers
+                try {
+                    const fileIds = await P2PChunkStorage.getAllFileIds();
+                    const resumeFiles = [];
+
+                    for (const fileId of fileIds) {
+                        // Skip files that are already completed - no need to re-transfer them
+                        if (completedFileIds.has(fileId)) {
+                            continue;
+                        }
+                        
+                        const receivedChunks = await P2PChunkStorage.getReceivedChunks(fileId);
+                        const metadata = await P2PChunkStorage.getMetadata(fileId);
+                        if (metadata) {
+                            resumeFiles.push({
+                                fileId: fileId,
+                                receivedChunks: [...receivedChunks],
+                                size: metadata.size
+                            });
+                        }
+                    }
+
+                    if (resumeFiles.length > 0) {
+                        conn.send({
+                            type: 'resume-request',
+                            files: resumeFiles
+                        });
+                    }
+                } catch (err) {
+                    console.error('Error sending resume request:', err);
+                }
             });
             
             conn.on('data', function(data) {
+                // Ensure connected state is set when we receive data
+                // This handles cases where data arrives but isConnected flag is stale
+                // Check if this is a stale close event - if conn is still open, the close event was premature
+                if (!isConnected) {
+                    console.warn('[CONN] BUG: Received data but isConnected=false');
+                    console.warn('[CONN]   conn.open=' + conn.open + ', currentPeerId=' + currentPeerId + ', currentConnection=' + (currentConnection ? 'set' : 'null'));
+                    
+                    // The connection is actually working - restore state
+                    isConnected = true;
+                    isConnecting = false;
+                    
+                    // Update the UI to show connected status
+                    document.getElementById('connection-status').className = 'ui green message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="check circle icon"></i> Connected! Receiving files...';
+                }
+                
                 handleDataMessage(data, conn);
             });
             
             conn.on('close', function() {
+                isConnected = false;
+                isConnecting = false;
+                currentConnection = null;
+                
+                // Flush any remaining buffered chunks when connection closes
+                P2PChunkStorage.flushAllChunkBuffers().then(() => {
+                    console.log('[CONN] Flushed buffered chunks on connection close');
+                }).catch(err => {
+                    console.error('Error flushing chunks on close:', err);
+                });
+                
+                // DO NOT null currentPeerId here - the close event might be premature/stale
+                // If data continues to arrive, the data handler will fix isConnected=true
+                // The polling will detect if the sender has truly disconnected (server returns no peer ID)
+                // Keeping currentPeerId allows for faster reconnection if the close was stale
+                
+                
                 document.getElementById('connection-status').className = 'ui yellow message';
                 document.getElementById('connection-status').innerHTML = 
-                    '<i class="info circle icon"></i> Transfer complete!';
+                    '<i class="info circle icon"></i> Waiting for sender to reconnect...';
             });
             
             conn.on('error', function(err) {
-                console.error('Connection error:', err);
+                isConnected = false;
+                isConnecting = false;
+                currentConnection = null;
                 document.getElementById('connection-status').className = 'ui red message';
                 document.getElementById('connection-status').innerHTML = 
-                    '<i class="exclamation circle icon"></i> Error: ' + err.message;
+                    '<i class="exclamation circle icon"></i> Connection error: ' + err.type + '. Will retry...';
             });
         }
         
         peer.on('error', function(err) {
             console.error('PeerJS error:', err);
+            isConnected = false;
+            isConnecting = false; // Reset connecting state on error
             if (err.type === 'peer-unavailable') {
+                // Don't show error message - we'll retry via polling
+                // Just update status to indicate waiting
+                if (!currentPeerId) {
+                    document.getElementById('connection-status').className = 'ui yellow message';
+                    document.getElementById('connection-status').innerHTML = 
+                        '<i class="info icon"></i> Waiting for sender to come online...';
+                }
+            } else if (err.type === 'connection-error' || err.type === 'server-error') {
+                // Connection errors - will retry via polling
                 document.getElementById('connection-status').className = 'ui yellow message';
                 document.getElementById('connection-status').innerHTML = 
-                    '<i class="info icon"></i> Sender is not online yet. Refresh to try again.';
+                    '<i class="info icon"></i> Connection error. Will retry automatically...';
             } else {
                 document.getElementById('connection-status').className = 'ui red message';
                 document.getElementById('connection-status').innerHTML = 
-                    '<i class="exclamation circle icon"></i> Connection error. Please refresh.';
+                    '<i class="exclamation circle icon"></i> Connection error. Will retry automatically...';
             }
         });
         
-        // Store received file data
-        const receivedFiles = [];
+        // Polling function to check for updated peer ID
+        function startPeerIdPolling(peer) {
+            const POLL_INTERVAL = 3000; // Check every 3 seconds
+            const CONNECT_TIMEOUT = 30000; // 30 second timeout for connection attempts
+            let pollCount = 0; // Diagnostic: track polling cycles
+            
+            setInterval(async () => {
+                pollCount++;
+                // FIX: Check if isConnecting has been true for too long (connection timeout)
+                // This handles cases where connection attempt fails/times out without firing error/close events
+                if (isConnecting && lastConnectionAttempt > 0) {
+                    const timeSinceConnectAttempt = Date.now() - lastConnectionAttempt;
+                    if (timeSinceConnectAttempt > CONNECT_TIMEOUT) {
+                        isConnecting = false;
+                        
+                        // Update status to show we're retrying
+                        document.getElementById('connection-status').className = 'ui yellow message';
+                        document.getElementById('connection-status').innerHTML = 
+                            '<i class="info circle icon"></i> Connection timed out. Retrying...';
+                    }
+                }
+                
+                // Skip polling if already connected
+                if (isConnected) {
+                    return;
+                }
+                
+                // FIX: Don't skip polling when isConnecting is true!
+                // We need to detect peer ID changes even during connection attempts
+                // If server has a different peer ID than what we're trying to connect to,
+                // we need to cancel current attempt and connect to the new one
+                
+                try {
+                    const response = await fetch('/api/p2p/' + token);
+                    if (!response.ok) return;
+                    
+                    const data = await response.json();
+                    const serverPeerId = data.peerjsId || '';
+                    
+                    // If we have a peer ID from server and it's different, try to connect
+                    if (serverPeerId && serverPeerId !== currentPeerId) {
+                        
+                        // FIX: If connection attempt is in progress to a different peer, cancel it!
+                        if (isConnecting && currentConnection) {
+                            try {
+                                currentConnection.close();
+                            } catch (e) {
+                                // Ignore close errors
+                            }
+                            currentConnection = null;
+                            isConnecting = false;
+                        }
+                        
+                        currentPeerId = serverPeerId;
+                        
+                        // Reset connection state and try to connect
+                        isConnected = false;
+                        
+                        // Update status to show we're reconnecting
+                        document.getElementById('connection-status').className = 'ui blue message';
+                        document.getElementById('connection-status').innerHTML = 
+                            '<i class="loading spinner icon"></i> Sender reconnected! Attempting to connect...';
+                        
+                        // Clear any existing reconnect timeout
+                        if (reconnectTimeout) {
+                            clearTimeout(reconnectTimeout);
+                        }
+                        
+                        // Immediate reconnection attempt (no delay since we detected new peer ID)
+                        // Skip the retry delay check when we have a confirmed new peer ID from server
+                        reconnectTimeout = setTimeout(() => {
+                            connectToSender(currentPeerId, true); // skipRetryDelay = true because server confirmed new peer
+                        }, 100);
+                    } else if (!serverPeerId && currentPeerId) {
+                        // Server has no peer ID - sender has disconnected
+                        // Reset currentPeerId so we don't keep trying to reconnect to stale peer
+                        currentPeerId = null;
+                        isConnected = false;
+                        
+                        // Cancel any in-progress connection attempt
+                        if (isConnecting && currentConnection) {
+                            try {
+                                currentConnection.close();
+                            } catch (e) {
+                                // Ignore close errors
+                            }
+                            currentConnection = null;
+                        }
+                        isConnecting = false;
+                        
+                        document.getElementById('connection-status').className = 'ui yellow message';
+                        document.getElementById('connection-status').innerHTML = 
+                            '<i class="info circle icon"></i> Waiting for sender to come online...';
+                    } else if (serverPeerId && serverPeerId === currentPeerId && !isConnected && !isConnecting) {
+                        // FIX: Server has same peer ID but we're not connected and not connecting
+                        // This is the missing case - we should try to connect!
+
+                        // Update status to show we're reconnecting
+                        document.getElementById('connection-status').className = 'ui blue message';
+                        document.getElementById('connection-status').innerHTML = 
+                            '<i class="loading spinner icon"></i> Attempting to connect to sender...';
+                        
+                        // Clear any existing reconnect timeout
+                        if (reconnectTimeout) {
+                            clearTimeout(reconnectTimeout);
+                        }
+                        
+                        // Immediate reconnection attempt - skip retry delay since we have a confirmed peer ID
+                        reconnectTimeout = setTimeout(() => {
+                            connectToSender(currentPeerId, true); // skipRetryDelay = true because server confirmed peer is available
+                        }, 100);
+                    }
+                } catch (err) {
+                    console.error('Error polling for peer ID:', err);
+                }
+            }, POLL_INTERVAL);
+        }
         
         function handleDataMessage(data, conn) {
             
             if (data.type === 'file-start') {
-                // Start receiving a new file
+                // Start receiving a new file - store metadata in IndexedDB
+                const name = data.name;
+                const size = data.size;
+                const mimeType = data.mimeType;
+                const lastModified = data.lastModified || Date.now();
+                
+                // Check if this file is already completed - if so, skip it and remove from received list
+                if (completedFileIds.has(data.fileId)) {
+                    updateStatus('Skipping already received file: ' + name);
+                    // Remove from received list since it's already completed
+                    removeFromReceivedList(data.fileId);
+                    checkReceivedListEmpty();
+                    return;
+                }
+                
+                // Calculate total chunks
+                const totalChunks = Math.ceil(size / CHUNK_SIZE);
+                
+                // Save metadata to IndexedDB
+                P2PChunkStorage.saveMetadata(data.fileId, {
+                    name: name,
+                    size: size,
+                    mimeType: mimeType,
+                    totalChunks: totalChunks,
+                    lastModified: lastModified
+                }).catch(err => console.error('Error saving metadata:', err));
+                
+                // Track file in memory (without storing chunks)
+                // Initialize networkReceivedChunks to track only chunks from current network session
                 receivedFiles.push({
-                    name: data.name,
-                    size: data.size,
-                    mimeType: data.mimeType,
-                    chunks: []
+                    name: name,
+                    size: size,
+                    mimeType: mimeType,
+                    fileId: data.fileId,
+                    totalChunks: totalChunks,
+                    blob: null,
+                    networkReceivedChunks: new Set()
                 });
-                updateStatus('Receiving ' + data.name + '...');
+                
+                updateStatus('Receiving ' + name + '...');
             }
             else if (data.type === 'file-chunk') {
-                // Receive file chunk
+                // Receive file chunk - buffer for batch saving (performance optimization)
+            
+                // Check if this file is already completed - if so, skip it
+                if (completedFileIds.has(data.fileId)) {
+                    return;
+                }
+
                 const file = receivedFiles[receivedFiles.length - 1];
-                if (file) {
-                    // Decode base64
-                    const binary = atob(data.data);
-                    const bytes = new Uint8Array(binary.length);
-                    for (let i = 0; i < binary.length; i++) {
-                        bytes[i] = binary.charCodeAt(i);
-                    }
-                    file.chunks.push(bytes);
+                if (file && file.fileId) {
+                    // Get the chunk data - check multiple possible locations
+                    // The data could be in data.data (direct) or data.data.data (nested)
+                    const rawData = data.data || data.data?.data;
                     
-                    // Update progress
-                    const progress = Math.round((data.offset + data.data.length) / data.total * 100);
-                    updateStatus('Receiving ' + file.name + '... ' + progress + '%');
+                    // Skip if no data available
+                    if (!rawData) {
+                        console.error('No chunk data available for file-chunk message');
+                        return;
+                    }
+
+                    
+                    // Handle incoming data - check if it's ArrayBuffer (binary) or base64 string
+                    let chunkData;
+                    if (rawData instanceof ArrayBuffer) {
+                        // New binary format
+                        chunkData = new Uint8Array(rawData);
+                    } else if (rawData instanceof Uint8Array) {
+                        // Already a Uint8Array
+                        chunkData = rawData;
+                    } else if (typeof rawData === 'string') {
+                        // Old base64 format - decode it
+                        const binary = atob(rawData);
+                        chunkData = new Uint8Array(binary.length);
+                        for (let i = 0; i < binary.length; i++) {
+                            chunkData[i] = binary.charCodeAt(i);
+                        }
+                    }
+                    
+                    // Skip if chunkData is still undefined
+                    if (!chunkData) {
+                        console.error('Unable to process chunk data:', rawData);
+                        return;
+                    }
+                    
+                    // Get chunkIndex from message
+                    const chunkIndex = data.chunkIndex;
+                    
+                    // Track chunks received in THIS network session (not from cache)
+                    file.networkReceivedChunks.add(chunkIndex);
+                    
+                    // Buffer chunk for batch saving (much faster than saving each chunk individually)
+                    P2PChunkStorage.bufferChunk(file.fileId, chunkIndex, chunkData.buffer)
+                        .catch(err => console.error('Error buffering chunk:', err));
+                    
+                    // Update progress using NETWORK-ONLY chunk count (tracked in memory)
+                    // This is fast because we don't query IndexedDB for every chunk
+                    const networkReceivedCount = file.networkReceivedChunks.size;
+                    const total = file.totalChunks;
+                    const progress = Math.round((networkReceivedCount / total) * 100);
+                    
+                    // Get buffered chunk count for display
+                    const bufferedCount = P2PChunkStorage.getBufferedChunkCount(file.fileId);
+                    
+                    // Only log progress updates every 50 chunks or at 100%
+                    if (networkReceivedCount % 50 === 0 || progress === 100) {
+                        // console.log('[CHUNK] Progress: ' + file.name + ' - ' + progress + '% (' + networkReceivedCount + '/' + total + ' chunks)');
+                    }
+                    
+                    updateStatus('Receiving ' + file.name + '... ' + progress + '% (' + networkReceivedCount + '/' + total + ' chunks)');
                 }
             }
             else if (data.type === 'file-complete') {
-                // File complete
-                updateStatus('Received ' + data.name);
+                // File complete - flush buffered chunks first, then check completion
+                // Find the file by fileId instead of assuming it's the last one
+                const file = receivedFiles.find(f => f.fileId === data.fileId);
+                if (file && file.fileId) {
+                    // Get network count BEFORE flushing (while chunks are still in memory)
+                    const networkCount = file.networkReceivedChunks.size;
+                    
+                    // Flush any remaining buffered chunks before checking completion
+                    P2PChunkStorage.flushChunkBuffer(file.fileId).then(() => {
+                        // Check if all chunks are received (from IndexedDB + network buffer)
+                        return P2PChunkStorage.getReceivedChunks(file.fileId);
+                    }).then(receivedChunks => {
+                        const totalChunks = file.totalChunks;
+                        const received = Math.max(receivedChunks.size, networkCount);
+
+                        if (received >= totalChunks) {
+                            // All chunks received - mark file as complete
+                            return P2PChunkStorage.markFileComplete(file.fileId).then(() => {
+                                return P2PChunkStorage.getMetadata(file.fileId);
+                            }).then(metadata => {
+                                // Remove file from received list before adding to completed
+                                removeFromReceivedList(file.fileId);
+                                // Remove from receivedFiles array
+                                const index = receivedFiles.indexOf(file);
+                                if (index > -1) {
+                                    receivedFiles.splice(index, 1);
+                                }
+                                addCompletedFileToList(file.fileId, metadata);
+                                checkReceivedListEmpty();
+                                if(receivedFiles.length === 0) {
+                                    finishTransfer();
+                                }
+                            }).catch(err => {
+                                console.error('Error marking file complete:', err);
+                                updateStatus('Error processing ' + file.name);
+                            });
+                        } else {
+                            const total = totalChunks;
+                            updateStatus('Waiting for resume: ' + file.name + ' (' + received + '/' + total + ' chunks received)');
+                        }
+                    }).catch(err => {
+                        console.error('Error checking received chunks:', err);
+                        updateStatus('Error processing ' + file.name);
+                    });
+                }
             }
             else if (data.type === 'all-complete') {
                 // All files received
@@ -302,79 +733,297 @@
             document.getElementById('connection-status').className = 'ui blue message';
             document.getElementById('connection-status').innerHTML = 
                 '<i class="loading spinner icon"></i> ' + message;
-        }
-        
+            }
+
         function finishTransfer() {
-            
+
             document.getElementById('connection-status').className = 'ui green message';
-            document.getElementById('connection-status').innerHTML = 
-                '<i class="check circle icon"></i> All files received!';
-            
-            // Show received files
+            document.getElementById('connection-status').innerHTML =
+                '<i class="check circle icon"></i> All files received! Check the Completed Files section below to download.';
+
+            // Check if received list is empty (all files completed)
+            checkReceivedListEmpty();
+
             const listEl = document.getElementById('received-files-list');
-            listEl.innerHTML = '';
-            
-            if (receivedFiles.length === 0) {
-                listEl.innerHTML = '<div class="item"><div class="content"><div class="header">No files received</div><div class="description">The file list is empty - check console for errors</div></div></div>';
-                return;
+            const receivedContainer = document.getElementById('received-files-list-container');
+
+            if (listEl) {
+                const remainingItems = listEl.querySelectorAll('.item');
+                const hasFiles = remainingItems.length > 0 && !remainingItems[0].querySelector('.info.icon');
+
+                if (!hasFiles) {
+                    // No more files in received list - remove the entire received files container
+                    if (receivedContainer) {
+                        receivedContainer.style.display = 'none';
+                    }
+
+                } else {
+                    // Add IDs to remaining items so they can be removed when completed
+                    for (const file of receivedFiles) {
+                        const item = document.getElementById('received-file-' + file.fileId);
+                        if (!item) {
+                            // Item doesn't exist in DOM yet - add it with ID
+                            const newItem = document.createElement('div');
+                            newItem.className = 'item';
+                            newItem.id = 'received-file-' + file.fileId;
+                            newItem.innerHTML = `
+                                <i class="file icon"></i>
+                                <div class="content">
+                                    <div class="header">${file.name}</div>
+                                    <div class="description">${formatBytes(file.size)} - Transfer in progress</div>
+                                </div>
+                            `;
+                            listEl.appendChild(newItem);
+                        }
+                    };
+                }
             }
-            
-            receivedFiles.forEach(file => {
-                
-                // Reconstruct file from chunks
-                const totalLength = file.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-                const blob = new Blob(file.chunks, { type: file.mimeType });
-                
-                const item = document.createElement('div');
-                item.className = 'item';
-                item.innerHTML = `
-                    <i class="file icon"></i>
-                    <div class="content">
-                        <div class="header">${file.name}</div>
-                        <div class="description">${formatBytes(file.size)}</div>
-                        <button class="ui primary button" onclick="downloadFile('${file.name}', '${file.mimeType}')">
-                            <i class="download icon"></i>
-                            Download
-                        </button>
-                    </div>
-                `;
-                listEl.appendChild(item);
-                
-                // Store blob for download
-                file.blob = blob;
-            });
-            
-            // Add download all button
-            const downloadAllBtn = document.createElement('button');
-            downloadAllBtn.className = 'ui primary button';
-            downloadAllBtn.style.marginTop = '1em';
-            downloadAllBtn.innerHTML = '<i class="archive icon"></i> Download All as ZIP';
-            downloadAllBtn.onclick = function() {
-                const zip = new JSZip();
-                receivedFiles.forEach(file => {
-                    zip.file(file.name, file.blob);
-                });
-                
-                zip.generateAsync({ type: 'blob' }).then(function(content) {
-                    saveAs(content, 'shared-files.zip');
-                });
-            };
-            listEl.appendChild(downloadAllBtn);
         }
-        
-        // Make downloadFile available globally
-        window.downloadFile = function(name, mimeType) {
-            const file = receivedFiles.find(f => f.name === name);
-            if (file && file.blob) {
-                saveAs(file.blob, name);
-            }
-        };
         
         function formatBytes(bytes) {
             if (bytes < 1024) return bytes + ' bytes';
             else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
             else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
             else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        }
+
+        // Remove a file from the received list
+        function removeFromReceivedList(fileId) {
+            // Try direct ID match first
+            let receivedItem = document.getElementById('received-file-' + fileId);
+            if (receivedItem) {
+                receivedItem.remove();
+                return;
+            }
+
+            // If direct match fails, try to find by looking at all items and comparing
+            // The fileId might have different lastModified timestamps
+            const listEl = document.getElementById('received-files-list');
+            if (listEl) {
+                const items = listEl.querySelectorAll('.item');
+                for (const item of items) {
+                    // Extract the fileId from the element ID
+                    const itemId = item.id.replace('received-file-', '');
+                    // Compare by name and size (first part before the timestamps)
+                    // fileId format: base64(name:size:lastModified)
+                    try {
+                        const itemParts = atob(itemId).split(':');
+                        const targetParts = atob(fileId).split(':');
+
+                        if (itemParts.length >= 2 && targetParts.length >= 2) {
+                            // Compare name and size
+                            if (itemParts[0] === targetParts[0] && itemParts[1] === targetParts[1]) {
+                                item.remove();
+                                return;
+                            }
+                        }
+                    } catch (e) {
+                        // Invalid base64, skip this item
+                        console.warn('Could not decode fileId:', itemId);
+                    }
+                }
+            }
+        }
+
+        // Check if received list is empty and hide container if so
+        function checkReceivedListEmpty() {
+            const listEl = document.getElementById('received-files-list');
+            const receivedContainer = document.getElementById('received-files-list-container');
+            if (listEl) {
+                const remainingItems = listEl.querySelectorAll('.item');
+                if (remainingItems.length === 0) {
+                    // List is empty - hide the entire container
+                    if (receivedContainer) {
+                        receivedContainer.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Add a completed file to the UI list
+        function addCompletedFileToList(fileId, metadata) {
+            const listEl = document.getElementById('completed-files-list');
+
+            // Check if this is the first file (remove placeholder)
+            if (listEl.querySelector('.item .info.icon') !== null) {
+                listEl.innerHTML = '';
+            }
+
+            // Check if file already exists in list
+            const existingItem = document.getElementById('completed-file-' + fileId);
+            if (existingItem) {
+                removeFromReceivedList(fileId);
+                checkReceivedListEmpty();
+                return; // Already in list
+            }
+
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.id = 'completed-file-' + fileId;
+            item.innerHTML = `
+                <i class="file icon ui avatar image"></i>
+                <div class="content">
+                    <div class="ui stackable grid">
+                        <div class="twelve wide column">
+                            <div class="header">${metadata.name}</div>
+                            <div class="description">${formatBytes(metadata.size)}</div>
+                        </div>
+                        <div class="four wide column center aligned">
+                            <button id="download-btn-${fileId}" class="ui primary button" onclick="downloadCompletedFile('${fileId}')">
+                                <i class="download icon"></i>
+                                Download
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            listEl.appendChild(item);
+
+            removeFromReceivedList(fileId);
+            checkReceivedListEmpty();
+        }
+
+        // Download a completed file from IndexedDB
+        window.downloadCompletedFile = async function(fileId) {
+            const btn = document.getElementById('download-btn-' + fileId);
+            if (!btn) return;
+
+            // Find the parent item element
+            const item = btn.closest('.item');
+            const listEl = document.getElementById('completed-files-list');
+
+            // Show loading state
+            btn.classList.add('loading');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="spinner icon"></i> Preparing...';
+
+            try {
+                const { blob, metadata } = await P2PChunkStorage.reconstructFile(fileId);
+                saveAs(blob, metadata.name);
+
+                // Remove from UI list after successful download
+                if (item) {
+                    // item.remove();
+                }
+
+                if (btn) {
+                    btn.innerHTML = '<i class="check icon"></i> Downloaded';
+                    btn.classList.remove('primary');
+                    btn.classList.remove('loading');
+                    btn.classList.add('positive');
+                    btn.disabled = true;
+                }
+
+                // Check if list is now empty and show placeholder
+                if (listEl && listEl.children.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="item">
+                            <i class="info icon ui avatar icon"></i>
+                            <div class="content">
+                                <div class="header">No completed files yet</div>
+                                <div class="description">Received files will appear here for download</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                console.error('Error downloading completed file:', err);
+                alert('Error downloading file. The file may have been cleared from storage.');
+
+                // Reset button state on error
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="download icon"></i> Download';
+            }
+        };
+
+        // Download all completed files as a ZIP
+        window.downloadAllAsZip = async function() {
+            try {
+                const btn = document.getElementById('download-all-zip-btn');
+                if (btn) {
+                    btn.classList.add('loading');
+                    btn.disabled = true;
+                }
+
+                const completedFiles = await P2PChunkStorage.getAllCompletedFiles();
+
+                if (completedFiles.length === 0) {
+                    alert('No completed files to download');
+                    if (btn) {
+                        btn.classList.remove('loading');
+                        btn.disabled = false;
+                    }
+                    return;
+                }
+
+                const zip = new JSZip();
+
+                for (const file of completedFiles) {
+                    try {
+                        const { blob, metadata } = await P2PChunkStorage.reconstructFile(file.fileId);
+                        zip.file(metadata.name, blob);
+                    } catch (err) {
+                        console.error('Error reconstructing file ' + file.name + ':', err);
+                    }
+                }
+
+                const content = await zip.generateAsync({ type: 'blob' });
+                saveAs(content, 'received-files.zip');
+
+                // NOTE: We keep files in IndexedDB after download
+                // This prevents re-transfer on page refresh
+                // If you want to clear storage, call removeCompletedFile explicitly
+
+                // Update all buttons to show "Downloaded" state
+                for (const file of completedFiles) {
+                    const btn = document.getElementById('download-btn-' + file.fileId);
+                    if (btn) {
+                        btn.innerHTML = '<i class="check icon"></i> Downloaded';
+                        btn.classList.remove('primary');
+                        btn.classList.add('positive');
+                        btn.disabled = true;
+                    }
+                }
+
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Error creating zip:', err);
+                alert('Error creating zip file');
+                const btn = document.getElementById('download-all-zip-btn');
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                }
+            }
+        };
+
+        // Load completed files from IndexedDB on page load
+        async function loadCompletedFiles() {
+            try {
+                const completedFiles = await P2PChunkStorage.getAllCompletedFiles();
+
+                // Populate the completedFileIds Set for quick lookup
+                for(const file of completedFiles) {
+                    if(file.size <= 0) continue;
+                    completedFileIds.add(file.fileId);
+                }
+
+                if (completedFiles.length > 0) {
+                    const listEl = document.getElementById('completed-files-list');
+                    listEl.innerHTML = '';
+
+                    for (const file of completedFiles) {
+                        addCompletedFileToList(file.fileId, file);
+                    }
+
+                }
+            } catch (err) {
+                console.error('Error loading completed files:', err);
+            }
         }
     }
 })();

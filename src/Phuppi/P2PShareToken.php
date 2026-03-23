@@ -201,6 +201,34 @@ class P2PShareToken
     }
 
     /**
+     * Finds all active (not expired) tokens for a user.
+     *
+     * @param int $userId The user ID.
+     * @return array Array of self objects.
+     */
+    public static function findActiveByUserId(int $userId): array
+    {
+        $db = Flight::db();
+        $now = date('Y-m-d H:i:s');
+        
+        $stmt = $db->prepare('
+            SELECT * FROM p2p_shared_files 
+            WHERE user_id = ? 
+            AND is_active = 1 
+            AND expires_at > ?
+            ORDER BY created_at DESC
+        ');
+        $stmt->execute([$userId, $now]);
+        
+        $tokens = [];
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $tokens[] = new self($row);
+        }
+        
+        return $tokens;
+    }
+
+    /**
      * Loads a token by its ID.
      *
      * @param int $id The ID of the token.
