@@ -417,6 +417,10 @@ if ($userCount < 1) {
             'title' => 'Digital Ocean Spaces CORS Configuration',  
             'file' => 'do-spaces-cors.md'
         ],
+        'secure-storage-keys' => [
+            'title' => 'Secure Storage API Keys',
+            'file' => 'secure-storage-keys.md'
+        ],
     ];
 
     foreach ($docs as $route => $config) {

@@ -408,12 +408,145 @@ class SettingsController
             case 'import_orphaned_files':
                 $this->importOrphanedFiles($data);
                 return;
+            case 'generate_key':
+                $this->generateMasterKey($data);
+                return;
+            case 'get_key_status':
+                $this->getKeyStatus();
+                return;
+            case 'save_key_to_file':
+                $this->saveKeyToFile($data);
+                return;
+            case 'remove_key_file':
+                $this->removeKeyFile();
+                return;
             default:
                 Flight::json(['error' => 'Invalid action'], 400);
                 return;
         }
 
         Flight::json(['message' => 'Storage settings updated']);
+    }
+
+    /**
+     * Generates a new master key.
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function generateMasterKey($data): void
+    {
+        // Re-encrypt existing keys with new key BEFORE generating (so we have old key to decrypt)
+        // This only works if there's already an existing key
+        $hasExistingKey = \Phuppi\Helper\EncryptionHelper::isSecureModeAvailable();
+        
+        // Generate new key
+        $key = \Phuppi\Helper\EncryptionHelper::generateMasterKey();
+
+        // If there was an existing key, re-encrypt all connector keys with the new key
+        if ($hasExistingKey) {
+            // Save new key to file first so decrypt/encrypt methods can work
+            \Phuppi\Helper\EncryptionHelper::saveKeyToFile($key);
+            \Phuppi\Helper\EncryptionHelper::clearCache();
+            
+            // Now re-encrypt all existing connector keys
+            \Phuppi\Helper\EncryptionHelper::reEncryptAllConnectorKeys();
+            
+            $message = 'Key regenerated - all existing storage connector keys have been re-encrypted with the new key. Copy it now as it cannot be retrieved later.';
+        } else {
+            // First time setup - just save to file
+            $result = \Phuppi\Helper\EncryptionHelper::saveKeyToFile($key);
+            if (!$result) {
+                Flight::json(['error' => 'Failed to save key to file'], 500);
+                return;
+            }
+            \Phuppi\Helper\EncryptionHelper::clearCache();
+            
+            $message = 'Key generated and saved to data/storage-key.key - copy it now as it cannot be retrieved later';
+        }
+
+        // Return the key (one-time display)
+        Flight::json([
+            'key' => $key,
+            'message' => $message
+        ]);
+    }
+
+    /**
+     * Removes the key file (for better security when env var is configured).
+     *
+     * @return void
+     */
+    private function removeKeyFile(): void
+    {
+        $keyFile = \Phuppi\Helper\EncryptionHelper::getKeyFilePath();
+
+        if (!file_exists($keyFile)) {
+            Flight::json(['error' => 'Key file does not exist'], 400);
+            return;
+        }
+
+        // Check if env var is set (that's why we're removing the file)
+        $envKey = getenv('PHUPPI_STORAGE_KEY_MASTER_KEY');
+        if (empty($envKey)) {
+            Flight::json(['error' => 'Cannot remove key file - environment variable not set. Set PHUPPI_STORAGE_KEY_MASTER_KEY first.'], 400);
+            return;
+        }
+
+        if (unlink($keyFile)) {
+            Flight::json(['message' => 'Key file removed - using environment variable instead']);
+        } else {
+            Flight::json(['error' => 'Failed to remove key file'], 500);
+        }
+    }
+
+    /**
+     * Gets the key status.
+     *
+     * @return void
+     */
+    private function getKeyStatus(): void
+    {
+        $isSecureMode = \Phuppi\Helper\EncryptionHelper::isSecureModeAvailable();
+        $keyFileExists = file_exists(\Phuppi\Helper\EncryptionHelper::getKeyFilePath());
+        $hasS3Connectors = \Phuppi\Helper\EncryptionHelper::hasS3Connectors();
+        $isUnsecured = Flight::get('storage_keys_unsecured') ?? false;
+        
+        // Check if environment variable is set
+        $envKeySet = !empty(getenv('PHUPPI_STORAGE_KEY_MASTER_KEY'));
+
+        Flight::json([
+            'secure_mode_available' => $isSecureMode,
+            'key_file_exists' => $keyFileExists,
+            'has_s3_connectors' => $hasS3Connectors,
+            'keys_unsecured' => $isUnsecured,
+            'env_key_set' => $envKeySet,
+            'show_remove_file_button' => $keyFileExists && $envKeySet
+        ]);
+    }
+
+    /**
+     * Saves the current key to file (if configured via env var).
+     *
+     * @param mixed $data The request data.
+     * @return void
+     */
+    private function saveKeyToFile($data): void
+    {
+        $key = \Phuppi\Helper\EncryptionHelper::getMasterKey();
+
+        if ($key === null) {
+            Flight::json(['error' => 'No master key available to save'], 400);
+            return;
+        }
+
+        $result = \Phuppi\Helper\EncryptionHelper::saveKeyToFile($key);
+
+        if ($result) {
+            Flight::json(['message' => 'Key saved to file']);
+        } else {
+            Flight::json(['error' => 'Failed to save key to file'], 500);
+        }
     }
 
     /**
@@ -477,12 +610,36 @@ class SettingsController
                 $config['path'] = $data->local_path ?? null;
                 break;
             case 's3':
-            case 'do_spaces':
+                // Amazon S3 uses s3_* field names
                 $config['bucket'] = $data->s3_bucket ?? '';
                 $config['region'] = $data->s3_region ?? 'us-east-1';
                 $config['key'] = $data->s3_key ?? '';
                 $config['secret'] = $data->s3_secret ?? '';
                 $config['endpoint'] = $data->s3_endpoint ?? null;
+
+                // Encrypt API keys if secure mode is available
+                if (\Phuppi\Helper\EncryptionHelper::isSecureModeAvailable()) {
+                    $config = \Phuppi\Helper\EncryptionHelper::encryptConnectorKeys($config);
+                } else if (!empty($config['key']) && !empty($config['secret'])) {
+                    // Warn about plaintext storage if adding S3 connector without secure mode
+                    Flight::logger()->warning('Adding S3 connector without secure mode - API keys will be stored in plaintext');
+                }
+                break;
+            case 'do_spaces':
+                // Digital Ocean Spaces uses do_* field names to avoid conflict with s3_* fields
+                $config['bucket'] = $data->do_bucket ?? '';
+                $config['region'] = $data->do_region ?? 'nyc3';
+                $config['key'] = $data->do_key ?? '';
+                $config['secret'] = $data->do_secret ?? '';
+                $config['endpoint'] = $data->do_endpoint ?? null;
+
+                // Encrypt API keys if secure mode is available
+                if (\Phuppi\Helper\EncryptionHelper::isSecureModeAvailable()) {
+                    $config = \Phuppi\Helper\EncryptionHelper::encryptConnectorKeys($config);
+                } else if (!empty($config['key']) && !empty($config['secret'])) {
+                    // Warn about plaintext storage if adding DO Spaces connector without secure mode
+                    Flight::logger()->warning('Adding DO Spaces connector without secure mode - API keys will be stored in plaintext');
+                }
                 break;
         }
 
@@ -526,12 +683,29 @@ class SettingsController
                 $config['path'] = $data->local_path ?? $config['path'];
                 break;
             case 's3':
-            case 'do_spaces':
                 $config['bucket'] = $data->s3_bucket ?? $config['bucket'];
                 $config['region'] = $data->s3_region ?? $config['region'];
                 $config['key'] = $data->s3_key ?? $config['key'];
                 $config['secret'] = $data->s3_secret ?? $config['secret'];
                 $config['endpoint'] = $data->s3_endpoint ?? $config['endpoint'];
+
+                // Encrypt API keys if secure mode is available and new keys provided
+                if (\Phuppi\Helper\EncryptionHelper::isSecureModeAvailable() && !empty($data->s3_key)) {
+                    $config = \Phuppi\Helper\EncryptionHelper::encryptConnectorKeys($config);
+                }
+                break;
+            case 'do_spaces':
+                // Digital Ocean Spaces uses do_* field names to avoid conflict with s3_* fields
+                $config['bucket'] = $data->do_bucket ?? $config['bucket'];
+                $config['region'] = $data->do_region ?? $config['region'];
+                $config['key'] = $data->do_key ?? $config['key'];
+                $config['secret'] = $data->do_secret ?? $config['secret'];
+                $config['endpoint'] = $data->do_endpoint ?? $config['endpoint'];
+
+                // Encrypt API keys if secure mode is available and new keys provided
+                if (\Phuppi\Helper\EncryptionHelper::isSecureModeAvailable() && !empty($data->do_key)) {
+                    $config = \Phuppi\Helper\EncryptionHelper::encryptConnectorKeys($config);
+                }
                 break;
         }
 
@@ -661,14 +835,26 @@ class SettingsController
             return;
         }
 
-        $config = [
-            'bucket' => $data->s3_bucket ?? '',
-            'region' => $data->s3_region ?? 'us-east-1',
-            'key' => $data->s3_key ?? '',
-            'secret' => $data->s3_secret ?? '',
-            'endpoint' => $data->s3_endpoint ?? null,
-            'path_prefix' => $data->path_prefix ?? '',
-        ];
+        // Build config based on connector type (S3 uses s3_* fields, DO uses do_* fields)
+        if ($type === 'do_spaces') {
+            $config = [
+                'bucket' => $data->do_bucket ?? '',
+                'region' => $data->do_region ?? 'nyc3',
+                'key' => $data->do_key ?? '',
+                'secret' => $data->do_secret ?? '',
+                'endpoint' => $data->do_endpoint ?? null,
+                'path_prefix' => $data->path_prefix ?? '',
+            ];
+        } else {
+            $config = [
+                'bucket' => $data->s3_bucket ?? '',
+                'region' => $data->s3_region ?? 'us-east-1',
+                'key' => $data->s3_key ?? '',
+                'secret' => $data->s3_secret ?? '',
+                'endpoint' => $data->s3_endpoint ?? null,
+                'path_prefix' => $data->path_prefix ?? '',
+            ];
+        }
 
         try {
 

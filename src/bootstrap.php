@@ -237,6 +237,11 @@ $connectorRows = $db->query("SELECT name, type, config FROM storage_connectors")
 foreach ($connectorRows as $row) {
     $connectors[$row['name']] = json_decode($row['config'], true);
     $connectors[$row['name']]['type'] = $row['type'];
+
+    // Decrypt API keys if encrypted
+    if (isset($connectors[$row['name']]['keys_encrypted']) && $connectors[$row['name']]['keys_encrypted']) {
+        $connectors[$row['name']] = \Phuppi\Helper\EncryptionHelper::decryptConnectorKeys($connectors[$row['name']]);
+    }
 }
 
 // If no connectors, create default local
@@ -282,6 +287,24 @@ if (!isset($connectors['minio-default']) && getenv('MINIO_ACCESS_KEY')) {
 
 Flight::set('storage_connectors', $connectors);
 Flight::set('active_storage_connector', $activeConnector);
+
+// Check secure mode availability and warn if S3/DO Spaces connectors exist without master key
+$hasSecureMode = \Phuppi\Helper\EncryptionHelper::isSecureModeAvailable();
+$hasS3Connectors = false;
+
+foreach ($connectors as $connector) {
+    if (($connector['type'] ?? '') === 's3' || ($connector['type'] ?? '') === 'do_spaces') {
+        $hasS3Connectors = true;
+        break;
+    }
+}
+
+if ($hasS3Connectors && !$hasSecureMode) {
+    Flight::logger()->warning('S3/DO Spaces connectors exist but no master key is configured. API keys are stored in plaintext. Set PHUPPI_STORAGE_KEY_MASTER_KEY environment variable or generate a key in Settings.');
+    Flight::set('storage_keys_unsecured', true);
+} else {
+    Flight::set('storage_keys_unsecured', false);
+}
 
 try {
     Flight::session();

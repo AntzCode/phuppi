@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-03-25
+### Added
+- Secure Storage Connector API Keys - AES-256-GCM encryption to protect S3/DO Spaces API keys
+  - Master key system with two setup options: environment variable (`PHUPPI_STORAGE_KEY_MASTER_KEY`) or key file (`data/storage-key.key`)
+  - Cryptographically secure 256-bit key generation via Settings UI
+  - Automatic encryption of API keys when adding/updating storage connectors
+  - On-the-fly decryption when connecting to storage services
+  - Migration 014 (`src/migrations/014_encrypt_storage_keys.php`) adds encrypted key storage fields
+  - [`EncryptionHelper`](src/Phuppi/Helper/EncryptionHelper.php) class with AES-256-GCM encryption/decryption using OpenSSL
+  - Settings UI with "Secure Keys" tab for key generation, configuration status, and key file management
+  - Security status indicators: green (secure mode active), yellow (no master key), red (S3/DO connectors without secure mode)
+  - Documentation at [`public/docs/secure-storage-keys.md`](public/docs/secure-storage-keys.md)
+  - For existing installations: automatic migration to encrypt existing plaintext keys when master key is configured
+
+### Fixed
+- Storage connector preview generation - fixed issue where preview generation failed after switching between storage connectors by using the correct connector for each file based on per-file storage connector tracking
+
 ## [2.6.0] - 2026-03-21
 ### Added
 - P2P File Sharing via QR Code and Browser - new feature allowing direct file transfer between devices without uploading to the server

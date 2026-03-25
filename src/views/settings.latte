@@ -12,6 +12,7 @@
         <a class="item" data-tab="manage-connectors">Manage Connectors</a>
         <a class="item" data-tab="migration">Migration</a>
         <a class="item" data-tab="data-repair">Data Repair</a>
+        <a class="item" data-tab="secure-keys">Secure Keys</a>
         <a class="item" data-tab="preview-settings">Preview Settings</a>
         <a class="item" data-tab="video-preview-settings">Video Preview</a>
     </div>
@@ -185,7 +186,66 @@
         </div>
         <button class="ui green button" id="importOrphanedFilesBtn" style="margin-top: 10px; display: none;">Import Selected Files</button>
     </div>
-    
+
+    <!-- Secure Keys Tab -->
+    <div class="ui bottom attached tab segment" data-tab="secure-keys">
+        <h3>Master Key for Storage API Keys</h3>
+        <p>This master key is used to encrypt your S3/DO Spaces API keys in the database.</p>
+
+        <div id="keyStatusSection">
+            <div class="ui info message" id="keyStatusMessage">
+                <i class="info icon"></i>
+                <span>Checking key status...</span>
+            </div>
+        </div>
+
+        <div id="keyActions" style="margin-top: 15px;">
+            <button class="ui green button" id="generateKeyBtn">Generate New Key</button>
+            <button class="ui red button" id="removeKeyFileBtn" style="display: none;">Remove Key File (Use Env Var Instead)</button>
+        </div>
+
+        <div id="generatedKeySection" class="ui warning message" style="display: none; margin-top: 15px;">
+            <h4 class="ui header">Important - Copy Your Key Now!</h4>
+            <p>This key will not be displayed again. Copy it to a safe place.</p>
+            <div class="ui action input" style="width: 100%;">
+                <input type="text" id="generatedKeyInput" readonly style="font-family: monospace;">
+                <button class="ui button" id="copyKeyBtn">Copy</button>
+            </div>
+            <p style="margin-top: 10px;">
+                <strong>Next steps:</strong> Add this key to your environment variable:
+                <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">PHUPPI_STORAGE_KEY_MASTER_KEY=YOUR_KEY_HERE</code>
+            </p>
+        </div>
+
+        <div class="ui divider"></div>
+
+        <h4>Configuration Options</h4>
+        <div class="ui list">
+            <div class="item">
+                <i class="check circle icon" style="color: green;"></i>
+                <div class="content">
+                    <div class="header">Environment Variable (Recommended)</div>
+                    <div class="description">Set <code>PHUPPI_STORAGE_KEY_MASTER_KEY</code> in your server environment</div>
+                </div>
+            </div>
+            <div class="item">
+                <i class="info circle icon"></i>
+                <div class="content">
+                    <div class="header">Key File (Alternative)</div>
+                    <div class="description">Key can be saved to <code>data/storage-key.key</code></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ui divider"></div>
+
+        <div id="securityWarning" class="ui red message" style="display: none;">
+            <h4 class="ui header"><i class="warning icon"></i> Security Warning</h4>
+            <p>You have S3/DO Spaces connectors configured but no master key is set. Your API keys are stored in plaintext in the database.</p>
+            <p>Generate a master key above to enable secure encryption of your API keys.</p>
+        </div>
+    </div>
+
     <!-- Preview Settings Tab -->
     <div class="ui bottom attached tab segment" data-tab="preview-settings">
         <h3>Preview Generation Settings</h3>
@@ -394,11 +454,11 @@
             <div class="do-fields" style="display: none;">
                 <div class="field">
                     <label>Space Name (Bucket)</label>
-                    <input type="text" name="s3_bucket" required placeholder="my-space">
+                    <input type="text" name="do_bucket" required placeholder="my-space">
                 </div>
                 <div class="field">
                     <label>Region</label>
-                    <select name="s3_region" class="ui dropdown" required>
+                    <select name="do_region" class="ui dropdown" required>
                         <option value="nyc3">NYC3 (New York)</option>
                         <option value="nyc1">NYC1 (New York - Legacy)</option>
                         <option value="sgp1">SGP1 (Singapore)</option>
@@ -415,16 +475,16 @@
                 </div>
                 <div class="field">
                     <label>Endpoint</label>
-                    <input type="text" name="s3_endpoint" required placeholder="nyc3.digitaloceanspaces.com">
+                    <input type="text" name="do_endpoint" required placeholder="nyc3.digitaloceanspaces.com">
                     <small>The regional endpoint for your Space (e.g., nyc3.digitaloceanspaces.com)</small>
                 </div>
                 <div class="field">
                     <label>Access Key</label>
-                    <input type="text" name="s3_key" required>
+                    <input type="text" name="do_key" required>
                 </div>
                 <div class="field">
                     <label>Secret Key</label>
-                    <input type="password" name="s3_secret" required>
+                    <input type="password" name="do_secret" required>
                 </div>
                 <button class="ui blue button test-connection-btn" type="button">Test Connection</button>
             </div>
@@ -1076,21 +1136,34 @@ document.addEventListener('DOMContentLoaded', function() {
             // Now populate values based on connector type
             if (config.type === 'local') {
                 document.querySelector('input[name="local_path"]').value = config.path || '';
-            } else if (config.type === 's3' || config.type === 'do_spaces') {
-                // Get the visible fields container (either .s3-fields or .do-fields)
-                const activeFields = config.type === 'do_spaces' 
-                    ? document.querySelector('.do-fields') 
-                    : document.querySelector('.s3-fields');
-                
-                if (activeFields) {
-                    const bucketInput = activeFields.querySelector('input[name="s3_bucket"]');
-                    const regionSelect = activeFields.querySelector('select[name="s3_region"]');
-                    const endpointInput = activeFields.querySelector('input[name="s3_endpoint"]');
-                    const keyInput = activeFields.querySelector('input[name="s3_key"]');
-                    const secretInput = activeFields.querySelector('input[name="s3_secret"]');
+            } else if (config.type === 's3') {
+                // S3 connector - use s3_* fields
+                const s3Fields = document.querySelector('.s3-fields');
+                if (s3Fields) {
+                    const bucketInput = s3Fields.querySelector('input[name="s3_bucket"]');
+                    const regionInput = s3Fields.querySelector('input[name="s3_region"]');
+                    const endpointInput = s3Fields.querySelector('input[name="s3_endpoint"]');
+                    const keyInput = s3Fields.querySelector('input[name="s3_key"]');
+                    const secretInput = s3Fields.querySelector('input[name="s3_secret"]');
                     
                     if (bucketInput) bucketInput.value = config.bucket || '';
-                    if (regionSelect) regionSelect.value = config.region || 'us-east-1';
+                    if (regionInput) regionInput.value = config.region || 'us-east-1';
+                    if (endpointInput) endpointInput.value = config.endpoint || '';
+                    if (keyInput) keyInput.value = config.key || '';
+                    if (secretInput) secretInput.value = config.secret || '';
+                }
+            } else if (config.type === 'do_spaces') {
+                // DO Spaces connector - use do_* fields
+                const doFields = document.querySelector('.do-fields');
+                if (doFields) {
+                    const bucketInput = doFields.querySelector('input[name="do_bucket"]');
+                    const regionSelect = doFields.querySelector('select[name="do_region"]');
+                    const endpointInput = doFields.querySelector('input[name="do_endpoint"]');
+                    const keyInput = doFields.querySelector('input[name="do_key"]');
+                    const secretInput = doFields.querySelector('input[name="do_secret"]');
+                    
+                    if (bucketInput) bucketInput.value = config.bucket || '';
+                    if (regionSelect) regionSelect.value = config.region || 'nyc3';
                     if (endpointInput) endpointInput.value = config.endpoint || '';
                     if (keyInput) keyInput.value = config.key || '';
                     if (secretInput) secretInput.value = config.secret || '';
@@ -1464,6 +1537,139 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         document.getElementById('orphanedFilesList').style.display = 'block';
     }
+
+    // Secure Keys Tab - Key Status and Management
+    async function loadKeyStatus() {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'get_key_status');
+
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            const keyStatusMessage = document.getElementById('keyStatusMessage');
+            const securityWarning = document.getElementById('securityWarning');
+            const removeKeyFileBtn = document.getElementById('removeKeyFileBtn');
+
+            if (data.secure_mode_available) {
+                keyStatusMessage.className = 'ui positive message';
+                
+                // Show appropriate message based on key source
+                if (data.env_key_set && data.key_file_exists) {
+                    keyStatusMessage.innerHTML = '<i class="check circle icon"></i><span>Master key is configured (environment variable + key file exists - consider removing key file for better security)</span>';
+                    removeKeyFileBtn.style.display = 'inline-block';
+                } else if (data.env_key_set) {
+                    keyStatusMessage.innerHTML = '<i class="check circle icon"></i><span>Master key is configured via environment variable - secure mode active</span>';
+                    removeKeyFileBtn.style.display = 'none';
+                } else if (data.key_file_exists) {
+                    keyStatusMessage.innerHTML = '<i class="check circle icon"></i><span>Master key is configured via key file - secure mode active</span>';
+                    removeKeyFileBtn.style.display = 'none';
+                } else {
+                    keyStatusMessage.innerHTML = '<i class="check circle icon"></i><span>Master key is configured and secure mode is active</span>';
+                    removeKeyFileBtn.style.display = 'none';
+                }
+            } else {
+                keyStatusMessage.className = 'ui warning message';
+                keyStatusMessage.innerHTML = '<i class="exclamation circle icon"></i><span>No master key configured - API keys are stored in plaintext</span>';
+                removeKeyFileBtn.style.display = 'none';
+            }
+
+            // Show security warning if S3 connectors exist without secure mode
+            if (data.has_s3_connectors && !data.secure_mode_available) {
+                securityWarning.style.display = 'block';
+            } else {
+                securityWarning.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error loading key status:', error);
+            document.getElementById('keyStatusMessage').innerHTML = '<i class="exclamation circle icon"></i><span>Error checking key status</span>';
+        }
+    }
+
+    // Generate Key Button
+    document.getElementById('generateKeyBtn').addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = 'Generating...';
+
+        try {
+            const formData = new FormData();
+            formData.append('action', 'generate_key');
+            formData.append('save_to_file', 'true');
+
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.key) {
+                document.getElementById('generatedKeyInput').value = data.key;
+                document.getElementById('generatedKeySection').style.display = 'block';
+                document.getElementById('generateKeyBtn').textContent = 'Key Generated';
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+                this.disabled = false;
+                this.textContent = 'Generate New Key';
+            }
+        } catch (error) {
+            console.error('Error generating key:', error);
+            alert('Error generating key');
+            this.disabled = false;
+            this.textContent = 'Generate New Key';
+        }
+    });
+
+    // Copy Key Button
+    document.getElementById('copyKeyBtn').addEventListener('click', function() {
+        const keyInput = document.getElementById('generatedKeyInput');
+        keyInput.select();
+        document.execCommand('copy');
+
+        this.textContent = 'Copied!';
+        setTimeout(() => {
+            this.textContent = 'Copy';
+        }, 2000);
+    });
+
+    // Remove Key File Button (when env var is set)
+    document.getElementById('removeKeyFileBtn').addEventListener('click', async function() {
+        if (!confirm('Are you sure you want to remove the key file? This will use the environment variable instead, which is more secure.')) {
+            return;
+        }
+
+        this.disabled = true;
+        this.textContent = 'Removing...';
+
+        try {
+            const formData = new FormData();
+            formData.append('action', 'remove_key_file');
+
+            const response = await fetch('/admin/settings/storage', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.message) {
+                alert('Key file removed successfully!');
+                loadKeyStatus(); // Reload status
+            } else if (data.error) {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Error removing key file:', error);
+            alert('Error removing key file');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Remove Key File (Use Env Var Instead)';
+        }
+    });
+
+    // Load key status when page loads (initial status check)
+    loadKeyStatus();
 
 });
 </script>
