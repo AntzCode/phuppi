@@ -122,6 +122,12 @@
                     <option value="oldest_first">Oldest First</option>
                 </select>
             </div>
+            <div class="field">
+                <div class="ui checkbox">
+                    <input type="checkbox" name="dry_run" id="dryRunCheckbox">
+                    <label for="dryRunCheckbox">Dry run - check what would be migrated without copying any files</label>
+                </div>
+            </div>
             <button class="ui orange button" type="submit" id="startMigrationBtn">Start Migration</button>
         </form>
 
@@ -528,7 +534,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Migration form
     document.getElementById('migrationForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        if (!confirm('Are you sure you want to migrate files? This may take some time.')) return;
+        const dryRun = document.getElementById('dryRunCheckbox').checked;
+        if (!dryRun && !confirm('Are you sure you want to migrate files? This may take some time.')) return;
+
+        const migratedLabel = dryRun ? 'Would migrate' : 'Migrated';
 
         const form = this;
         const startBtn = document.getElementById('startMigrationBtn');
@@ -541,7 +550,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let abortMigration = false;
 
         startBtn.disabled = true;
-        startBtn.textContent = 'Migrating...';
+        startBtn.textContent = dryRun ? 'Checking...' : 'Migrating...';
         progressDiv.style.display = 'block';
         abortBtn.style.display = 'inline-block';
         abortBtn.disabled = false;
@@ -641,7 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Helper function to update progress label with errors
         window.updateProgressLabelWithErrors = function(migrated, skipped, errors, current, total) {
             const progressLabel = document.getElementById('progressLabel');
-            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
+            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
         };
 
         // Update error modal with current error details
@@ -687,7 +696,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const limitInBytes = transferLimitGb * 1024 * 1024 * 1024;
             if (transferLimitGb > 0 && processedSize >= limitInBytes) {
                 limitReached = true;
-                progressLabel.innerHTML = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i}/${total})`;
+                progressLabel.innerHTML = `${dryRun ? 'Dry run' : 'Migration'} stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i}/${total})`;
                 break;
             }
 
@@ -698,6 +707,9 @@ document.addEventListener('DOMContentLoaded', function() {
             migrateData.append('from_connector', formData.get('from_connector'));
             migrateData.append('to_connector', formData.get('to_connector'));
             migrateData.append('file_ids', id);
+            if (dryRun) {
+                migrateData.append('dry_run', '1');
+            }
 
             // Add transfer limit and priority parameters
             if (transferLimitGb > 0) {
@@ -785,20 +797,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             $('#progressBar').progress({ percent: ((i + 1) / total) * 100 });
             window.updateProgressLabelWithErrors(migrated, skipped, errors, i + 1, total);
-            etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining, Migrating: ${file.display_filename} (${formatFileSize(file.filesize)})`;
+            etaDisplay.textContent = `ETA: ${Math.ceil(eta)} seconds remaining, ${dryRun ? 'Checking' : 'Migrating'}: ${file.display_filename} (${formatFileSize(file.filesize)})`;
 
             if (abortMigration) {
-                progressLabel.innerHTML = `Migration aborted. Copied: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
+                progressLabel.innerHTML = `${dryRun ? 'Dry run' : 'Migration'} aborted. ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
                 break;
             }
         }
 
         if (limitReached) {
-            progressLabel.innerHTML = `Migration stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
+            progressLabel.innerHTML = `${dryRun ? 'Dry run' : 'Migration'} stopped - Limit reached! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
         } else if (!abortMigration) {
-            progressLabel.innerHTML = `Migration completed! Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
+            progressLabel.innerHTML = `${dryRun ? 'Dry run completed (no files were copied)!' : 'Migration completed!'} Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()}`;
         } else {
-            progressLabel.innerHTML = `Migration aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
+            progressLabel.innerHTML = `${dryRun ? 'Dry run' : 'Migration'} aborted. Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${i + 1}/${total})`;
         }
         etaDisplay.textContent = '';
         startBtn.disabled = false;
@@ -822,7 +834,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Helper function to update progress label with errors
         window.updateProgressLabelWithErrors = function(migrated, skipped, errors, current, total) {
             const progressLabel = document.getElementById('progressLabel');
-            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
+            progressLabel.innerHTML = `Processed: ${formatFileSize(processedSize)} / ${formatFileSize(totalSize)} - ${migratedLabel}: ${migrated}, Skipped: ${skipped}, Errors: ${errors}${window.getErrorInfoIcon()} (${current}/${total})`;
         };
 
         // Update error modal with current error details

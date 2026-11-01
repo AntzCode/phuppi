@@ -768,6 +768,7 @@ class SettingsController
         $fileIds = null;
         $transferLimitGb = (float) ($data->transfer_limit_gb ?? 0);
         $transferPriority = $data->transfer_priority ?? 'smallest_first';
+        $dryRun = filter_var($data->dry_run ?? false, FILTER_VALIDATE_BOOLEAN);
 
         if (!empty($data->file_ids)) {
             $ids = array_map('intval', array_filter(array_map('trim', explode(',', $data->file_ids))));
@@ -780,7 +781,7 @@ class SettingsController
         }
 
         try {
-            $results = \Phuppi\Storage\StorageFactory::migrate($fromConnector, $toConnector, $fileIds, $transferLimitGb, $transferPriority);
+            $results = \Phuppi\Storage\StorageFactory::migrate($fromConnector, $toConnector, $fileIds, $transferLimitGb, $transferPriority, $dryRun);
             Flight::json(['results' => $results]);
         } catch (\Exception $e) {
             Flight::json(['error' => 'Migration failed: ' . $e->getMessage()], 500);

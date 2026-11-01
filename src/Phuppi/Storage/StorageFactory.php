@@ -146,7 +146,7 @@ class StorageFactory
      * @param string $transferPriority Priority for sorting: 'smallest_first', 'largest_first', 'newest_first', 'oldest_first'
      * @return array
      */
-    public static function migrate(string $fromConnector, string $toConnector, ?array $fileIds=null, float $transferLimitGb = 0, string $transferPriority = 'smallest_first'): array
+    public static function migrate(string $fromConnector, string $toConnector, ?array $fileIds=null, float $transferLimitGb = 0, string $transferPriority = 'smallest_first', bool $dryRun = false): array
     {
         $fromStorage = self::createConnectorByName($fromConnector);
         $toStorage = self::createConnectorByName($toConnector);
@@ -198,7 +198,8 @@ class StorageFactory
             'eta' => 0,
             'limit_reached' => false,
             'limit_bytes' => $limitBytes,
-            'limit_bytes_remaining' => $limitBytes
+            'limit_bytes_remaining' => $limitBytes,
+            'dry_run' => $dryRun
         ];
 
         foreach ($files as $file) {
@@ -236,6 +237,15 @@ class StorageFactory
                     $results['limit_reached'] = true;
                     $results['limit_bytes_remaining'] = max(0, $limitBytes - $processedSize);
                     break;
+                }
+
+                // Dry run: report what would be transferred without reading, writing or recording stats
+                if ($dryRun) {
+                    $results['migrated']++;
+                    $results['bytes_transferred'] += $file->filesize;
+                    $processedSize += $file->filesize;
+                    $results['limit_bytes_remaining'] = $limitBytes > 0 ? max(0, $limitBytes - $processedSize) : 0;
+                    continue;
                 }
 
                 // Get file stream from source
