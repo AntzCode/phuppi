@@ -91,7 +91,23 @@ $userCan = [
         const [queueStats, setQueueStats] = useState({ pending: 0, processing: 0, failed: 0 });
         const [queueMode, setQueueMode] = useState('cli');
 
-        const toggleSelection = (id) => {
+        // The last row whose checkbox was clicked: the anchor for shift+click range selection
+        const lastToggledIdRef = useRef(null);
+
+        const toggleSelection = (id, event) => {
+            const anchorIndex = files.findIndex(f => f.id === lastToggledIdRef.current);
+            const clickedIndex = files.findIndex(f => f.id === id);
+            lastToggledIdRef.current = id;
+
+            if (event && event.shiftKey && anchorIndex !== -1 && clickedIndex !== -1) {
+                // Select every file between the anchor and the clicked row (inclusive)
+                const rangeIds = files
+                    .slice(Math.min(anchorIndex, clickedIndex), Math.max(anchorIndex, clickedIndex) + 1)
+                    .map(f => f.id);
+                setSelectedFiles(prev => [...prev, ...rangeIds.filter(x => !prev.includes(x))]);
+                return;
+            }
+
             setSelectedFiles(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
         };
 
@@ -918,7 +934,7 @@ $userCan = [
                         Delete
                     </button>`}
                     ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="ui image uploaded-file" style="padding: 1em; align-self: center;">
-                        <i class=${selectedFiles.includes(file.id) ? "clickable large primary check square icon" : "clickable large primary square outline icon"} onClick=${() => toggleSelection(file.id)}></i>
+                        <i class=${selectedFiles.includes(file.id) ? "clickable large primary check square icon" : "clickable large primary square outline icon"} onMouseDown=${(e) => { if (e.shiftKey) e.preventDefault(); }} onClick=${(e) => toggleSelection(file.id, e)}></i>
                     </div>`}
                     ${userCan.file_get && html`<div class="ui tiny rounded image clickable raised relative" onClick=${() => previewFile(file)}>
                         <img src=${file.preview_status !== 'completed' ? '/files/preview/' + file.id + '?t=' + cacheBreak : '/files/preview/' + file.id} alt="Preview" onerror="this.src='/assets/designs/icons/filetype-icons/${file.extension.toLowerCase()}.png'; this.onerror=null;" />
