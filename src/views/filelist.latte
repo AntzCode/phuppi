@@ -87,6 +87,17 @@ $userCan = [
         const [total, setTotal] = useState(0);
         const [totalPages, setTotalPages] = useState(0);
         const [uploading, setUploading] = useState(false);
+        const [showUploadForm, setShowUploadForm] = useState(false);
+
+        // The upload form slides open: its grid row animates between 0fr and 1fr. The styles are
+        // inline so the form starts hidden even when the browser has a stale cached stylesheet.
+        const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const uploadFormCollapseStyle = {
+            display: 'grid',
+            gridTemplateRows: showUploadForm ? '1fr' : '0fr',
+            visibility: showUploadForm ? 'visible' : 'hidden',
+            transition: reduceMotion ? 'none' : 'grid-template-rows 0.35s ease, visibility 0s linear ' + (showUploadForm ? '0s' : '0.35s'),
+        };
         const [queueProcessing, setQueueProcessing] = useState(false);
         const [queueStats, setQueueStats] = useState({ pending: 0, processing: 0, failed: 0 });
         const [queueMode, setQueueMode] = useState('cli');
@@ -766,7 +777,13 @@ $userCan = [
 
         return html`
 
-        ${userCan.file_create && userCan.file_put && html`<div class="ui form segment">
+        ${userCan.file_create && userCan.file_put && html`<div class="ui clearing basic segment" style="padding: 0;">
+            <button class="ui blue right floated labeled icon button" id="toggle-upload-form" onClick=${() => setShowUploadForm(!showUploadForm)} disabled=${uploading}>
+                <i class=${showUploadForm ? "close icon" : "upload icon"}></i>
+                ${showUploadForm ? 'Hide Upload' : 'Upload Files'}
+            </button>
+        </div>`}
+        ${userCan.file_create && userCan.file_put && html`<div class="upload-form-collapse" style=${uploadFormCollapseStyle} aria-hidden=${!showUploadForm}><div style="min-height: 0; overflow: hidden;"><div class="ui form segment">
             <h3 class="header"><i class="upload icon"></i> Upload Some Files</h3>
             <div class="ui one cards">
                 <div class="card">
@@ -810,7 +827,7 @@ $userCan = [
                     </div>
                 </div>
             </div>
-        </div>`}
+        </div></div></div>`}
         <div class="ui segment">
             <h3 class="header">
                 <i class="list icon"></i>

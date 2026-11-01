@@ -33,6 +33,7 @@ test.describe('S3 storage', () => {
         const content = crypto.randomBytes(2 * 1024 * 1024);
 
         await page.goto('/');
+        await page.locator('#toggle-upload-form').click();
         await page.locator('#upload').setInputFiles({ name, mimeType: 'application/octet-stream', buffer: content });
         await page.locator('button.submit', { hasText: /upload/i }).click();
 
