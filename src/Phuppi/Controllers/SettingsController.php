@@ -1030,6 +1030,24 @@ class SettingsController
     }
 
     /**
+     * Folders (inside each user's folder) that hold generated preview files. These are not
+     * uploaded files, so they never have a database record of their own.
+     */
+    private const PREVIEW_FOLDERS = ['previews', 'video-previews', 'video_previews'];
+
+    /**
+     * Checks whether a path inside a user's folder is a generated preview file.
+     *
+     * @param string $filename The path after the username, e.g. "previews/abc.webp".
+     * @return bool True if it is in a preview folder.
+     */
+    private function isPreviewFile(string $filename): bool
+    {
+        $folder = explode('/', $filename, 2)[0];
+        return str_contains($filename, '/') && in_array($folder, self::PREVIEW_FOLDERS, true);
+    }
+
+    /**
      * Scans for orphaned files in storage.
      *
      * @param mixed $data The request data.
@@ -1073,7 +1091,7 @@ class SettingsController
                             $filename = implode('/', array_slice($parts, 1));
                             $key = $username . '/' . $filename;
 
-                            if (!isset($dbFiles[$key])) {
+                            if (!$this->isPreviewFile($filename) && !isset($dbFiles[$key])) {
                                 $orphaned[] = [
                                     'path' => $relativePath,
                                     'size' => $file->getSize(),
@@ -1119,7 +1137,7 @@ class SettingsController
                                 $filename = implode('/', array_slice($parts, 1));
                                 $dbKey = $username . '/' . $filename;
 
-                                if (!isset($dbFiles[$dbKey])) {
+                                if (!$this->isPreviewFile($filename) && !isset($dbFiles[$dbKey])) {
                                     $orphaned[] = [
                                         'path' => $relativePath,
                                         'size' => $object['Size'],

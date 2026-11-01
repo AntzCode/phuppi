@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 - "Zip & Download" sent the zip file twice, wasting bandwidth; temporary files are now always cleaned up, including on error paths.
 - "Zip & Download" returned plain text instead of JSON when no file IDs were given.
+- Settings → Data Repair: the orphaned files scan no longer lists generated preview files (the `previews/` and `video-previews/` folders inside each user's folder), so they can't be imported or flagged by mistake.
 
 ## [2.6.1] - 2026-03-25
 ### Added
