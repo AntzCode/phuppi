@@ -22,6 +22,7 @@ Notes for AI coding agents (and humans) working in this repository.
 
 - End-to-end tests live in `tests/e2e/` (see its README). Run them against the isolated test stack before committing changes that affect behavior.
 - Add or update an e2e test when you change user-visible behavior.
+- While changes are in progress, run only targeted tests that cover what you changed (for example `npx playwright test specs/<name>.spec.js`). Do not run the full test suite until the user has confirmed that all the changes in the current set are finished. Then run the full suite once before the commit is suggested, and report the result.
 
 ## Language
 

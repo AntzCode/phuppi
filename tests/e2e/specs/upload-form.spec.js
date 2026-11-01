@@ -61,7 +61,7 @@ test.describe('Upload form', () => {
         await page.locator('#upload').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from('uploaded from the form') });
         await page.locator('button.submit', { hasText: /upload/i }).click();
 
-        await expect(page.locator('.uploaded-file').first()).toBeVisible({ timeout: 30_000 });
+        await expect(page.locator('#file-cards .file-card').first()).toBeVisible({ timeout: 30_000 });
         await expect(page.getByText(name).first()).toBeVisible({ timeout: 30_000 });
     });
 });

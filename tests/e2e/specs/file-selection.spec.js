@@ -14,7 +14,8 @@ test.describe('File list selection', () => {
 
         await page.goto('/');
         // Show enough rows for the range
-        const checkboxes = page.locator('.uploaded-file i.square.icon');
+        // Cards are selected by clicking them (on the text area, not the preview or buttons)
+        const checkboxes = page.locator('#file-cards .file-card > .content:not(.extra)');
         await expect(checkboxes.nth(5)).toBeVisible();
 
         const selectedLabel = page.locator('.bulk-actions > label');
