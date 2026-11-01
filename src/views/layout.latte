@@ -15,6 +15,32 @@
     <link rel="stylesheet" type="text/css" href="/assets/css/phuppi.css?{phuppi_version()}">
     <script src="/assets/js/phuppi.js?{phuppi_version()}"></script>
     {block head}{/block}
+    <style>
+        .main-nav { display: flex; justify-content: flex-end; position: relative; }
+        .main-nav ul { list-style: none; margin: 0; padding: 0; }
+        .main-nav .nav-list { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.25rem; }
+        .main-nav .nav-link { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.7em 1.05em; border: 0; border-bottom: solid 2px transparent; border-radius: 0; background: transparent; color: #504024; font: inherit; font-weight: 700; line-height: 1; text-decoration: none; cursor: pointer; }
+        .main-nav .nav-link i.icon { margin: 0; }
+        .main-nav .nav-link:hover, .main-nav .nav-link:focus-visible, .main-nav .nav-dropdown.open > .nav-link { background: rgba(255, 255, 255, 0.7); color: #504024; }
+        .main-nav .nav-link.active { background: #fff; color: #504024; border-bottom: solid 2px #866f46; }
+        .main-nav .nav-dropdown { position: relative; }
+        .main-nav .nav-dropdown-menu { display: none; position: absolute; right: 0; top: calc(100% + 0.3rem); z-index: 50; min-width: 13em; padding: 0.35rem 0; background: #fff; border-radius: 0; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28); text-align: left; }
+        .main-nav .nav-dropdown.open > .nav-dropdown-menu { display: block; }
+        .main-nav .nav-dropdown-menu a { display: flex; align-items: center; gap: 0.6em; padding: 0.7em 1.15em; border-bottom: solid 2px transparent; color: #251f15; font-weight: 600; text-decoration: none; }
+        .main-nav .nav-dropdown-menu a i.icon { margin: 0; color: inherit; opacity: 0.7; }
+        .main-nav .nav-dropdown-menu a:hover, .main-nav .nav-dropdown-menu a:focus-visible { background: #f3f4f5; }
+        .main-nav .nav-dropdown-menu a.active { color: #251f15; border-bottom: solid 2px #866f46; background: #f3f4f5; }
+        .main-nav .nav-divider { height: 1px; margin: 0.35rem 0; background: rgba(0, 0, 0, 0.1); }
+        .main-nav .nav-toggle { display: none; }
+        @media (max-width: 767px) {
+            .main-nav { flex-direction: column; align-items: stretch; }
+            .main-nav .nav-toggle { display: inline-flex; align-items: center; gap: 0.5em; align-self: flex-end; padding: 0.75em 1.1em; border: 0; border-radius: 0; background: #2185d0; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+            .main-nav .nav-list { display: none; flex-direction: column; align-items: stretch; margin-top: 0.6rem; padding: 0.4rem; background: rgba(255, 255, 255, 0.75); border-radius: 0; }
+            .main-nav.open .nav-list { display: flex; }
+            .main-nav .nav-link { width: 100%; padding: 0.9em 1em; }
+            .main-nav .nav-dropdown-menu { position: static; margin: 0.2rem 0 0.4rem 1rem; box-shadow: none; background: transparent; min-width: 0; }
+        }
+    </style>
 </head>
 
 <body>
@@ -22,18 +48,42 @@
         <div class="three wide column left aligned clickable" data-url="/">
             <img src="/assets/images/logo/phuppi/phuppi-logo-horizontal-slogan.svg?{phuppi_version()}" width="280" height="122" />
         </div>
-        <div class="thirteen wide column last bottom aligned right floated center aligned ui item horizontal-menu right aligned">
-            {if user_id() || voucher_id()}<a class="item ui button primary" href="/p2p/share"><i class="icon share alternate"></i>P2P Share</a>{/if}
-            {if user_id() || voucher_id()}<a class="item ui button primary" href="/p2p/receive"><i class="icon download"></i>Receive Files</a>{/if}
-            {if user_can('note_list')}<a class="item ui button primary" href="/notes"><i class="flag icon"></i> Notes</a>{/if}
-            {if user_can('file_list')}<a class="item ui button primary" href="/"><i class="file icon"></i> Files</a>{/if}
-            {if !voucher_id() && user_can('file_list') and user_can('file_delete') and user_can('file_view')}<a class="item ui button primary" href="/duplicates"><i class="copy icon"></i> Duplicates</a>{/if}
-            {if user_id() && !voucher_id()}<a class="item ui button primary" href="/shortlinks"><i class="linkify icon"></i> Short Links</a>{/if}
-            {if !voucher_id() && user_id()}<a class="item ui button primary" href="/users/settings"><i class="user icon"></i> Profile</a>{/if}
-            {if user_can('user_update')}<a class="item ui button primary" href="/vouchers"><i class="ticket icon"></i> Vouchers</a>{/if}
-            {if user_can('admin')}<a class="item ui button" href="/admin/settings"><i class="cog icon"></i> Settings</a>{/if}
-            {if user_can('user_list')}<a class="item ui button" href="/users"><i class="user icon"></i> Users</a>{/if}
-            {if user_id() || voucher_id()}<a class="item ui button" href="/logout"><i class="icon user"></i>Log Out</a>{/if}
+        <div class="thirteen wide column last bottom aligned right floated right aligned">
+            {var $path = current_path()}
+            {var $showAdmin = user_can('admin') || user_can('user_list') || user_can('user_update')}
+            {var $showAccount = user_id() && !voucher_id()}
+            <nav class="main-nav" aria-label="Main navigation">
+                <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="main-nav-list"><i class="bars icon"></i> Menu</button>
+                <ul class="nav-list" id="main-nav-list">
+                    {if user_can('file_list')}<li><a class="nav-link{if $path === '/'} active{/if}" href="/"{if $path === '/'} aria-current="page"{/if}><i class="file icon"></i> Files</a></li>{/if}
+                    {if user_can('note_list')}<li><a class="nav-link{if str_starts_with($path, '/notes')} active{/if}" href="/notes"><i class="flag icon"></i> Notes</a></li>{/if}
+                    {if user_id() || voucher_id()}<li><a class="nav-link{if str_starts_with($path, '/p2p') && !str_starts_with($path, '/p2p/receive')} active{/if}" href="/p2p/share"><i class="icon share alternate"></i> P2P Share</a></li>{/if}
+                    {if user_id() || voucher_id()}<li><a class="nav-link{if str_starts_with($path, '/p2p/receive')} active{/if}" href="/p2p/receive"><i class="icon download"></i> Receive Files</a></li>{/if}
+                    {if $showAdmin}
+                    <li class="nav-dropdown">
+                        <button type="button" class="nav-link nav-dropdown-toggle{if str_starts_with($path, '/admin') || str_starts_with($path, '/duplicates') || str_starts_with($path, '/vouchers') || ($path === '/users' || (str_starts_with($path, '/users/') && !str_starts_with($path, '/users/settings')))} active{/if}" id="admin-menu-button" aria-haspopup="true" aria-expanded="false"><i class="cog icon"></i> Admin <i class="angle down icon"></i></button>
+                        <ul class="nav-dropdown-menu" aria-labelledby="admin-menu-button">
+                            {if user_can('admin')}<li><a class="{if str_starts_with($path, '/admin') || str_starts_with($path, '/duplicates')}active{/if}" href="/admin/settings"><i class="cog icon"></i> Settings</a></li>{/if}
+                            {if user_can('user_list')}<li><a class="{if $path === '/users' || (str_starts_with($path, '/users/') && !str_starts_with($path, '/users/settings'))}active{/if}" href="/users"><i class="users icon"></i> Users</a></li>{/if}
+                            {if user_can('user_update')}<li><a class="{if str_starts_with($path, '/vouchers')}active{/if}" href="/vouchers"><i class="ticket icon"></i> Vouchers</a></li>{/if}
+                        </ul>
+                    </li>
+                    {/if}
+                    {if $showAccount}
+                    <li class="nav-dropdown">
+                        <button type="button" class="nav-link nav-dropdown-toggle{if str_starts_with($path, '/users/settings') || str_starts_with($path, '/shortlinks')} active{/if}" id="account-menu-button" aria-haspopup="true" aria-expanded="false"><i class="user icon"></i> Account <i class="angle down icon"></i></button>
+                        <ul class="nav-dropdown-menu" aria-labelledby="account-menu-button">
+                            <li><a class="{if str_starts_with($path, '/users/settings')}active{/if}" href="/users/settings"><i class="user outline icon"></i> Profile</a></li>
+                            <li><a class="{if str_starts_with($path, '/shortlinks')}active{/if}" href="/shortlinks"><i class="linkify icon"></i> Short Links</a></li>
+                            <li class="nav-divider" role="separator"></li>
+                            <li><a href="/logout"><i class="sign out icon"></i> Log Out</a></li>
+                        </ul>
+                    </li>
+                    {elseif voucher_id()}
+                    <li><a class="nav-link" href="/logout"><i class="sign out icon"></i> Log Out</a></li>
+                    {/if}
+                </ul>
+            </nav>
         </div>
     </header>
     <div class="ui container content page-content">
@@ -49,5 +99,48 @@
         </div>
     </footer>
     {block scripts}{/block}
+    <script>
+        (function () {
+            var nav = document.querySelector('.main-nav');
+            if (!nav) { return; }
+            var toggle = nav.querySelector('.nav-toggle');
+            var dropdowns = nav.querySelectorAll('.nav-dropdown');
+
+            function closeDropdowns(except) {
+                dropdowns.forEach(function (li) {
+                    if (li !== except) {
+                        li.classList.remove('open');
+                        li.querySelector('.nav-dropdown-toggle').setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
+            toggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = nav.classList.toggle('open');
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+
+            dropdowns.forEach(function (li) {
+                var button = li.querySelector('.nav-dropdown-toggle');
+                button.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var open = !li.classList.contains('open');
+                    closeDropdowns(li);
+                    li.classList.toggle('open', open);
+                    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+            });
+
+            document.addEventListener('click', function () { closeDropdowns(); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    var openOne = nav.querySelector('.nav-dropdown.open > .nav-dropdown-toggle');
+                    closeDropdowns();
+                    if (openOne) { openOne.focus(); }
+                }
+            });
+        })();
+    </script>
 </body>
 </html>

@@ -15,6 +15,7 @@
         <a class="item" data-tab="secure-keys">Secure Keys</a>
         <a class="item" data-tab="preview-settings">Preview Settings</a>
         <a class="item" data-tab="video-preview-settings">Video Preview</a>
+        {if user_can('file_list') and user_can('file_delete') and user_can('file_view')}<a class="item" id="duplicates-link" href="/duplicates"><i class="clone outline icon"></i> Duplicates</a>{/if}
     </div>
 
     <!-- Active Connector Tab -->

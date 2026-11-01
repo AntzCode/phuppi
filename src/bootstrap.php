@@ -95,6 +95,7 @@ $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages
 $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);
 $latte->addFunction('voucher_id', [Phuppi\Helper::class, 'getVoucherId']);
 $latte->addFunction('user_can', [Phuppi\Helper::class, 'can']);
+$latte->addFunction('current_path', fn() => parse_url(Flight::request()->url, PHP_URL_PATH) ?: '/');
 $latte->addFilter('format_bytes', [Phuppi\Helper::class, 'formatBytes']);
 
 Flight::map('render', function (string $template, array $data = [], ?string $block = null): void {
