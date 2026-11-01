@@ -1,5 +1,9 @@
 # AWS SDK Replacement Plan
 
+**Status:** Implemented (2.7.0)
+
+> **Implementation note:** the client was written on plain PHP curl with no Guzzle (Guzzle was only bundled inside `src/aws/`, so removing the SDK would have removed it too). It is split into `S3Service` (operations and AWS Signature V4), `S3ObjectStream` (a stream wrapper that downloads on demand with `curl_multi`) and `S3Exception`. The checklist below keeps the original wording.
+
 ## Overview
 
 Replace the bulky AWS SDK (bundled in `src/aws/`) with a lean, custom S3-compatible service using Guzzle HTTP client. The project only uses a handful of S3 operations which can be achieved with simple REST API calls.
@@ -93,18 +97,18 @@ Refactor [`FileController`](src/Phuppi/Controllers/FileController.php) to not re
 
 ## Implementation Checklist
 
-- [ ] Create `src/Phuppi/Storage/S3Service.php` with Guzzle HTTP client
-- [ ] Implement AWS Signature V4 signing for authentication
-- [ ] Implement all required S3 operations (put, get, head, delete, list)
-- [ ] Implement presigned URL generation
-- [ ] Add Range request support for streaming
-- [ ] Update `S3Storage` to use `S3Service`
-- [ ] Refactor `FileController` to remove direct S3Client usage
-- [ ] Update `SettingsController` orphaned file scanning
-- [ ] Delete `src/aws/` directory
-- [ ] Test all storage operations
-- [ ] Verify presigned URLs work
-- [ ] Verify file streaming with Range headers works
+- [x] Create `src/Phuppi/Storage/S3Service.php` with Guzzle HTTP client
+- [x] Implement AWS Signature V4 signing for authentication
+- [x] Implement all required S3 operations (put, get, head, delete, list)
+- [x] Implement presigned URL generation
+- [x] Add Range request support for streaming
+- [x] Update `S3Storage` to use `S3Service`
+- [x] Refactor `FileController` to remove direct S3Client usage
+- [x] Update `SettingsController` orphaned file scanning
+- [x] Delete `src/aws/` directory
+- [x] Test all storage operations
+- [x] Verify presigned URLs work
+- [x] Verify file streaming with Range headers works
 
 ---
 

@@ -10,6 +10,8 @@ export const PEERJS = {
     port: Number(process.env.E2E_PEERJS_PORT ?? 9089),
 };
 
+export const GARAGE_PORT = Number(process.env.E2E_GARAGE_PORT ?? 3909);
+
 export const ADMIN = {
     username: process.env.E2E_ADMIN_USERNAME ?? 'e2e-admin',
     password: process.env.E2E_ADMIN_PASSWORD ?? 'e2e-password',

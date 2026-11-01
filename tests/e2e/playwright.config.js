@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { APP_URL } from './support/env.js';
+import { APP_URL, GARAGE_PORT } from './support/env.js';
 
 export default defineConfig({
     testDir: './specs',
@@ -20,7 +20,11 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 launchOptions: {
                     // Expose real host ICE candidates so two local browsers connect without mDNS
-                    args: ['--disable-features=WebRtcHideLocalIpsWithMdns'],
+                    args: [
+                        '--disable-features=WebRtcHideLocalIpsWithMdns',
+                        // Presigned S3 URLs name http://garage:3900; reach the test stack's published port without a hosts entry
+                        `--host-resolver-rules=MAP garage:3900 127.0.0.1:${GARAGE_PORT}`,
+                    ],
                 },
             },
         },

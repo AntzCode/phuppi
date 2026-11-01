@@ -15,13 +15,12 @@
 
 namespace Phuppi\Storage;
 
-use Aws\S3\S3Client;
 use Flight;
 
 class S3Storage implements StorageInterface
 {
-    /** @var S3Client */
-    private S3Client $s3Client;
+    /** @var S3Service */
+    private S3Service $client;
 
     /** @var string */
     private string $bucket;
@@ -55,16 +54,14 @@ class S3Storage implements StorageInterface
             }
         }
 
-        $this->s3Client = new S3Client([
-            'version' => 'latest',
+        $this->client = new S3Service([
             'region' => $region,
-            'credentials' => [
-                'key' => $key,
-                'secret' => $secret,
-            ],
+            'key' => $key,
+            'secret' => $secret,
             'endpoint' => $endpoint,
+            'bucket' => $this->bucket,
             // DO Spaces uses virtual-hosted style URLs, not path-style
-            'use_path_style_endpoint' => !$isDigitalOcean,
+            'path_style' => !$isDigitalOcean,
         ]);
     }
 
@@ -90,11 +87,7 @@ class S3Storage implements StorageInterface
     {
         $key = $this->getRelativePath($filename);
         try {
-            $this->s3Client->putObject([
-                'Bucket' => $this->bucket,
-                'Key' => $key,
-                'SourceFile' => $sourcePath,
-            ]);
+            $this->client->putObject($key, $sourcePath);
             Flight::logger()->info('S3Storage put: Successfully uploaded ' . $key);
             return true;
         } catch (\Exception $e) {
@@ -112,11 +105,7 @@ class S3Storage implements StorageInterface
     public function getStream(string $filename): mixed
     {
         $key = $this->getRelativePath($filename);
-        $result = $this->s3Client->getObject([
-            'Bucket' => $this->bucket,
-            'Key' => $key,
-        ]);
-        return $result['Body'];
+        return $this->client->getObject($key)['Body'];
     }
 
     /**
@@ -128,7 +117,7 @@ class S3Storage implements StorageInterface
     public function exists(string $filename): bool
     {
         $key = $this->getRelativePath($filename);
-        return $this->s3Client->doesObjectExist($this->bucket, $key);
+        return $this->client->doesObjectExist($key);
     }
 
     /**
@@ -141,10 +130,7 @@ class S3Storage implements StorageInterface
     {
         $key = $this->getRelativePath($filename);
         try {
-            $this->s3Client->deleteObject([
-                'Bucket' => $this->bucket,
-                'Key' => $key,
-            ]);
+            $this->client->deleteObject($key);
             Flight::logger()->info('S3Storage delete: Successfully deleted ' . $key);
             return true;
         } catch (\Exception $e) {
@@ -162,11 +148,8 @@ class S3Storage implements StorageInterface
     public function size(string $filename): ?int
     {
         $key = $this->getRelativePath($filename);
-        $result = $this->s3Client->headObject([
-            'Bucket' => $this->bucket,
-            'Key' => $key,
-        ]);
-        return (int) $result['ContentLength'];
+        $result = $this->client->headObject($key);
+        return $result === null ? null : $result['ContentLength'];
     }
 
     /**
@@ -181,14 +164,13 @@ class S3Storage implements StorageInterface
     {
         $key = $this->getRelativePath($filename);
 
-        $params = array_merge([
-            'Bucket' => $this->bucket,
-            'Key' => $key,
-        ], $extraParams);
+        // Extra parameters use the SDK-style names, e.g. ['ResponseContentDisposition' => 'attachment']
+        $query = [];
+        foreach ($extraParams as $name => $value) {
+            $query[strtolower(preg_replace('/(?<!^)[A-Z]/', '-$0', $name))] = $value;
+        }
 
-        $command = $this->s3Client->getCommand('GetObject', $params);
-        $request = $this->s3Client->createPresignedRequest($command, time() + $expiresIn);
-        return (string) $request->getUri();
+        return $this->client->presignUrl('GET', $key, (int) $expiresIn, $query);
     }
 
     /**
@@ -203,16 +185,8 @@ class S3Storage implements StorageInterface
     {
         $key = $this->getRelativePath($filename);
         try {
-            $params = [
-                'Bucket' => $this->bucket,
-                'Key' => $key,
-            ];
-            if ($contentType) {
-                $params['ContentType'] = $contentType;
-            }
-            $command = $this->s3Client->getCommand('PutObject', $params);
-            $request = $this->s3Client->createPresignedRequest($command, time() + $expiresIn);
-            return (string) $request->getUri();
+            // The content type is not signed, so the browser may send any Content-Type header
+            return $this->client->presignUrl('PUT', $key, $expiresIn);
         } catch (\Exception $e) {
             Flight::logger()->error('S3Storage getPresignedPutUrl: Failed to create presigned URL for ' . $key . ': ' . $e->getMessage());
             return null;
@@ -227,7 +201,7 @@ class S3Storage implements StorageInterface
     public function testConnection(): array
     {
         try {
-            $this->s3Client->headBucket(['Bucket' => $this->bucket]);
+            $this->client->headBucket();
             return ['success' => true, 'error' => null];
         } catch (\Exception $e) {
             Flight::logger()->error('S3Storage testConnection: Failed to connect to ' . $this->bucket . ': ' . $e->getMessage());
@@ -258,10 +232,10 @@ class S3Storage implements StorageInterface
     /**
      * Gets the S3 client.
      *
-     * @return S3Client The S3 client.
+     * @return S3Service The S3 client.
      */
-    public function getS3Client(): S3Client
+    public function getClient(): S3Service
     {
-        return $this->s3Client;
+        return $this->client;
     }
 }

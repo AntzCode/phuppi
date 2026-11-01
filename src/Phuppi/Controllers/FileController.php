@@ -26,7 +26,7 @@ use Phuppi\Permissions\FilePermission;
 use Phuppi\Service\TransferStats;
 use Phuppi\Storage\LocalStorage;
 use Phuppi\Storage\S3Storage;
-use Aws\S3\Exception\S3Exception;
+use Phuppi\Storage\S3Exception;
 
 class FileController
 {
@@ -354,8 +354,7 @@ class FileController
         $this->recordTransferStats($file, $disposition === 'attachment' ? TransferStats::OPERATION_DOWNLOAD : TransferStats::OPERATION_STREAM);
 
         $key = Flight::storage()->getRelativePath($file->getUsername() . '/' . $file->filename);
-        $s3Client = $storage->getS3Client();
-        $bucket = $storage->getBucket();
+        $s3Client = $storage->getClient();
 
         while (ob_get_level()) {
             ob_end_clean();
@@ -363,10 +362,10 @@ class FileController
 
         try {
             // Get file metadata first
-            $headResult = $s3Client->headObject([
-                'Bucket' => $bucket,
-                'Key' => $key,
-            ]);
+            $headResult = $s3Client->headObject($key);
+            if ($headResult === null) {
+                throw new S3Exception('Object not found: ' . $key, 404, 'NotFound');
+            }
             $totalLength = (int) $headResult['ContentLength'];
             $s3ContentType = $headResult['ContentType'] ?? null;
             $contentType = $s3ContentType ?? $file->mimetype;
@@ -417,28 +416,16 @@ class FileController
                 header('Content-Range: bytes ' . $startByte . '-' . $endByte . '/' . $totalLength);
             }
 
-            // Stream the object - use @http to enable true streaming (no buffering)
-            $params = [
-                'Bucket' => $bucket,
-                'Key' => $key,
-                '@http' => [
-                    'stream' => true,
-                ],
-            ];
-            if ($isPartial) {
-                $params['Range'] = 'bytes=' . $startByte . '-' . $endByte;
-            }
+            // Stream the object: the body is a PHP stream that downloads on demand
+            $range = $isPartial ? ['start' => $startByte, 'end' => $endByte] : null;
 
             try {
-                $result = $s3Client->getObject($params);
-                $stream = $result['Body'];
-            } catch (\Aws\S3\Exception\S3Exception $e) {
+                $stream = $s3Client->getObject($key, $range)['Body'];
+            } catch (S3Exception $e) {
                 // If Range request fails (some S3 configurations), fall back to full file
                 if ($startByte > 0 || $endByte < $totalLength - 1) {
                     Flight::logger()->warning('S3 Range request failed, falling back to full file: ' . $e->getMessage());
-                    unset($params['Range']);
-                    $result = $s3Client->getObject($params);
-                    $stream = $result['Body'];
+                    $stream = $s3Client->getObject($key)['Body'];
                 } else {
                     throw $e;
                 }
@@ -446,9 +433,9 @@ class FileController
 
             // Chunked streaming - large chunks for several seconds of video buffer
             $chunkSize = 8388608; // 8MB chunks for ~5-10 seconds of video buffer
-            while (!$stream->eof() && $contentLength > 0) {
+            while (!feof($stream) && $contentLength > 0) {
                 $readSize = min($chunkSize, $contentLength);
-                $chunk = $stream->read($readSize);
+                $chunk = fread($stream, $readSize);
                 if ($chunk === false || $chunk === '') {
                     break;
                 }
@@ -462,9 +449,9 @@ class FileController
                 flush();
             }
 
-            $stream->close();
+            fclose($stream);
 
-        } catch (\Aws\S3\Exception\S3Exception $e) {
+        } catch (S3Exception $e) {
             Flight::logger()->error('S3 streaming error for key ' . $key . ': ' . $e->getMessage());
             http_response_code(404);
             exit('File not found');
@@ -1528,20 +1515,9 @@ class FileController
             throw new \Exception('S3Storage required');
         }
 
-        $s3Client = $storage->getS3Client();
-        $bucket = $storage->getBucket();
-
-        $params = [
-            'Bucket' => $bucket,
-            'Key' => $storage->getPathPrefix() . '/' . $key,
-            '@http' => [
-                'stream' => true,
-            ],
-        ];
-
-        if ($isPartial) {
-            $params['Range'] = 'bytes=' . $startByte . '-' . $endByte;
-        }
+        $s3Client = $storage->getClient();
+        $fullKey = $storage->getPathPrefix() . '/' . $key;
+        $range = $isPartial ? ['start' => $startByte, 'end' => $endByte] : null;
 
         try {
             // Check if object exists first
@@ -1551,12 +1527,11 @@ class FileController
                 exit('Video preview file not found in storage');
             }
 
-            $result = $s3Client->getObject($params);
-            $stream = $result['Body'];
+            $stream = $s3Client->getObject($fullKey, $range)['Body'];
 
             $chunkSize = 8388608; // 8MB chunks
-            while (!$stream->eof()) {
-                $chunk = $stream->read($chunkSize);
+            while (!feof($stream)) {
+                $chunk = fread($stream, $chunkSize);
                 if ($chunk === false || $chunk === '') {
                     break;
                 }
@@ -1567,9 +1542,9 @@ class FileController
                 flush();
             }
 
-            $stream->close();
-        } catch (\Aws\S3\Exception\S3Exception $e) {
-            Flight::logger()->error('S3 video preview streaming error: ' . $e->getMessage() . ' | Key: ' . $key . ' | Bucket: ' . $bucket);
+            fclose($stream);
+        } catch (S3Exception $e) {
+            Flight::logger()->error('S3 video preview streaming error: ' . $e->getMessage() . ' | Key: ' . $key . ' | Bucket: ' . $storage->getBucket());
             http_response_code(500);
             exit('Streaming error');
         }

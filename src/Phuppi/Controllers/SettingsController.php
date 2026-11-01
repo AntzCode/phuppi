@@ -961,7 +961,7 @@ class SettingsController
 
             $bucket = $storage->getBucket();
             $pathPrefix = $storage->getPathPrefix();
-            $s3Client = $storage->getS3Client();
+            $s3Client = $storage->getClient();
 
             try {
                 $params = [
@@ -1090,7 +1090,7 @@ class SettingsController
 
             $bucket = $storage->getBucket();
             $pathPrefix = $storage->getPathPrefix();
-            $s3Client = $storage->getS3Client();
+            $s3Client = $storage->getClient();
 
             try {
                 $params = [

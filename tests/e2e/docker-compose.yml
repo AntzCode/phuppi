@@ -18,6 +18,12 @@ services:
         GID: ${GID:-1000}
     environment:
       PHUPPI_DATA_PATH: /var/www/data
+      # Phuppi auto-creates an "s3-dev" connector for this S3 server (Garage, below)
+      S3_DEV_ENDPOINT: http://garage:3900
+      S3_DEV_ACCESS_KEY: ${S3_DEV_ACCESS_KEY:-GKa1b2c3d4e5f6a7b8c9d0e1f2}
+      S3_DEV_SECRET_KEY: ${S3_DEV_SECRET_KEY:-6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07}
+      S3_DEV_BUCKET: e2e-files
+      S3_DEV_PATH_PREFIX: uploads
     ports:
       - "${E2E_APP_PORT:-8089}:80"
     volumes:
@@ -29,9 +35,47 @@ services:
       - /var/www/data:uid=${UID:-1000},gid=${GID:-1000},mode=0755
     user: "${UID:-1000}:${GID:-1000}"
     command: ["sh", "-c", "mkdir -p /var/www/data/logs && exec apache2-foreground"]
+    depends_on:
+      garage-init:
+        condition: service_completed_successfully
 
   peerjs:
     image: peerjs/peerjs-server:1.0.2
     command: ["--port", "9000", "--path", "/"]
     ports:
       - "${E2E_PEERJS_PORT:-9089}:9000"
+
+  # S3-compatible storage for the S3 specs. Browsers upload to it through presigned URLs that
+  # name http://garage:3900, so the tests map that address to this published port (see
+  # playwright.config.js).
+  garage:
+    image: dxflrs/garage:v2.4.1
+    ports:
+      - "${E2E_GARAGE_PORT:-3909}:3900"
+    environment:
+      GARAGE_RPC_SECRET: 483d6e7676f649fcc7ca9cbbd7cc4af430b259aec4543e0612c3b3ae4f57652a
+      GARAGE_ADMIN_TOKEN: e2e-only-garage-admin-token
+    volumes:
+      - ../../docker/garage/garage.toml:/etc/garage.toml:ro
+    tmpfs:
+      - /var/lib/garage
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 2s
+      retries: 30
+
+  garage-init:
+    image: alpine:3.19
+    environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_S3_URL: http://garage:3900
+      GARAGE_ADMIN_TOKEN: e2e-only-garage-admin-token
+      S3_DEV_ACCESS_KEY: ${S3_DEV_ACCESS_KEY:-GKa1b2c3d4e5f6a7b8c9d0e1f2}
+      S3_DEV_SECRET_KEY: ${S3_DEV_SECRET_KEY:-6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07}
+      S3_DEV_BUCKET: e2e-files
+    volumes:
+      - ../../docker/garage/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    depends_on:
+      garage:
+        condition: service_healthy

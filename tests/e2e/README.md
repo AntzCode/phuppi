@@ -13,10 +13,16 @@ alongside the development stack:
 |----------|-------|----------------------------------------------------------|
 | `app`    | 8089  | Phuppi with a throwaway database (tmpfs, wiped on `down`) |
 | `peerjs` | 9089  | Local PeerJS signaling server                            |
+| `garage` | 3909  | S3-compatible storage for the S3 specs (set up by `garage-init`) |
 
 The tests point the app's PeerJS client at the local server and drop the public
 STUN servers (see `support/receive.js`), so P2P transfers run without internet
 access. The first run installs Phuppi with the `e2e-admin` account.
+
+The S3 specs switch the active connector to the stack's Garage (`s3-dev`) and back.
+Presigned upload URLs name `http://garage:3900`, so Chromium is started with
+`--host-resolver-rules` to reach the published port (see `playwright.config.js`),
+which means no hosts-file entry is needed.
 
 ## Running
 

@@ -31,7 +31,6 @@ register_shutdown_function(function () {
 
 // include Flight framework and session plugin
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'flight' . DIRECTORY_SEPARATOR . 'autoload.php');
-require_once(__DIR__ . DIRECTORY_SEPARATOR . 'aws' . DIRECTORY_SEPARATOR . 'aws-autoloader.php');
 
 // PSR-4 Autoloader
 spl_autoload_register(function ($class) {
