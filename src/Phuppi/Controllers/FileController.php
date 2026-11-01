@@ -805,6 +805,9 @@ class FileController
     /**
      * Downloads multiple files as a zip.
      *
+     * The request fails as a whole (502, with the names of the unreadable files) when any selected
+     * file can't be read from storage, so a partial zip is never sent.
+     *
      * @return void
      */
     public function downloadMultipleFiles(): void
@@ -814,7 +817,8 @@ class FileController
         $ids = $data->ids ?? [];
 
         if (empty($ids) || !is_array($ids)) {
-            Flight::halt(400, 'Invalid or missing file IDs');
+            Flight::json(['error' => 'Invalid or missing file IDs'], 400);
+            return;
         }
 
         $files = [];
@@ -843,94 +847,64 @@ class FileController
             return;
         }
 
-        // Create the zip
-        $zip = new \ZipArchive();
-        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            Flight::logger()->error('Failed to open zip at: ' . $zipPath);
-            Flight::json(['error' => 'Failed to create zip file'], 500);
-            return;
-        }
-
         $tempFiles = [];
+        $failed = [];
+        $zipReady = false;
 
-        foreach ($files as $file) {
-
-            $filePath = $file->getUsername() . '/' . $file->filename;
-
-            if (Flight::storage()->exists($filePath)) {
-
-                $stream = Flight::storage()->getStream($filePath);
-
-                if ($stream) {
-                    // Create temp file to avoid memory exhaustion
-
-                    $tempPath = tempnam(sys_get_temp_dir(), 'zip_download_');
-                    $tempHandle = fopen($tempPath, 'w');
-
-                    if (!$tempHandle) {
-                        Flight::logger()->error('Failed to create temp file for: ' . $filePath);
-                        continue;
-                    }
-
-                    if (is_resource($stream)) {
-                        stream_copy_to_stream($stream, $tempHandle);
-                        fclose($stream);
-                    } elseif (method_exists($stream, 'detach')) {
-                        // Psr7 stream, detach to get resource
-
-                        $resource = $stream->detach();
-                        if (is_resource($resource)) {
-                            stream_copy_to_stream($resource, $tempHandle);
-                            fclose($resource);
-                        } else {
-                            Flight::logger()->error('Could not detach stream for file: ' . $filePath);
-                            fclose($tempHandle);
-                            $tempFiles[] = $tempPath;
-                            continue;
-                        }
-                    } elseif (method_exists($stream, 'getContents')) {
-                        // Fallback, but may cause memory issues for large files
-                        fwrite($tempHandle, $stream->getContents());
-                    } else {
-                        Flight::logger()->error('Unsupported stream type for file: ' . $filePath);
-                        fclose($tempHandle);
-                        $tempFiles[] = $tempPath;
-                        continue;
-                    }
-                    fclose($tempHandle);
-
-                    $zip->addFile($tempPath, $file->display_filename);
-
-                    // Clean up temp file
-                    $tempFiles[] = $tempPath;
-                }
+        try {
+            $zip = new \ZipArchive();
+            if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                Flight::logger()->error('Failed to open zip at: ' . $zipPath);
+                Flight::json(['error' => 'Failed to create zip file'], 500);
+                return;
             }
-        }
 
-        if (!$zip->close()) {
-            Flight::logger()->error('Failed to finalize zip file');
+            foreach ($files as $file) {
+                $tempPath = $this->copyFileToTemp($file);
+                if ($tempPath === null) {
+                    $failed[] = $file->display_filename;
+                    continue;
+                }
+                $tempFiles[] = $tempPath;
+                $zip->addFile($tempPath, $file->display_filename);
+            }
+
+            if (!empty($failed)) {
+                $zip->unchangeAll();
+                $zip->close();
+                Flight::logger()->error('Zip download aborted, unreadable files: ' . implode(', ', $failed));
+                $error = count($failed) === count($files)
+                    ? 'None of the selected files could be read from storage'
+                    : 'Some of the selected files could not be read from storage';
+                Flight::json(['error' => $error, 'failed' => $failed], 502);
+                return;
+            }
+
+            if (!$zip->close() || !file_exists($zipPath)) {
+                Flight::logger()->error('Failed to finalize zip file');
+                Flight::json(['error' => 'Failed to finalize zip file'], 500);
+                return;
+            }
+
+            $zipReady = true;
+        } catch (\Throwable $e) {
+            Flight::logger()->error('Zip download failed: ' . $e->getMessage());
+            Flight::json(['error' => 'Failed to build the zip file: ' . $e->getMessage()], 502);
+            return;
+        } finally {
             foreach ($tempFiles as $tempFile) {
                 if (file_exists($tempFile)) {
                     unlink($tempFile);
                 }
             }
-            Flight::json(['error' => 'Failed to finalize zip file'], 500);
-            return;
-        }
-
-        foreach ($tempFiles as $tempFile) {
-            if (file_exists($tempFile)) {
-                unlink($tempFile);
+            if (!$zipReady && file_exists($zipPath)) {
+                unlink($zipPath);
             }
         }
 
-        if (!file_exists($zipPath)) {
-            Flight::json(['error' => 'Zip file was not created successfully'], 500);
-            return;
-        }
-
         // Record transfer stats for the zip download
-        $this->recordMultiFileDownloadStats($files, filesize($zipPath));
+        $zipSize = filesize($zipPath);
+        $this->recordMultiFileDownloadStats($files, $zipSize);
 
         // Stream the zip
         while (ob_get_level()) {
@@ -939,7 +913,7 @@ class FileController
 
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $zipFilename . '"');
-        header('Content-Length: ' . filesize($zipPath));
+        header('Content-Length: ' . $zipSize);
         $stream = fopen($zipPath, 'rb');
 
         while (!feof($stream)) {
@@ -948,9 +922,77 @@ class FileController
         }
 
         fclose($stream);
-        readfile($zipPath);
         unlink($zipPath); // Clean up
         exit;
+    }
+
+    /**
+     * Copies a stored file into a temp file, to avoid memory exhaustion when zipping.
+     *
+     * @param UploadedFile $file The file to copy
+     * @return string|null The temp file path, or null if the file could not be read from storage
+     */
+    private function copyFileToTemp(UploadedFile $file): ?string
+    {
+        $filePath = $file->getUsername() . '/' . $file->filename;
+        $tempPath = null;
+
+        try {
+            if (!Flight::storage()->exists($filePath)) {
+                Flight::logger()->error('File missing in storage: ' . $filePath);
+                return null;
+            }
+
+            $stream = Flight::storage()->getStream($filePath);
+            if (!$stream) {
+                Flight::logger()->error('Could not open stream for file: ' . $filePath);
+                return null;
+            }
+
+            $tempPath = tempnam(sys_get_temp_dir(), 'zip_download_');
+            $tempHandle = $tempPath ? fopen($tempPath, 'w') : false;
+            if (!$tempHandle) {
+                Flight::logger()->error('Failed to create temp file for: ' . $filePath);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+                return null;
+            }
+
+            $copied = false;
+            if (is_resource($stream)) {
+                $copied = stream_copy_to_stream($stream, $tempHandle) !== false;
+                fclose($stream);
+            } elseif (method_exists($stream, 'detach')) {
+                // Psr7 stream, detach to get resource
+                $resource = $stream->detach();
+                if (is_resource($resource)) {
+                    $copied = stream_copy_to_stream($resource, $tempHandle) !== false;
+                    fclose($resource);
+                } else {
+                    Flight::logger()->error('Could not detach stream for file: ' . $filePath);
+                }
+            } elseif (method_exists($stream, 'getContents')) {
+                // Fallback, but may cause memory issues for large files
+                $copied = fwrite($tempHandle, $stream->getContents()) !== false;
+            } else {
+                Flight::logger()->error('Unsupported stream type for file: ' . $filePath);
+            }
+            fclose($tempHandle);
+
+            if (!$copied) {
+                @unlink($tempPath);
+                return null;
+            }
+
+            return $tempPath;
+        } catch (\Throwable $e) {
+            Flight::logger()->error('Failed to read file for zip ' . $filePath . ': ' . $e->getMessage());
+            if ($tempPath && file_exists($tempPath)) {
+                @unlink($tempPath);
+            }
+            return null;
+        }
     }
 
     /**

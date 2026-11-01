@@ -147,13 +147,13 @@ Optional: an e2e profile that runs the storage specs against the Garage S3 conne
 - [x] Verify upload/download/preview/migration against Garage
 
 ### Part B: Zip download
-- [ ] Per-file failure tracking and clear JSON errors
-- [ ] Decide on the partial-failure behavior
-- [ ] Remove duplicate `readfile()`
-- [ ] JSON error for missing IDs; `try/catch` around storage calls; reliable cleanup
-- [ ] Frontend error display and loading state
-- [ ] Fix error-level logging
-- [ ] e2e tests: happy path, missing file, response size
+- [x] Per-file failure tracking and clear JSON errors
+- [x] Decide on the partial-failure behavior
+- [x] Remove duplicate `readfile()`
+- [x] JSON error for missing IDs; `try/catch` around storage calls; reliable cleanup
+- [x] Frontend error display and loading state
+- [x] Fix error-level logging (no change needed: FileLogger has no level filter, error lines are written)
+- [x] e2e tests: happy path, missing file, response size
 
 ## 7. Open Decisions
 
