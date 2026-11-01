@@ -32,11 +32,17 @@ services:
       - ./docker/php/php.ini-development:/usr/local/etc/php/php.ini
       - ./docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf
     user: "${UID:-1000}:${GID:-1000}"
-    depends_on:
-      - minio
+    # MinIO is disabled (see the minio service below), so there is nothing to depend on
+    # depends_on:
+    #   - minio
 
+  # DISABLED: minio/minio and minio/mc were removed from Docker Hub (Sep 2026) and quay.io.
+  # Both MinIO services only start with `docker compose --profile minio up` until they are
+  # replaced with an available S3-compatible image.
   minio:
     image: minio/minio:latest
+    profiles:
+      - minio
     container_name: minio
     networks:
       default:
@@ -61,6 +67,8 @@ services:
 
   minio-init:
     image: minio/mc:latest
+    profiles:
+      - minio
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
