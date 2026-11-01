@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-11-01
+### Added
+- Reverse P2P file receiving - a logged-in user creates a receive session and shares its URL or QR code; a guest (no account needed) opens the page, enters the PIN, picks files on their device and sends them straight to the owner over WebRTC. Files never touch the Phuppi server.
+  - "Receive Files" link in the main navigation for logged-in users
+  - 2-digit PIN to protect against man-in-the-middle; the receiver's peer ID is hidden until the PIN is verified, and the PIN locks after repeated wrong attempts
+  - Received files can be downloaded individually or as one zip
+  - Database migration 015 (`src/migrations/015_add_p2p_receive_sessions_table.php`) adds the `p2p_receive_sessions` table
+  - [`P2PReceiveSession`](src/Phuppi/P2PReceiveSession.php) model and `P2PController` actions; routes under `/p2p/receive/...` and `/api/p2p/receive/...`
+  - Plan and issue: [`plans/reverse-p2p-file-receiving-plan.md`](plans/reverse-p2p-file-receiving-plan.md), [`plans/reverse-p2p-file-receiving-issue.md`](plans/reverse-p2p-file-receiving-issue.md)
+- Dry-run mode for storage migration - a "Dry run" checkbox on the Settings → Migration tab reports what would be migrated (missing source files, files already at the destination, transfer limit) without copying anything or recording transfer statistics. Preview and video-preview files are not included in the dry-run byte count.
+- Shift+click range selection in the file list - after clicking a file's checkbox, shift+click another checkbox on the same page to select every file between them.
+- End-to-end test suite (Playwright, dev-only, in `tests/e2e/`) running against an isolated Docker stack with a local PeerJS server. Covers P2P sharing, reverse P2P, navigation, zip downloads, file selection and migration dry run. See [`tests/e2e/README.md`](tests/e2e/README.md).
+
+### Changed
+- Development Docker stack: MinIO is replaced by [Garage](https://garagehq.deuxfleurs.fr/) (`dxflrs/garage:v2.4.1`) as the S3-compatible dev storage, because the `minio/minio` and `minio/mc` images were removed from Docker Hub. Setup is automatic through the `garage-init` service (`docker/garage/init.sh`).
+  - Environment variables renamed from `MINIO_*` to `S3_DEV_*` (`S3_DEV_ENDPOINT`, `S3_DEV_ACCESS_KEY`, `S3_DEV_SECRET_KEY`, `S3_DEV_BUCKET`, `S3_DEV_PATH_PREFIX`). The access key must be `GK` + 24 hex characters and the secret 64 hex characters, so update your `.env` from `.env.example`.
+  - The auto-created dev connector is now named `s3-dev` (was `minio-default`) and reads its endpoint from `S3_DEV_ENDPOINT` instead of a hard-coded address.
+  - Browser uploads to the dev bucket need `127.0.0.1 garage` in your hosts file (see the README). The init script also sets CORS rules on the bucket.
+- "Zip & Download" error handling - the whole download now fails with a JSON error listing the unreadable files instead of silently returning a partial or empty zip. The file list shows the failed file names and a "Building zip..." state.
+
+### Fixed
+- "Zip & Download" sent the zip file twice, wasting bandwidth; temporary files are now always cleaned up, including on error paths.
+- "Zip & Download" returned plain text instead of JSON when no file IDs were given.
+
 ## [2.6.1] - 2026-03-25
 ### Added
 - Secure Storage Connector API Keys - AES-256-GCM encryption to protect S3/DO Spaces API keys
