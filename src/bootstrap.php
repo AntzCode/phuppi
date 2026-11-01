@@ -265,24 +265,24 @@ if ($activeSetting) {
     $activeConnector = $activeSetting;
 }
 
-// Auto-create MinIO connector if it doesn't exist and we're in development/testing
-if (!isset($connectors['minio-default']) && getenv('MINIO_ACCESS_KEY')) {
-    $minioConfig = [
+// Auto-create the dev S3 connector (Garage in the Docker dev stack) if it doesn't exist
+if (!isset($connectors['s3-dev']) && getenv('S3_DEV_ACCESS_KEY')) {
+    $s3DevConfig = [
         'type' => 's3',
-        'name' => 'MinIO Storage (Docker)',
-        'bucket' => getenv('MINIO_BUCKETS') ?: 'phuppi-files',
+        'name' => 'S3 Storage (Docker dev)',
+        'bucket' => getenv('S3_DEV_BUCKET') ?: 'phuppi-files',
         'region' => 'us-east-1',
-        'key' => getenv('MINIO_ACCESS_KEY'),
-        'secret' => getenv('MINIO_SECRET_KEY'),
-        'endpoint' => 'http://minio:9000',
-        'path_prefix' => getenv('MINIO_PATH_PREFIX') ?: 'data/uploadedFiles',
+        'key' => getenv('S3_DEV_ACCESS_KEY'),
+        'secret' => getenv('S3_DEV_SECRET_KEY'),
+        'endpoint' => getenv('S3_DEV_ENDPOINT') ?: 'http://garage:3900',
+        'path_prefix' => getenv('S3_DEV_PATH_PREFIX') ?: 'data/uploadedFiles',
     ];
     $db->prepare('INSERT INTO storage_connectors (name, type, config) VALUES (?, ?, ?)')->execute([
-        'minio-default',
+        's3-dev',
         's3',
-        json_encode($minioConfig)
+        json_encode($s3DevConfig)
     ]);
-    $connectors['minio-default'] = $minioConfig;
+    $connectors['s3-dev'] = $s3DevConfig;
 }
 
 Flight::set('storage_connectors', $connectors);

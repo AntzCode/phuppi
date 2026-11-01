@@ -62,7 +62,7 @@ class TransferStats
     /**
      * Record a transfer statistics entry
      *
-     * @param string $connectorName Name of the storage connector (e.g., 'local-default', 'minio-default')
+     * @param string $connectorName Name of the storage connector (e.g., 'local-default', 's3-dev')
      * @param int|null $fileId The uploaded_file id
      * @param int|null $userId The user id if applicable
      * @param int|null $voucherId The voucher id if applicable
@@ -143,7 +143,7 @@ class TransferStats
     /**
      * Get the current active storage connector name
      *
-     * @return string The active storage connector name (e.g., 'local-default', 'minio-default')
+     * @return string The active storage connector name (e.g., 'local-default', 's3-dev')
      */
     public function getCurrentConnectorName(): string
     {

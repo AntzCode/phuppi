@@ -52,7 +52,7 @@ Phuppi supports multiple storage backends, making it easy to keep your data in t
 - **Local Filesystem** - Default storage on your server
 - **Amazon S3** - AWS Simple Storage Service
 - **Digital Ocean Spaces** - S3-compatible object storage
-- **MinIO** - Self-hosted S3-compatible storage (great for local development)
+- **Garage / MinIO** - Self-hosted S3-compatible storage (Garage is used for local development)
 - **Any S3-Compatible Provider** - Works with any service implementing the S3 API
 
 All cloud storage options support the migration tool for moving data between connectors, including the new transfer limit feature for managing bandwidth usage.
@@ -88,9 +88,9 @@ docker exec -it phuppi php src/bootstrap.php install
 # 5️⃣ Boom! Open http://localhost
 ```
 
-**Pro tip:** add minio to your hosts file if you want to use minio local S3 containers 🔐
+**Pro tip:** add garage to your hosts file if you want to use the local Garage S3 container 🔐
 
-`echo "127.0.0.1 minio" | sudo tee -a /etc/hosts`
+`echo "127.0.0.1 garage" | sudo tee -a /etc/hosts`
 
 
 ## 📚 Documentation

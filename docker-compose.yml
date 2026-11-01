@@ -1,6 +1,6 @@
 # docker-compose.yml
 #
-# Docker Compose configuration for the Phuppi application and MinIO storage service.
+# Docker Compose configuration for the Phuppi application and the Garage S3-compatible dev storage.
 #
 # @package Phuppi
 # @author Anthony Gallon
@@ -18,11 +18,11 @@ services:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     environment:
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKETS: ${MINIO_BUCKETS:-phuppi-files}
-      MINIO_PATH_PREFIX: ${MINIO_PATH_PREFIX:-data/uploadedFiles}
+      S3_DEV_ENDPOINT: ${S3_DEV_ENDPOINT:-http://garage:3900}
+      S3_DEV_ACCESS_KEY: ${S3_DEV_ACCESS_KEY:-GKa1b2c3d4e5f6a7b8c9d0e1f2}
+      S3_DEV_SECRET_KEY: ${S3_DEV_SECRET_KEY:-6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07}
+      S3_DEV_BUCKET: ${S3_DEV_BUCKET:-phuppi-files}
+      S3_DEV_PATH_PREFIX: ${S3_DEV_PATH_PREFIX:-data/uploadedFiles}
     ports:
       - "80:80"
     volumes:
@@ -32,58 +32,42 @@ services:
       - ./docker/php/php.ini-development:/usr/local/etc/php/php.ini
       - ./docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf
     user: "${UID:-1000}:${GID:-1000}"
-    # MinIO is disabled (see the minio service below), so there is nothing to depend on
-    # depends_on:
-    #   - minio
-
-  # DISABLED: minio/minio and minio/mc were removed from Docker Hub (Sep 2026) and quay.io.
-  # Both MinIO services only start with `docker compose --profile minio up` until they are
-  # replaced with an available S3-compatible image.
-  minio:
-    image: minio/minio:latest
-    profiles:
-      - minio
-    container_name: minio
-    networks:
-      default:
-        aliases:
-          - phuppi-files.minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_SERVER_URL: ${MINIO_ENDPOINT:-http://minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_LOG_LEVEL: debug
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  minio-init:
-    image: minio/mc:latest
-    profiles:
-      - minio
-    environment:
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKETS: ${MINIO_BUCKETS:-phuppi-files} 
     depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set myminio http://minio:9000 \"$MINIO_ACCESS_KEY\" \"$MINIO_SECRET_KEY\"; do 
-        sleep 2; 
-      done;
-      mc mb -p myminio/$MINIO_BUCKETS;
-      mc anonymous set download myminio/$MINIO_BUCKETS;
-      exit 0;
-      "
+      garage-init:
+        condition: service_completed_successfully
+
+  # Garage: S3-compatible dev storage (replaces MinIO, whose images were removed from Docker Hub).
+  # The rpc secret and admin token are development-only.
+  garage:
+    image: dxflrs/garage:v2.4.1
+    ports:
+      - "3900:3900"
+    environment:
+      GARAGE_RPC_SECRET: 483d6e7676f649fcc7ca9cbbd7cc4af430b259aec4543e0612c3b3ae4f57652a
+      GARAGE_ADMIN_TOKEN: development-only-garage-admin-token
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 2s
+      retries: 30
+
+  # Sets up the node role, access key and bucket once Garage is up. Safe to re-run.
+  garage-init:
+    image: alpine:3.19
+    environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: development-only-garage-admin-token
+      S3_DEV_ACCESS_KEY: ${S3_DEV_ACCESS_KEY:-GKa1b2c3d4e5f6a7b8c9d0e1f2}
+      S3_DEV_SECRET_KEY: ${S3_DEV_SECRET_KEY:-6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07}
+      S3_DEV_BUCKET: ${S3_DEV_BUCKET:-phuppi-files}
+    volumes:
+      - ./docker/garage/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    depends_on:
+      garage:
+        condition: service_healthy
 
   phpdoc:
     image: phpdoc/phpdoc:latest
@@ -94,4 +78,4 @@ services:
     working_dir: /data
 
 volumes:
-  minio_data:
+  garage_data:

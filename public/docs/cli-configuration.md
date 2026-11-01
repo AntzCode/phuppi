@@ -85,12 +85,13 @@ Here's what the file contains:
 # PHUPPI_PUBLIC_PATH=/custom/public/path
 # PHUPPI_CACHE_PATH=/custom/cache/path
 
-# MinIO Configuration
-MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=phuppi_minio_test
-MINIO_SECRET_KEY=phuppi_minio_secret_12345
-MINIO_BUCKETS=phuppi-files
-MINIO_PATH_PREFIX=data/uploadedFiles
+# S3-compatible dev storage (Garage). The access key must be "GK" + 24 hex characters and the
+# secret 64 hex characters, because Garage validates the format.
+S3_DEV_ENDPOINT=http://localhost:3900
+S3_DEV_ACCESS_KEY=GKa1b2c3d4e5f6a7b8c9d0e1f2
+S3_DEV_SECRET_KEY=6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07
+S3_DEV_BUCKET=phuppi-files
+S3_DEV_PATH_PREFIX=data/uploadedFiles
 
 # Database Configuration
 # Add other environment variables as needed
@@ -102,10 +103,10 @@ MINIO_PATH_PREFIX=data/uploadedFiles
 |---------|--------------|
 | `PHUPPI_ROOT_PATH` | Where Phuppi is installed (usually auto-detected) |
 | `PHUPPI_DATA_PATH` | Where Phuppi stores its data files |
-| `MINIO_ENDPOINT` | Address of your cloud storage (if using S3/MinIO) |
-| `MINIO_ACCESS_KEY` | Username for cloud storage access |
-| `MINIO_SECRET_KEY` | Password for cloud storage access |
-| `MINIO_BUCKETS` | The storage container name |
+| `S3_DEV_ENDPOINT` | Address of the dev S3 storage (Garage, in the Docker dev stack) |
+| `S3_DEV_ACCESS_KEY` | Username for cloud storage access |
+| `S3_DEV_SECRET_KEY` | Password for cloud storage access |
+| `S3_DEV_BUCKET` | The storage container name |
 
 **For most users, you don't need to change anything!** The defaults work fine for basic installation.
 

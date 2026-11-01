@@ -16,6 +16,10 @@ ROADMAP.md
 # exclude the commonmark source files
 src/commonmark/build/commonmark
 
+# keep test results out of the repository
+test-results/
+playwright-report/
+
 # Prevent accidentally committing the delete of html/install.php  
 # git update-index --skip-worktree html/install.php
 
