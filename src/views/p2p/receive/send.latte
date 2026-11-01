@@ -1,0 +1,887 @@
+{extends '../../layout.latte'}
+
+{block title}Send Files{/block}
+
+{block content}
+
+<h1 class="ui header">
+    <i class="share alternate icon"></i>
+    <div class="content">
+        Send Files to {$receiverName}
+    </div>
+</h1>
+<div class="sub header">Enter the PIN shown by the receiver, then select files to send directly</div>
+
+<div id="p2p-sender-app">
+    <!-- PIN Entry Section (initial state) -->
+    <div id="pin-entry-section">
+        <div class="ui segment">
+            <h3 class="ui header">
+                <i class="lock icon"></i>
+                Enter Security PIN
+            </h3>
+            <p>Enter the 2-digit PIN that was shown to you by the receiver</p>
+
+            <div class="ui form">
+                <div class="field">
+                    <label for="pin-input">PIN</label>
+                    <input type="text" id="pin-input" maxlength="2" pattern="\d*" autocomplete="off" placeholder="XX" style="font-size: 2em; text-align: center; width: 100px;" />
+                </div>
+
+                <div id="pin-error" class="ui red message" style="display: none;"></div>
+
+                <button id="verify-pin-btn" class="ui primary button" style="margin-top: 1em;">
+                    <i class="check icon"></i>
+                    Verify
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Selection Section (after PIN verified) -->
+    <div id="file-selection-section" style="display: none;">
+        <div class="ui yellow message">
+            <i class="check circle icon"></i>
+            PIN Verified! Now select files to send.
+        </div>
+
+        <div class="ui segment">
+            <h3 class="ui header">
+                <i class="file icon"></i>
+                Select Files to Send
+            </h3>
+
+            <div class="ui form">
+                <div class="field">
+                    <label id="file-input-label" for="file-input" class="ui button primary">
+                        <i class="file icon"></i>
+                        Choose Files
+                    </label>
+                    <input type="file" id="file-input" multiple style="display: none;" />
+                </div>
+            </div>
+
+            <div class="ui segment" id="selected-files-container" style="display: none;">
+                <div id="selected-files-list" class="ui divided very relaxed list" style="margin-top: 1em;"></div>
+
+                <div class="ui right aligned header">
+                    <strong>Total: </strong><span id="total-size-value">0 bytes</span>
+                    <button id="clear-files-btn" class="ui red button clickable" style="margin-left: auto; margin-right: 0; display: none;" disabled>
+                        <i class="trash icon"></i>
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <div class="ui center aligned container">
+                <button id="send-files-btn" class="ui positive button" style="margin: auto; margin-top: 1em; display: none" disabled>
+                    <i class="send icon"></i>
+                    Send Files
+                </button>
+            </div>
+        </div>
+
+        <!-- Transfer Progress Section -->
+        <div id="transfer-progress-section" class="ui segment" style="display: none;">
+            <!-- Transfer Speed & ETA -->
+            <div class="ui small horizontal statistics" style="margin-bottom: 1em;">
+                <div class="statistic">
+                    <div class="value" id="transfer-speed">0 KB/s</div>
+                    <div class="label">Speed</div>
+                </div>
+                <div class="statistic">
+                    <div class="value" id="time-remaining">--:--</div>
+                    <div class="label">Remaining</div>
+                </div>
+            </div>
+
+            <!-- Overall Progress -->
+            <div class="ui progress" id="transfer-progress">
+                <div class="bar" style="width: 0%; transition: width 0.3s;">
+                    <div class="progress-text">Preparing...</div>
+                </div>
+                <div class="label">Transferring files...</div>
+            </div>
+
+            <!-- File-by-file Progress -->
+            <div id="file-progress-container" style="margin-top: 1em;">
+                <h4 class="ui header">Current File:</h4>
+                <div id="current-file-name" class="ui message">No file</div>
+                <div class="ui progress" id="file-progress">
+                    <div class="bar" style="width: 0%;">
+                        <div class="progress-text">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ui center aligned container" style="margin-top: 1em;">
+                <button id="cancel-transfer-btn" class="ui red button">
+                    <i class="times icon"></i>
+                    Cancel Transfer
+                </button>
+            </div>
+        </div>
+
+        <!-- Success Section -->
+        <div id="success-section" class="ui segment" style="display: none;">
+            <div class="ui green message">
+                <i class="check circle icon"></i>
+                Files sent successfully!
+            </div>
+            <p>The receiver has received your files.</p>
+
+            <div class="ui center aligned container" style="margin-top: 1em;">
+                <button id="send-more-btn" class="ui primary button">
+                    <i class="plus icon"></i>
+                    Send More Files
+                </button>
+                <a href="/" class="ui button">
+                    <i class="home icon"></i>
+                    Home
+                </a>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="error-section" class="ui segment" style="display: none;">
+            <div class="ui red message">
+                <i class="exclamation circle icon"></i>
+                <span id="error-message">An error occurred</span>
+            </div>
+
+            <div class="ui center aligned container" style="margin-top: 1em;">
+                <button id="retry-btn" class="ui primary button">
+                    <i class="refresh icon"></i>
+                    Try Again
+                </button>
+                <button id="back-to-files-btn" class="ui button">
+                    <i class="arrow left icon"></i>
+                    Back
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/assets/peerjs/peerjs.min.js"></script>
+{var $token = $token}
+{var $receiverName = $receiverName}
+<script>
+(function() {
+    const token = {$token};
+    const apiBase = '/api/p2p/receive';
+    const receiverName = {$receiverName};
+
+    let selectedFiles = [];
+    let peer = null;
+    let conn = null;
+    let transferCancelled = false;
+    let transferInProgress = false;
+
+    // Speed tracking
+    let speedSamples = [];
+    const MAX_SPEED_SAMPLES = 10;
+    let lastBytesSent = 0;
+    let lastSpeedUpdate = 0;
+    let totalBytesToSend = 0;
+    let totalBytesSent = 0;
+
+    // DOM elements
+    const pinEntrySection = document.getElementById('pin-entry-section');
+    const fileSelectionSection = document.getElementById('file-selection-section');
+    const pinInput = document.getElementById('pin-input');
+    const verifyPinBtn = document.getElementById('verify-pin-btn');
+    const pinError = document.getElementById('pin-error');
+    const fileInput = document.getElementById('file-input');
+    const fileInputLabel = document.getElementById('file-input-label');
+    const selectedFilesContainer = document.getElementById('selected-files-container');
+    const selectedFilesList = document.getElementById('selected-files-list');
+    const totalSizeValue = document.getElementById('total-size-value');
+    const clearFilesBtn = document.getElementById('clear-files-btn');
+    const sendFilesBtn = document.getElementById('send-files-btn');
+    const transferProgressSection = document.getElementById('transfer-progress-section');
+    const transferProgress = document.getElementById('transfer-progress');
+    const successSection = document.getElementById('success-section');
+    const errorSection = document.getElementById('error-section');
+    const errorMessage = document.getElementById('error-message');
+    const cancelTransferBtn = document.getElementById('cancel-transfer-btn');
+    const sendMoreBtn = document.getElementById('send-more-btn');
+    const retryBtn = document.getElementById('retry-btn');
+    const backToFilesBtn = document.getElementById('back-to-files-btn');
+
+    // Format bytes helper
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+        else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+
+    // Format time helper (seconds to MM:SS)
+    function formatTime(seconds) {
+        if (seconds < 0 || !isFinite(seconds)) return '--:--';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+    }
+
+    // Verify PIN
+    async function verifyPin() {
+        const pin = pinInput.value.trim();
+
+        if (!pin || pin.length !== 2) {
+            showPinError('Please enter a 2-digit PIN');
+            return;
+        }
+
+        verifyPinBtn.disabled = true;
+        verifyPinBtn.innerHTML = '<i class="loading spinner icon"></i> Verifying...';
+
+        try {
+            const response = await fetch(apiBase + '/' + token + '/verify-pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: pin })
+            });
+
+            const data = await response.json();
+
+            if (data.valid) {
+                // PIN verified - show file selection
+                showFileSelection();
+            } else if (data.locked) {
+                showPinError('Too many failed attempts. Please ask the receiver for a new session.');
+            } else {
+                const attempts = data.attemptsRemaining || 0;
+                showPinError('Invalid PIN. ' + attempts + ' attempt(s) remaining.');
+            }
+        } catch (err) {
+            showPinError('Error verifying PIN: ' + err.message);
+        } finally {
+            verifyPinBtn.disabled = false;
+            verifyPinBtn.innerHTML = '<i class="check icon"></i> Verify';
+        }
+    }
+
+    // Show PIN error
+    function showPinError(msg) {
+        pinError.textContent = msg;
+        pinError.style.display = 'block';
+    }
+
+    // Show file selection section
+    function showFileSelection() {
+        pinEntrySection.style.display = 'none';
+        fileSelectionSection.style.display = 'block';
+
+        // Focus on file input
+        setTimeout(() => {
+            fileInputLabel.focus();
+        }, 100);
+    }
+
+    // Handle file selection
+    fileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        selectedFiles = files;
+        renderSelectedFiles();
+    });
+
+    // Render selected files list
+    function renderSelectedFiles() {
+        selectedFilesList.innerHTML = '';
+
+        if (selectedFiles.length === 0) {
+            selectedFilesContainer.style.display = 'none';
+            sendFilesBtn.disabled = true;
+            sendFilesBtn.style.display = 'none';
+            clearFilesBtn.disabled = true;
+            clearFilesBtn.style.display = 'none';
+            return;
+        }
+
+        let totalSize = 0;
+
+        selectedFiles.forEach(function(file, index) {
+            totalSize += file.size;
+
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.innerHTML =
+                '<i class="file icon"></i>' +
+                '<div class="content">' +
+                    '<div class="header"></div>' +
+                    '<div class="description"></div>' +
+                '</div>' +
+                '<button class="ui red button remove-file-btn" data-index="' + index + '" style="margin-left: auto;">' +
+                    '<i class="times icon"></i>' +
+                '</button>';
+            // Set file details as text, never as HTML
+            item.querySelector('.header').textContent = file.name;
+            item.querySelector('.description').textContent = formatBytes(file.size) + ' - ' + (file.type || 'unknown');
+            selectedFilesList.appendChild(item);
+        });
+
+        // Add remove handlers
+        document.querySelectorAll('.remove-file-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const index = parseInt(btn.dataset.index);
+                selectedFiles.splice(index, 1);
+                renderSelectedFiles();
+            });
+        });
+
+        totalSizeValue.textContent = formatBytes(totalSize);
+        selectedFilesContainer.style.display = 'block';
+        sendFilesBtn.disabled = false;
+        sendFilesBtn.style.display = 'block';
+        clearFilesBtn.disabled = false;
+        clearFilesBtn.style.display = 'block';
+        fileInputLabel.style.display = 'none';
+    }
+
+    // Clear files
+    clearFilesBtn.addEventListener('click', function() {
+        selectedFiles = [];
+        fileInput.value = '';
+        renderSelectedFiles();
+        fileInputLabel.style.display = 'block';
+    });
+
+    // Send files button - initialize P2P connection
+    sendFilesBtn.addEventListener('click', function() {
+        if (selectedFiles.length === 0) return;
+        startTransfer();
+    });
+
+    // Initialize PeerJS and connect to receiver
+    async function startTransfer() {
+        sendFilesBtn.disabled = true;
+        sendFilesBtn.innerHTML = '<i class="loading spinner icon"></i> Connecting...';
+
+        // Hide file selection, show progress
+        sendFilesBtn.style.display = 'none';
+        clearFilesBtn.style.display = 'none';
+        selectedFilesContainer.style.display = 'none';
+        transferProgressSection.style.display = 'block';
+
+        transferCancelled = false;
+        transferInProgress = true;
+
+        // Reset speed tracking
+        speedSamples = [];
+        lastBytesSent = 0;
+        lastSpeedUpdate = Date.now();
+        totalBytesToSend = selectedFiles.reduce(function(sum, f) { return sum + f.size; }, 0);
+        totalBytesSent = 0;
+
+        try {
+            // First, get session info to find the receiver's peer ID
+            const sessionInfo = await fetch(apiBase + '/' + token).then(r => r.json());
+
+            if (sessionInfo.error) {
+                throw new Error(sessionInfo.error);
+            }
+
+            // Initialize PeerJS
+            initializePeerJS(sessionInfo.peerjsId);
+
+        } catch (err) {
+            showError('Failed to start transfer: ' + err.message);
+        }
+    }
+
+    // Initialize PeerJS connection
+    function initializePeerJS(receiverPeerId) {
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.stunprotocol.org:3478' }
+        ];
+
+        // Create peer with unique ID
+        const peerId = 'sender-' + token.substring(0, 8) + '-' + Date.now();
+
+        peer = new Peer(peerId, {
+            debug: 2,
+            config: {
+                iceServers: iceServers,
+                iceCandidatePoolSize: 10
+            }
+        });
+
+        // The sender only connects out to the receiver; only the receiver registers its peer ID.
+        // Connect only once our own peer is registered with the signaling server, otherwise
+        // the connection offer is never delivered.
+        let started = false;
+        peer.on('open', function(id) {
+            console.log('Sender peer opened:', id);
+
+            // 'open' fires again after a reconnect; only start connecting once
+            if (started) return;
+            started = true;
+
+            if (receiverPeerId) {
+                console.log('Receiver peer ID available, connecting to:', receiverPeerId);
+                connectToReceiver(receiverPeerId);
+            } else {
+                console.log('No receiver peer ID yet, polling for receiver...');
+                pollForReceiver();
+            }
+        });
+
+        peer.on('error', function(err) {
+            console.error('PeerJS error:', err);
+
+            if (err.type === 'disconnected') {
+                // Try to reconnect
+                setTimeout(function() {
+                    if (peer && !peer.disconnected && !transferCancelled) peer.reconnect();
+                }, 1000);
+            } else {
+                showError('Connection error: ' + err.message);
+            }
+        });
+
+        peer.on('disconnected', function() {
+            console.log('PeerJS disconnected');
+            if (!transferCancelled && peer && !peer.disconnected) {
+                peer.reconnect();
+            }
+        });
+    }
+
+    // Poll for receiver peer ID
+    function pollForReceiver() {
+        const pollInterval = setInterval(async function() {
+            if (transferCancelled) {
+                clearInterval(pollInterval);
+                return;
+            }
+
+            try {
+                console.log('Polling for receiver peer ID...');
+                const sessionInfo = await fetch(apiBase + '/' + token).then(r => r.json());
+
+                console.log('Session info:', sessionInfo);
+
+                if (sessionInfo.peerjsId) {
+                    console.log('Found receiver peer ID:', sessionInfo.peerjsId);
+                    clearInterval(pollInterval);
+                    connectToReceiver(sessionInfo.peerjsId);
+                } else if (sessionInfo.error) {
+                    console.error('Session error:', sessionInfo.error);
+                    clearInterval(pollInterval);
+                    showError(sessionInfo.error);
+                }
+            } catch (err) {
+                console.error('Poll error:', err);
+            }
+        }, 2000);
+
+        // Stop polling after 60 seconds
+        setTimeout(function() {
+            clearInterval(pollInterval);
+            if (!conn && !transferCancelled) {
+                showError('Receiver did not connect. Please try again.');
+            }
+        }, 60000);
+    }
+
+    // Connect to receiver
+    function connectToReceiver(receiverPeerId) {
+        console.log('Attempting to connect to receiver:', receiverPeerId);
+
+        sendFilesBtn.innerHTML = '<i class="loading spinner icon"></i> Connecting to receiver...';
+
+        conn = peer.connect(receiverPeerId, {
+            reliable: true
+        });
+
+        conn.on('open', function() {
+            console.log('Connected to receiver!');
+            sendFiles();
+        });
+
+        conn.on('data', function(data) {
+            handleDataMessage(data);
+        });
+
+        conn.on('close', function() {
+            console.log('Connection closed');
+            if (resolveReceiverAck) resolveReceiverAck(false);
+            if (!transferCancelled && transferInProgress && selectedFiles.length > 0) {
+                showError('Connection lost. Please try again.');
+            }
+            transferInProgress = false;
+        });
+
+        conn.on('error', function(err) {
+            console.error('Connection error:', err);
+            transferInProgress = false;
+            showError('Connection error: ' + err.message);
+        });
+
+        conn.on('iceStateChanged', function(state) {
+            console.log('ICE connection state:', state);
+        });
+
+        // Timeout after 30 seconds
+        setTimeout(function() {
+            if ((!conn || !conn.open) && !transferCancelled) {
+                console.log('Connection timeout - conn state:', conn ? conn.open : 'no connection');
+                showError('Connection timeout. Please try again.');
+            }
+        }, 30000);
+    }
+
+    // Handle data from receiver
+    function handleDataMessage(data) {
+        console.log('Received:', data);
+
+        if (data.type === 'request-files') {
+            // Receiver requested files - we already started sending
+        } else if (data.type === 'all-received' && resolveReceiverAck) {
+            resolveReceiverAck(true);
+        }
+    }
+
+    // Resolves the pending waitForReceiverAck() call, if any
+    let resolveReceiverAck = null;
+
+    // Wait for the receiver to confirm every file is stored; false on timeout or disconnect
+    function waitForReceiverAck(timeoutMs) {
+        return new Promise(function(resolve) {
+            const timer = setTimeout(function() {
+                resolveReceiverAck = null;
+                resolve(false);
+            }, timeoutMs);
+
+            resolveReceiverAck = function(confirmed) {
+                clearTimeout(timer);
+                resolveReceiverAck = null;
+                resolve(confirmed);
+            };
+        });
+    }
+
+    // Wait until queued outgoing data drops below the limit. conn.send() never blocks,
+    // so without this the whole file is queued at once and lost if the connection closes.
+    async function waitForSendBuffer(limitBytes) {
+        while (conn && conn.open) {
+            const queued = (conn.bufferSize || 0) + (conn.dataChannel ? conn.dataChannel.bufferedAmount : 0);
+            if (queued <= limitBytes) return;
+            await new Promise(function(resolve) { setTimeout(resolve, 10); });
+        }
+    }
+
+    // Update speed tracking
+    function updateSpeedTracking() {
+        const now = Date.now();
+        const elapsed = (now - lastSpeedUpdate) / 1000; // seconds
+
+        if (elapsed >= 0.5 && elapsed < 2) { // Update every 500ms-2s
+            const bytesThisPeriod = totalBytesSent - lastBytesSent;
+            const speed = bytesThisPeriod / elapsed; // bytes per second
+
+            if (speed > 0) {
+                speedSamples.push(speed);
+                if (speedSamples.length > MAX_SPEED_SAMPLES) {
+                    speedSamples.shift();
+                }
+
+                lastBytesSent = totalBytesSent;
+                lastSpeedUpdate = now;
+
+                // Calculate average speed
+                const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+
+                // Update speed display
+                document.getElementById('transfer-speed').textContent = formatBytes(avgSpeed) + '/s';
+
+                // Calculate ETA
+                const remainingBytes = totalBytesToSend - totalBytesSent;
+                if (remainingBytes > 0 && avgSpeed > 0) {
+                    const etaSeconds = remainingBytes / avgSpeed;
+                    document.getElementById('time-remaining').textContent = formatTime(etaSeconds);
+                } else {
+                    document.getElementById('time-remaining').textContent = '--:--';
+                }
+            }
+        }
+    }
+
+    // Send files via P2P
+    async function sendFiles() {
+        const CHUNK_SIZE = 16 * 1024;
+
+        sendFilesBtn.innerHTML = '<i class="loading spinner icon"></i> Sending files...';
+
+        // Sort files by size (smallest first)
+        const sortedFiles = [...selectedFiles].sort(function(a, b) {
+            return a.size - b.size;
+        });
+
+        let totalBytes = sortedFiles.reduce(function(sum, f) {
+            return sum + f.size;
+        }, 0);
+
+        totalBytesToSend = totalBytes;
+        totalBytesSent = 0;
+        lastSpeedUpdate = Date.now();
+
+        let currentFileSize = 0;
+        let currentFileBytesSent = 0;
+
+        for (const file of sortedFiles) {
+            if (transferCancelled) break;
+
+            // Generate file ID
+            const fileId = btoa(file.name + ':' + file.size + ':' + file.lastModified);
+
+            // Send file-start
+            conn.send({
+                type: 'file-start',
+                fileId: fileId,
+                name: file.name,
+                size: file.size,
+                mimeType: file.type || 'application/octet-stream'
+            });
+
+            // Update current file display
+            document.getElementById('current-file-name').textContent = file.name;
+            currentFileSize = file.size;
+            currentFileBytesSent = 0;
+
+            // Read file and send in chunks
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+
+                for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+                    if (transferCancelled) break;
+
+                    const chunk = bytes.slice(offset, offset + CHUNK_SIZE);
+                    const chunkIndex = Math.floor(offset / CHUNK_SIZE);
+
+                    await waitForSendBuffer(1024 * 1024);
+                    if (!conn || !conn.open) break;
+
+                    conn.send({
+                        type: 'file-chunk',
+                        fileId: fileId,
+                        chunkIndex: chunkIndex,
+                        data: chunk.buffer,
+                        total: bytes.length
+                    });
+
+                    const chunkSize = chunk.length;
+                    totalBytesSent += chunkSize;
+                    currentFileBytesSent += chunkSize;
+
+                    // Update speed tracking
+                    updateSpeedTracking();
+
+                    // Update overall progress
+                    const percent = Math.round((totalBytesSent / totalBytes) * 100);
+                    updateProgress(percent, 'Sending ' + file.name + '...');
+
+                    // Update file progress
+                    const filePercent = currentFileSize > 0
+                        ? Math.round((currentFileBytesSent / currentFileSize) * 100)
+                        : 0;
+                    updateFileProgress(filePercent);
+                }
+
+                // Send file-complete
+                conn.send({
+                    type: 'file-complete',
+                    fileId: fileId,
+                    name: file.name
+                });
+
+            } catch (err) {
+                console.error('Error reading file:', err);
+                showError('Error reading file: ' + file.name);
+                return;
+            }
+        }
+
+        if (transferCancelled) {
+            showError('Transfer cancelled');
+            transferInProgress = false;
+            return;
+        }
+
+        // All files sent; only report success once the receiver confirms it stored them
+        conn.send({ type: 'all-complete' });
+        sendFilesBtn.innerHTML = '<i class="loading spinner icon"></i> Waiting for receiver to confirm...';
+
+        const confirmed = await waitForReceiverAck(120000);
+        transferInProgress = false;
+
+        if (!confirmed) {
+            showError('The receiver did not confirm the files arrived. Please try again.');
+            return;
+        }
+
+        showSuccess();
+    }
+
+    // Update progress bar
+    function updateProgress(percent, status) {
+        const progressBar = transferProgress.querySelector('.bar');
+        const progressText = transferProgress.querySelector('.progress-text');
+        const progressLabel = transferProgress.querySelector('.label');
+
+        if (progressBar) progressBar.style.width = percent + '%';
+        if (progressText) progressText.textContent = status || (percent + '%');
+        if (progressLabel) progressLabel.textContent = 'Transferring files...';
+    }
+
+    // Update file progress bar
+    function updateFileProgress(percent) {
+        var fileProgressBar = document.querySelector('#file-progress .bar');
+        var fileProgressText = document.querySelector('#file-progress .progress-text');
+
+        if (fileProgressBar) fileProgressBar.style.width = percent + '%';
+        if (fileProgressText) fileProgressText.textContent = percent + '%';
+    }
+
+    // Show success
+    function showSuccess() {
+        transferProgressSection.style.display = 'none';
+        successSection.style.display = 'block';
+
+        // Reset speed display
+        document.getElementById('transfer-speed').textContent = '0 KB/s';
+        document.getElementById('time-remaining').textContent = '--:--';
+
+        // Clean up
+        if (conn) {
+            try { conn.close(); } catch (e) {}
+            conn = null;
+        }
+        if (peer) {
+            try { peer.destroy(); } catch (e) {}
+            peer = null;
+        }
+    }
+
+    // Show error
+    function showError(msg) {
+        transferInProgress = false;
+        transferProgressSection.style.display = 'none';
+        errorMessage.textContent = msg;
+        errorSection.style.display = 'block';
+
+        // Clean up
+        if (conn) {
+            try { conn.close(); } catch (e) {}
+            conn = null;
+        }
+        if (peer) {
+            try { peer.destroy(); } catch (e) {}
+            peer = null;
+        }
+    }
+
+    // Cleanup function
+    function cleanupTransfer() {
+        transferCancelled = true;
+        transferInProgress = false;
+
+        if (conn) {
+            try { conn.close(); } catch (e) {}
+            conn = null;
+        }
+        if (peer) {
+            try { peer.destroy(); } catch (e) {}
+            peer = null;
+        }
+    }
+
+    // Cancel transfer
+    cancelTransferBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to cancel the transfer?')) {
+            cleanupTransfer();
+            // Go back to file selection
+            backToFiles();
+        }
+    });
+
+    // Back to files
+    function backToFiles() {
+        errorSection.style.display = 'none';
+        transferProgressSection.style.display = 'none';
+        sendFilesBtn.disabled = false;
+        sendFilesBtn.style.display = 'block';
+        sendFilesBtn.innerHTML = '<i class="send icon"></i> Send Files';
+
+        if (selectedFiles.length > 0) {
+            selectedFilesContainer.style.display = 'block';
+            clearFilesBtn.disabled = false;
+            clearFilesBtn.style.display = 'block';
+        }
+
+        // Reset speed display
+        document.getElementById('transfer-speed').textContent = '0 KB/s';
+        document.getElementById('time-remaining').textContent = '--:--';
+    }
+
+    // Retry button
+    retryBtn.addEventListener('click', function() {
+        errorSection.style.display = 'none';
+        startTransfer();
+    });
+
+    // Back to files button
+    backToFilesBtn.addEventListener('click', function() {
+        errorSection.style.display = 'none';
+        backToFiles();
+    });
+
+    // Send more files
+    sendMoreBtn.addEventListener('click', function() {
+        // Reset state but keep PIN verified
+        selectedFiles = [];
+        fileInput.value = '';
+        successSection.style.display = 'none';
+        selectedFilesContainer.style.display = 'none';
+        sendFilesBtn.disabled = true;
+        sendFilesBtn.style.display = 'none';
+        clearFilesBtn.disabled = true;
+        clearFilesBtn.style.display = 'none';
+        fileInputLabel.style.display = 'block';
+        fileInputLabel.focus();
+    });
+
+    // PIN input handlers
+    pinInput.addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') {
+            verifyPin();
+        }
+        // Only allow digits
+        pinInput.value = pinInput.value.replace(/\D/g, '');
+    });
+
+    // Verify button
+    verifyPinBtn.addEventListener('click', verifyPin);
+
+    // Auto-focus PIN input
+    pinInput.focus();
+
+    // Handle page unload for cleanup
+    window.addEventListener('beforeunload', function() {
+        if (transferInProgress) {
+            cleanupTransfer();
+        }
+    });
+})();
+</script>
+{/block}

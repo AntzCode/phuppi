@@ -1,0 +1,141 @@
+{extends '../../layout.latte'}
+
+{block title}Receive Files{/block}
+
+{block content}
+
+<h1 class="ui header">
+    <i class="download icon"></i>
+    <div class="content">
+        Receive Files
+    </div>
+</h1>
+<div class="sub header">Share files directly from a guest's device - no upload to server</div>
+
+<div class="ui yellow message">
+    <i class="info icon"></i>
+    <strong>How it works:</strong> Share this page with a guest. They can scan the QR code or use the link to send files directly to your browser via P2P connection.
+</div>
+
+<div id="p2p-receive-create-app">
+    <!-- Session Info Section -->
+    <div class="ui segment">
+        <h3 class="ui header">
+            <i class="lock icon"></i>
+            Security PIN
+        </h3>
+        <p class="subheading">Give this PIN to the sender</p>
+        <div class="ui massive center aligned basic label" style="margin: auto; font-size: 3em; padding: 0.5em;" id="pin-display">
+            {$pin}
+        </div>
+    </div>
+
+    <div class="ui segment">
+        <h3 class="ui header">
+            <i class="linkify icon"></i>
+            Share Link
+        </h3>
+        <p>Copy this link and send it to the sender</p>
+        <div class="ui action input" style="width: 100%;">
+            <input type="text" id="share-url" value="{$shareUrl}" readonly />
+            <button class="ui button" id="copy-url-btn">
+                <i class="copy icon"></i>
+                Copy
+            </button>
+        </div>
+
+        <div class="ui centered horizontal divider">or</div>
+        
+        <h3 class="ui header">
+            <i class="qrcode icon"></i>
+            Scan to Connect
+        </h3>
+        <p class="subheading">Sender scans this QR code</p>
+        <div id="qrcode-target" style="text-align: left; padding: 1em; min-height: 256px; min-width: 256px; max-width: 512px; background: #fff;"></div>
+    </div>
+
+    <div class="ui segment">
+        <h3 class="ui header">
+            <i class="clock icon"></i>
+            Session Info
+        </h3>
+        <p>Expires at: <strong>{$expiresAt}</strong></p>
+        <p>Share this page before the session expires to receive files.</p>
+    </div>
+</div>
+
+<div class="ui center aligned container" style="margin-top: 1em;">
+    <button id="cancel-btn" class="ui red button">
+        <i class="times icon"></i>
+        Cancel
+    </button>
+    <a href="/p2p/receive/waiting/{$token}" class="ui primary button">
+        <i class="arrow right icon"></i>
+        Continue to Waiting
+    </a>
+</div>
+
+{var $tokenJs = $token}
+{var $pinJs = $pin}
+{var $shareUrlJs = $shareUrl}
+
+<script src="/assets/qrcode/qrcode.min.js"></script>
+<script>
+(function() {
+    const token = {$tokenJs};
+    const pin = {$pinJs};
+    const shareUrl = {$shareUrlJs};
+    
+    // Generate QR Code on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const qrContainer = document.getElementById('qrcode-target');
+        if (qrContainer) {
+            try {
+                const qrcode = new QRCode(qrContainer, {
+                    text: shareUrl,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.L
+                });
+            } catch(e) {
+                console.error('Error creating QR:', e);
+            }
+        }
+    });
+    
+    // Copy URL functionality
+    document.getElementById('copy-url-btn').addEventListener('click', function() {
+        const urlInput = document.getElementById('share-url');
+        urlInput.select();
+        document.execCommand('copy');
+        this.innerHTML = '<i class="check icon"></i> Copied!';
+        setTimeout(() => {
+            this.innerHTML = '<i class="copy icon"></i> Copy';
+        }, 2000);
+    });
+    
+    // Cancel button
+    document.getElementById('cancel-btn').addEventListener('click', async function() {
+        if (confirm('Are you sure you want to cancel this receive session?')) {
+            try {
+                const response = await fetch('/api/p2p/receive/' + token, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    window.location.href = '/p2p/receive';
+                } else {
+                    alert('Failed to cancel session');
+                }
+            } catch (err) {
+                console.error('Error cancelling session:', err);
+                alert('Failed to cancel session');
+            }
+        }
+    });
+})();
+</script>
+{/block}

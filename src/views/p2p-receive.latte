@@ -151,7 +151,7 @@
             btn.classList.add('loading');
             btn.disabled = true;
             
-            fetch('/api/p2p/' + token + '/verify-pin', {
+            fetch('/api/p2p/share/' + token + '/verify-pin', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -476,7 +476,7 @@
                 // we need to cancel current attempt and connect to the new one
                 
                 try {
-                    const response = await fetch('/api/p2p/' + token);
+                    const response = await fetch('/api/p2p/share/' + token);
                     if (!response.ok) return;
                     
                     const data = await response.json();

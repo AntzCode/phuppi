@@ -1,0 +1,178 @@
+{extends 'layout.latte'}
+
+{block title}Receive Files{/block}
+
+{block content}
+
+<h1 class="ui header">
+    <i class="download icon"></i>
+    <div class="content">
+        Receive Files
+    </div>
+</h1>
+<div class="sub header">Receive files directly from a guest's device - no upload to server</div>
+
+<div class="ui yellow message">
+    <i class="info icon"></i>
+    <strong>How it works:</strong> Create a receive session, then share the link or QR code with a guest. They can send files directly to your browser via P2P connection.
+</div>
+
+<div id="p2p-receive-index-app">
+    <!-- Create New Session Section -->
+    <div class="ui segment">
+        <h3 class="ui header">
+            <i class="plus icon"></i>
+            Create New Session
+        </h3>
+        <p>Start a new session to receive files from a guest.</p>
+        <button id="create-session-btn" class="ui primary button">
+            <i class="plus icon"></i>
+            Receive Files
+        </button>
+    </div>
+
+    <!-- Active Sessions Section -->
+    <div class="ui segment">
+        <h3 class="ui header">
+            <i class="list icon"></i>
+            Active Sessions
+        </h3>
+        <div class="ui very relaxed divided list segment" id="sessions-container">
+            {if count($sessions) == 0}<div class="ui message">No active receive sessions</div>{/if}
+        </div>
+    </div>
+</div>
+
+<script n:syntax="off">
+(function() {
+    var sessions = JSON.parse('{$sessionsJson}');
+    
+    var createSessionBtn = document.getElementById('create-session-btn');
+    var sessionsContainer = document.getElementById('sessions-container');
+    
+    // Format bytes helper
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+        else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+    
+    // Render sessions
+    function renderSessions() {
+        if (!sessionsContainer) return;
+        
+        sessionsContainer.innerHTML = '';
+        
+        if (sessions.length === 0) {
+            sessionsContainer.innerHTML = '<div class="ui message" style="margin: 1em 0;">No active receive sessions</div>';
+            return;
+        }
+        
+        sessions.forEach(function(session) {
+            var item = document.createElement('div');
+            item.className = 'item session-item';
+            item.dataset.token = session.token;
+            item.dataset.shortcode = session.shortcode;
+            item.dataset.pin = session.pin;
+            
+            var statusHtml = session.peerjsId 
+                ? '<span class="ui green label">Sender connected</span>'
+                : '<span class="ui grey label">Waiting for connection</span>';
+            
+            var fileCount = session.fileCount || 0;
+            var filesHtml = fileCount > 0 
+                ? '<span class="ui label">' + fileCount + ' file(s)</span>'
+                : '<span class="ui label">No files yet</span>';
+            
+            item.innerHTML = 
+                '<i class="large download middle aligned icon"></i>' +
+                '<div class="content">' +
+                    '<div class="ui stackable grid">' +
+                        '<div class="eleven wide column">' +
+                            '<div class="header">' +
+                                'PIN: ' + session.pin +
+                            '</div>' +
+                            '<div class="description">' +
+                                statusHtml + ' ' + filesHtml +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="five wide column center aligned">' +
+                            '<div class="ui grid" style="padding: 0;">' +
+                                '<a class="ui primary button view-session-btn eight wide column" style="margin: 1em 0;" href="/p2p/receive/waiting/' + session.token + '">' +
+                                    '<i class="eye icon"></i> View' +
+                                '</a>' +
+                                '<button class="ui red button cancel-session-btn eight wide column" style="margin: 1em 0;" data-token="' + session.token + '">' +
+                                    '<i class="trash icon"></i> Delete' +
+                                '</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            
+            sessionsContainer.appendChild(item);
+        });
+        
+        // Bind cancel buttons
+        bindCancelButtons();
+    }
+    
+    // Bind cancel buttons
+    function bindCancelButtons() {
+        document.querySelectorAll('.cancel-session-btn').forEach(function(btn) {
+            btn.onclick = async function(e) {
+                e.stopPropagation();
+                if (confirm('Are you sure you want to cancel this session?')) {
+                    try {
+                        var response = await fetch('/api/p2p/receive/' + btn.dataset.token, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        if (response.ok) {
+                            // Remove from local sessions array
+                            sessions = sessions.filter(function(s) {
+                                return s.token !== btn.dataset.token;
+                            });
+                            renderSessions();
+                        } else {
+                            alert('Failed to cancel session');
+                        }
+                    } catch (err) {
+                        console.error('Error cancelling session:', err);
+                        alert('Failed to cancel session');
+                    }
+                }
+            };
+        });
+    }
+    
+    // Create new session
+    createSessionBtn.addEventListener('click', async function() {
+        try {
+            var response = await fetch('/api/p2p/receive/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create session');
+            }
+            
+            var data = await response.json();
+            
+            // Redirect to create page
+            window.location.href = '/p2p/receive/create/' + data.token;
+            
+        } catch (error) {
+            alert('Error creating receive session: ' + error.message);
+        }
+    });
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        renderSessions();
+    });
+})();
+</script>
+{/block}

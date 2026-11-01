@@ -997,6 +997,479 @@ async function restoreSenderFiles() {
     return restoredFiles;
 }
 
+// ============================================
+// RECEIVER FUNCTIONS - For receiving P2P files
+// ============================================
+
+const RECEIVED_FILES_STORE = 'received-files';
+const RECEIVED_CHUNKS_STORE = 'received-chunks';
+
+// Database version for receiver functions
+const RECEIVER_DB_VERSION = 3;
+
+/**
+ * Open database with receiver stores
+ * @returns {Promise<IDBDatabase>}
+ */
+function openReceiverDatabase() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, RECEIVER_DB_VERSION);
+
+        request.onerror = () => {
+            reject(new Error('Failed to open IndexedDB database'));
+        };
+
+        request.onsuccess = () => {
+            resolve(request.result);
+        };
+
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+
+            // Create received files metadata store
+            if (!db.objectStoreNames.contains(RECEIVED_FILES_STORE)) {
+                db.createObjectStore(RECEIVED_FILES_STORE, { keyPath: 'fileId' });
+            }
+
+            // Create received chunks store
+            if (!db.objectStoreNames.contains(RECEIVED_CHUNKS_STORE)) {
+                const chunkStore = db.createObjectStore(RECEIVED_CHUNKS_STORE, { keyPath: ['fileId', 'chunkIndex'] });
+                chunkStore.createIndex('fileId', 'fileId', { unique: false });
+            }
+        };
+    });
+}
+
+/**
+ * Initialize receiving a new file - saves metadata
+ * @param {string} fileId - Unique identifier for the file
+ * @param {string} name - File name
+ * @param {number} size - File size in bytes
+ * @param {string} mimeType - MIME type
+ * @param {number} lastModified - Last modified timestamp
+ * @returns {Promise<void>}
+ */
+async function receiveFileStart(fileId, name, size, mimeType, lastModified = Date.now()) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE], 'readwrite');
+        const store = transaction.objectStore(RECEIVED_FILES_STORE);
+
+        const totalChunks = Math.ceil(size / CHUNK_SIZE);
+
+        const metadata = {
+            fileId: fileId,
+            name: name,
+            size: size,
+            mimeType: mimeType,
+            lastModified: lastModified,
+            totalChunks: totalChunks,
+            receivedChunks: 0,
+            status: 'receiving',
+            receivedAt: Date.now()
+        };
+
+        const request = store.put(metadata);
+
+        request.onsuccess = () => {
+            resolve();
+        };
+
+        request.onerror = () => {
+            reject(new Error(`Failed to start receiving file ${fileId}`));
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+        };
+    });
+}
+
+/**
+ * Store a received chunk
+ * @param {string} fileId - Unique identifier for the file
+ * @param {number} chunkIndex - Index of the chunk
+ * @param {ArrayBuffer} data - The chunk data
+ * @returns {Promise<void>}
+ */
+async function receiveFileChunk(fileId, chunkIndex, data) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_CHUNKS_STORE, RECEIVED_FILES_STORE], 'readwrite');
+
+        // Save chunk
+        const chunkStore = transaction.objectStore(RECEIVED_CHUNKS_STORE);
+        const chunkData = {
+            fileId: fileId,
+            chunkIndex: chunkIndex,
+            data: data
+        };
+        chunkStore.put(chunkData);
+
+        // Update received chunks count
+        const metadataStore = transaction.objectStore(RECEIVED_FILES_STORE);
+        const getRequest = metadataStore.get(fileId);
+
+        getRequest.onsuccess = () => {
+            const metadata = getRequest.result;
+            if (metadata) {
+                metadata.receivedChunks = (metadata.receivedChunks || 0) + 1;
+                metadataStore.put(metadata);
+            }
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        transaction.onerror = () => {
+            db.close();
+            reject(new Error(`Failed to store chunk ${chunkIndex} for file ${fileId}`));
+        };
+    });
+}
+
+/**
+ * Mark file as complete and reconstruct from chunks
+ * @param {string} fileId - Unique identifier for the file
+ * @returns {Promise<{blob: Blob, metadata: Object}>}
+ */
+async function receiveFileComplete(fileId) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE, RECEIVED_CHUNKS_STORE], 'readonly');
+        const metadataStore = transaction.objectStore(RECEIVED_FILES_STORE);
+        const chunkStore = transaction.objectStore(RECEIVED_CHUNKS_STORE);
+        const chunkIndex = chunkStore.index('fileId');
+        const range = IDBKeyRange.only(fileId);
+
+        // Get metadata
+        const metadataRequest = metadataStore.get(fileId);
+
+        metadataRequest.onsuccess = async () => {
+            const metadata = metadataRequest.result;
+            if (!metadata) {
+                reject(new Error(`No metadata found for file ${fileId}`));
+                return;
+            }
+
+            // Get all chunks
+            const chunksRequest = chunkIndex.openCursor(range);
+            const chunks = [];
+
+            chunksRequest.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    chunks.push({ index: cursor.value.chunkIndex, data: cursor.value.data });
+                    cursor.continue();
+                }
+            };
+
+            transaction.oncomplete = async () => {
+                db.close();
+
+                if (chunks.length === 0) {
+                    reject(new Error(`No chunks received for file ${fileId}`));
+                    return;
+                }
+
+                // Sort chunks by index
+                chunks.sort((a, b) => a.index - b.index);
+
+                // Calculate total size and concatenate
+                const totalSize = chunks.reduce((sum, chunk) => sum + chunk.data.byteLength, 0);
+                const concatenatedBuffer = new Uint8Array(totalSize);
+
+                let offset = 0;
+                for (const chunk of chunks) {
+                    const chunkArray = new Uint8Array(chunk.data);
+                    concatenatedBuffer.set(chunkArray, offset);
+                    offset += chunkArray.length;
+                }
+
+                // Create Blob
+                const blob = new Blob([concatenatedBuffer], { type: metadata.mimeType });
+
+                // Update status to complete
+                await updateReceivedFileStatus(fileId, 'complete');
+
+                resolve({
+                    blob: blob,
+                    metadata: metadata
+                });
+            };
+
+            chunksRequest.onerror = () => {
+                db.close();
+                reject(new Error(`Failed to read chunks for file ${fileId}`));
+            };
+        };
+
+        metadataRequest.onerror = () => {
+            db.close();
+            reject(new Error(`Failed to get metadata for file ${fileId}`));
+        };
+    });
+}
+
+/**
+ * Update received file status
+ * @param {string} fileId - Unique identifier for the file
+ * @param {string} status - Status ('receiving', 'complete', 'error')
+ * @returns {Promise<void>}
+ */
+async function updateReceivedFileStatus(fileId, status) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE], 'readwrite');
+        const store = transaction.objectStore(RECEIVED_FILES_STORE);
+
+        const getRequest = store.get(fileId);
+
+        getRequest.onsuccess = () => {
+            const metadata = getRequest.result;
+            if (metadata) {
+                metadata.status = status;
+                if (status === 'complete') {
+                    metadata.completedAt = Date.now();
+                }
+                store.put(metadata);
+            }
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        transaction.onerror = () => {
+            db.close();
+            reject(new Error(`Failed to update status for file ${fileId}`));
+        };
+    });
+}
+
+/**
+ * Get list of all received files
+ * @returns {Promise<Object[]>} Array of received file metadata
+ */
+async function getReceivedFiles() {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE], 'readonly');
+        const store = transaction.objectStore(RECEIVED_FILES_STORE);
+
+        const request = store.getAll();
+
+        request.onsuccess = () => {
+            resolve(request.result || []);
+        };
+
+        request.onerror = () => {
+            reject(new Error('Failed to get received files'));
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+        };
+    });
+}
+
+/**
+ * Get specific received file metadata
+ * @param {string} fileId - Unique identifier for the file
+ * @returns {Promise<Object|null>} File metadata or null if not found
+ */
+async function getReceivedFile(fileId) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE], 'readonly');
+        const store = transaction.objectStore(RECEIVED_FILES_STORE);
+
+        const request = store.get(fileId);
+
+        request.onsuccess = () => {
+            resolve(request.result || null);
+        };
+
+        request.onerror = () => {
+            reject(new Error(`Failed to get received file ${fileId}`));
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+        };
+    });
+}
+
+/**
+ * Get received file progress
+ * @param {string} fileId - Unique identifier for the file
+ * @returns {Promise<{received: number, total: number, percent: number}>}
+ */
+async function getReceivedFileProgress(fileId) {
+    const metadata = await getReceivedFile(fileId);
+
+    if (!metadata) {
+        return { received: 0, total: 0, percent: 0 };
+    }
+
+    return {
+        received: metadata.receivedChunks || 0,
+        total: metadata.totalChunks || 0,
+        percent: metadata.totalChunks ? Math.round((metadata.receivedChunks / metadata.totalChunks) * 100) : 0
+    };
+}
+
+/**
+ * Download a completed received file
+ * @param {string} fileId - Unique identifier for the file
+ * @returns {Promise<void>}
+ */
+async function downloadReceivedFile(fileId) {
+    const fileData = await receiveFileComplete(fileId);
+
+    const url = window.URL.createObjectURL(fileData.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileData.metadata.name;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
+/**
+ * Download all received files as a ZIP
+ * @returns {Promise<void>}
+ */
+async function downloadAllReceivedAsZip() {
+    const files = await getReceivedFiles();
+    const completedFiles = files.filter(f => f.status === 'complete');
+
+    if (completedFiles.length === 0) {
+        console.warn('No completed files to download');
+        return;
+    }
+
+    const zip = new JSZip();
+
+    // Reconstruct and add each file
+    for (const metadata of completedFiles) {
+        try {
+            const fileData = await receiveFileComplete(metadata.fileId);
+            zip.file(metadata.name, fileData.blob);
+        } catch (err) {
+            console.error('Error adding file to ZIP:', metadata.name, err);
+        }
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+
+    const url = window.URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'received-files-' + Date.now() + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
+/**
+ * Clear all received files from storage
+ * @returns {Promise<void>}
+ */
+async function clearReceivedFiles() {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE, RECEIVED_CHUNKS_STORE], 'readwrite');
+
+        const filesStore = transaction.objectStore(RECEIVED_FILES_STORE);
+        const chunksStore = transaction.objectStore(RECEIVED_CHUNKS_STORE);
+
+        filesStore.clear();
+        chunksStore.clear();
+
+        transaction.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        transaction.onerror = () => {
+            db.close();
+            reject(new Error('Failed to clear received files'));
+        };
+    });
+}
+
+/**
+ * Delete a specific received file
+ * @param {string} fileId - Unique identifier for the file
+ * @returns {Promise<void>}
+ */
+async function deleteReceivedFile(fileId) {
+    const db = await openReceiverDatabase();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([RECEIVED_FILES_STORE, RECEIVED_CHUNKS_STORE], 'readwrite');
+
+        const filesStore = transaction.objectStore(RECEIVED_FILES_STORE);
+        const chunksStore = transaction.objectStore(RECEIVED_CHUNKS_STORE);
+        const chunkIndex = chunksStore.index('fileId');
+        const range = IDBKeyRange.only(fileId);
+
+        // Delete file metadata
+        filesStore.delete(fileId);
+
+        // Delete all chunks for this file
+        const cursorRequest = chunkIndex.openCursor(range);
+        cursorRequest.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+                cursor.delete();
+                cursor.continue();
+            }
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        transaction.onerror = () => {
+            db.close();
+            reject(new Error(`Failed to delete received file ${fileId}`));
+        };
+    });
+}
+
+/**
+ * Get total count of received files
+ * @returns {Promise<number>}
+ */
+async function getReceivedFilesCount() {
+    const files = await getReceivedFiles();
+    return files.length;
+}
+
+/**
+ * Get count of completed received files
+ * @returns {Promise<number>}
+ */
+async function getCompletedReceivedFilesCount() {
+    const files = await getReceivedFiles();
+    return files.filter(f => f.status === 'complete').length;
+}
+
 // Export functions for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -1037,13 +1510,28 @@ if (typeof module !== 'undefined' && module.exports) {
         clearAllSenderMetadata,
         cleanupSenderFiles,
         restoreSenderFiles,
+        // Receiver functions
+        receiveFileStart,
+        receiveFileChunk,
+        receiveFileComplete,
+        getReceivedFiles,
+        getReceivedFile,
+        getReceivedFileProgress,
+        downloadReceivedFile,
+        downloadAllReceivedAsZip,
+        clearReceivedFiles,
+        deleteReceivedFile,
+        getReceivedFilesCount,
+        getCompletedReceivedFilesCount,
         CHUNK_SIZE,
         DB_NAME,
         DB_VERSION,
         CHUNK_STORE_NAME,
         METADATA_STORE_NAME,
         COMPLETED_STORE_NAME,
-        SENDER_METADATA_STORE
+        SENDER_METADATA_STORE,
+        RECEIVED_FILES_STORE,
+        RECEIVED_CHUNKS_STORE
     };
 }
 
@@ -1087,12 +1575,27 @@ if (typeof window !== 'undefined') {
         clearAllSenderMetadata,
         cleanupSenderFiles,
         restoreSenderFiles,
+        // Receiver functions
+        receiveFileStart,
+        receiveFileChunk,
+        receiveFileComplete,
+        getReceivedFiles,
+        getReceivedFile,
+        getReceivedFileProgress,
+        downloadReceivedFile,
+        downloadAllReceivedAsZip,
+        clearReceivedFiles,
+        deleteReceivedFile,
+        getReceivedFilesCount,
+        getCompletedReceivedFilesCount,
         CHUNK_SIZE,
         DB_NAME,
         DB_VERSION,
         CHUNK_STORE_NAME,
         METADATA_STORE_NAME,
         COMPLETED_STORE_NAME,
-        SENDER_METADATA_STORE
+        SENDER_METADATA_STORE,
+        RECEIVED_FILES_STORE,
+        RECEIVED_CHUNKS_STORE
     };
 }

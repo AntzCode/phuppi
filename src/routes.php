@@ -440,19 +440,73 @@ if ($userCount < 1) {
         });
     }
 
-    // P2P File Sharing routes
-    Flight::route('GET /p2p', [P2PController::class, 'index'])->addMiddleware(IsAuthenticated::class);
-    Flight::route('POST /api/p2p/create', [P2PController::class, 'create'])->addMiddleware(IsAuthenticated::class);
-    Flight::route('GET /api/p2p', [P2PController::class, 'listSessions'])->addMiddleware(IsAuthenticated::class);
-    Flight::route('GET /api/p2p/@token', [P2PController::class, 'show']);
-    Flight::route('GET /p2p/sender/@shortcode', [P2PController::class, 'showSenderPage']);
-    Flight::route('GET /p2p/@shortcode', [P2PController::class, 'showPage']);
-    Flight::route('DELETE /api/p2p/@token', [P2PController::class, 'delete'])->addMiddleware(IsAuthenticated::class);
-    Flight::route('POST /api/p2p/@token/verify-pin', [P2PController::class, 'verifyPin']);
-    Flight::route('POST /api/p2p/@token/connect', [P2PController::class, 'connect']);
-    Flight::route('GET /api/p2p/@token/connections', [P2PController::class, 'listConnections']);
-    Flight::route('POST /api/p2p/@token/connections', [P2PController::class, 'createConnection']);
-    Flight::route('DELETE /api/p2p/@token/connections/@id', [P2PController::class, 'deleteConnection']);
+    // Catchall for docs - serves any .md file in public/docs/ matching the URL path
+    Flight::route('GET /docs/*', function () {
+        // Get the full path from REQUEST_URI (works reliably with wildcard routes)
+        $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+        $path = parse_url($requestUri, PHP_URL_PATH);
+        
+        // path is like /docs/vcu-architecture/README or /docs/vcu-architecture/01_overview.md
+        // strip /docs/ prefix and leading slash
+        $slug = ltrim(preg_replace('#^/docs/#', '', $path), '/');
+        
+        $docsRoot = realpath(rtrim(Flight::get('flight.public.path'), '/') . '/docs');
+
+        // Append .md for URLs without extension; only markdown files are ever served
+        if (!preg_match('/\.md$/i', $slug)) {
+            $slug .= '.md';
+        }
+
+        // Resolve the real path and reject anything outside public/docs/ (e.g. "../" traversal)
+        $docFile = $docsRoot !== false ? realpath($docsRoot . '/' . $slug) : false;
+
+        if ($docFile === false || !str_starts_with($docFile, $docsRoot . DIRECTORY_SEPARATOR) || !is_file($docFile)) {
+            Flight::halt(404, 'Documentation not found');
+        }
+
+        $content = file_get_contents($docFile);
+        $html = Helper::convertMarkdownToHtml($content);
+
+        // Use the filename without extension as title
+        $title = ucwords(str_replace(['-', '/'], [' ', ' / '], $slug));
+        $title = preg_replace('/\.md$/i', '', $title);
+
+        Flight::render('doc-page.latte', [
+            'title' => $title,
+            'content' => $html
+        ]);
+    });
+
+    // P2P File Sharing routes (Sender/Send Files)
+    // Old entry point, kept so existing links and bookmarks still work
+    Flight::route('GET /p2p', function () {
+        Flight::redirect('/p2p/share');
+    });
+    Flight::route('GET /p2p/share', [P2PController::class, 'index'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/share/create', [P2PController::class, 'create'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p/share', [P2PController::class, 'listSessions'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p/share/@token', [P2PController::class, 'show']);
+    Flight::route('GET /p2p/share/sender/@shortcode', [P2PController::class, 'showSenderPage']);
+    Flight::route('GET /p2p/share/@shortcode', [P2PController::class, 'showPage']);
+    Flight::route('DELETE /api/p2p/share/@token', [P2PController::class, 'delete'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/share/@token/verify-pin', [P2PController::class, 'verifyPin']);
+    Flight::route('POST /api/p2p/share/@token/connect', [P2PController::class, 'connect']);
+    Flight::route('GET /api/p2p/share/@token/connections', [P2PController::class, 'listConnections']);
+    Flight::route('POST /api/p2p/share/@token/connections', [P2PController::class, 'createConnection']);
+    Flight::route('DELETE /api/p2p/share/@token/connections/@id', [P2PController::class, 'deleteConnection']);
+
+    // Reverse P2P Receive Session routes
+    Flight::route('GET /p2p/receive', [P2PController::class, 'receiveIndex'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /p2p/receive/create/@token', [P2PController::class, 'showReceiveCreatePage'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /p2p/receive/waiting/@token', [P2PController::class, 'showReceiveWaitingPage'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/receive/create', [P2PController::class, 'createReceiveSession'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p/receive', [P2PController::class, 'listReceiveSessions'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /api/p2p/receive/@token', [P2PController::class, 'showReceiveSession']);
+    Flight::route('DELETE /api/p2p/receive/@token', [P2PController::class, 'deleteReceiveSession'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('GET /p2p/receive/guest/@shortcode', [P2PController::class, 'showReceiveSendPage']);
+    Flight::route('POST /api/p2p/receive/@token/verify-pin', [P2PController::class, 'verifyReceivePin']);
+    Flight::route('POST /api/p2p/receive/@token/connect', [P2PController::class, 'connectReceiveSession'])->addMiddleware(IsAuthenticated::class);
+    Flight::route('POST /api/p2p/receive/@token/complete', [P2PController::class, 'completeReceiveSession'])->addMiddleware(IsAuthenticated::class);
 
     Flight::map('notFound', function () {
         Flight::logger()->info('Route not found: ' . Flight::request()->url);

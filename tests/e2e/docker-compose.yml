@@ -1,0 +1,37 @@
+# docker-compose.yml
+#
+# Isolated stack for the end-to-end tests: the Phuppi app with a throwaway
+# database (tmpfs, wiped on every `down`) and a local PeerJS signaling server,
+# so tests never depend on the public PeerJS cloud.
+#
+# Uses different ports from the development stack so both can run at once.
+
+name: phuppi-e2e
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/php/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    environment:
+      PHUPPI_DATA_PATH: /var/www/data
+    ports:
+      - "${E2E_APP_PORT:-8089}:80"
+    volumes:
+      - ../../public:/var/www/html:ro
+      - ../../src:/var/www/src:ro
+      - ../../docker/php/php.ini-development:/usr/local/etc/php/php.ini:ro
+      - ../../docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf:ro
+    tmpfs:
+      - /var/www/data:uid=${UID:-1000},gid=${GID:-1000},mode=0755
+    user: "${UID:-1000}:${GID:-1000}"
+    command: ["sh", "-c", "mkdir -p /var/www/data/logs && exec apache2-foreground"]
+
+  peerjs:
+    image: peerjs/peerjs-server:1.0.2
+    command: ["--port", "9000", "--path", "/"]
+    ports:
+      - "${E2E_PEERJS_PORT:-9089}:9000"

@@ -17,6 +17,7 @@ namespace Phuppi\Controllers;
 
 use Flight;
 use Phuppi\P2PConnection;
+use Phuppi\P2PReceiveSession;
 use Phuppi\P2PShareToken;
 
 class P2PController
@@ -80,7 +81,7 @@ class P2PController
     /**
      * Creates a new P2P share session.
      *
-     * POST /api/p2p/create
+     * POST /api/p2p/share/create
      * Requires authentication.
      *
      * @return void
@@ -139,7 +140,7 @@ class P2PController
     /**
      * Gets share metadata (public endpoint).
      *
-     * GET /api/p2p/@token
+     * GET /api/p2p/share/@token
      *
      * @param string $token The share token.
      * @return void
@@ -176,7 +177,7 @@ class P2PController
     /**
      * Renders the sender's P2P share page.
      *
-     * GET /p2p/sender/@shortcode
+     * GET /p2p/share/sender/@shortcode
      *
      * @param string $shortcode The share shortcode.
      * @return void
@@ -210,7 +211,7 @@ class P2PController
             'files' => $files,
             'totalSize' => $totalSize,
             'expiresAt' => $p2pToken->expires_at,
-            'shareUrl' => $baseUrl . '/p2p/' . $p2pToken->shortcode,
+            'shareUrl' => $baseUrl . '/p2p/share/' . $p2pToken->shortcode,
             'peerjsId' => $p2pToken->peerjs_id
         ]);
     }
@@ -279,7 +280,7 @@ class P2PController
     /**
      * Cancels/expires a share (owner only).
      *
-     * DELETE /api/p2p/@token
+     * DELETE /api/p2p/share/@token
      * Requires authentication.
      *
      * @param string $token The share token.
@@ -318,7 +319,7 @@ class P2PController
     /**
      * Verifies the recipient's PIN.
      *
-     * POST /api/p2p/@token/verify-pin
+     * POST /api/p2p/share/@token/verify-pin
      * Public endpoint.
      *
      * @param string $token The share token.
@@ -383,7 +384,7 @@ class P2PController
     /**
      * Registers a PeerJS connection for P2P signaling.
      *
-     * POST /api/p2p/@token/connect
+     * POST /api/p2p/share/@token/connect
      * Public endpoint.
      *
      * @param string $token The share token.
@@ -425,7 +426,7 @@ class P2PController
     /**
      * Lists all active P2P sessions for the current user.
      *
-     * GET /api/p2p
+     * GET /api/p2p/share
      * Requires authentication.
      *
      * @return void
@@ -465,7 +466,7 @@ class P2PController
     /**
      * Lists all connections for a P2P session.
      *
-     * GET /api/p2p/@token/connections
+     * GET /api/p2p/share/@token/connections
      * Requires authentication (owner only).
      *
      * @param string $token The share token.
@@ -512,7 +513,7 @@ class P2PController
     /**
      * Creates a new connection record for a P2P session.
      *
-     * POST /api/p2p/@token/connections
+     * POST /api/p2p/share/@token/connections
      * Public endpoint.
      *
      * @param string $token The share token.
@@ -553,7 +554,7 @@ class P2PController
     /**
      * Marks a connection as disconnected.
      *
-     * DELETE /api/p2p/@token/connections/@id
+     * DELETE /api/p2p/share/@token/connections/@id
      * Public endpoint.
      *
      * @param string $token The share token.
@@ -587,6 +588,640 @@ class P2PController
         } else {
             Flight::json(['error' => 'Failed to disconnect'], 500);
         }
+    }
+
+    // ==================== Reverse P2P Receive Session Methods ====================
+
+    /**
+     * Renders the P2P receive index page (list of receive sessions).
+     * 
+     * GET /p2p/receive
+     * Requires authentication.
+     * 
+     * This now auto-creates a session and redirects to the create page
+     * to provide a more direct flow for users.
+     *
+     * @return void
+     */
+    public function receiveIndex(): void
+    {
+        // Require authentication
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::redirect('/login');
+            return;
+        }
+
+        // Auto-create a session and redirect to the create page
+        // This provides a more direct flow - user immediately sees QR/PIN/URL to share
+        $session = P2PReceiveSession::create($user->id);
+
+        if (!$session->save()) {
+            // If creation fails, show the index page with error
+            $sessions = [];
+            Flight::render('p2p-receive-index.latte', [
+                'sessions' => $sessions,
+                'sessionsJson' => json_encode($sessions),
+                'error' => 'Failed to create receive session'
+            ]);
+            return;
+        }
+
+        // Redirect to the create page showing QR/PIN/URL
+        Flight::redirect('/p2p/receive/create/' . $session->token);
+    }
+
+    /**
+     * Renders the receive session create page.
+     *
+     * GET /p2p/receive/create/@token
+     * Requires authentication.
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function showReceiveCreatePage(string $token): void
+    {
+        // Require authentication
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::redirect('/login');
+            return;
+        }
+        
+        $session = P2PReceiveSession::findByToken($token);
+        
+        if (!$session) {
+            Flight::halt(404, 'Session not found');
+            return;
+        }
+        
+        // Check ownership
+        if ($session->user_id !== $user->id) {
+            Flight::halt(403, 'Forbidden: not the owner of this session');
+            return;
+        }
+        
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::halt(410, 'Session has expired');
+            return;
+        }
+        
+        // Get full URL with scheme and host
+        $request = Flight::request();
+        $scheme = isset($request->scheme) ? $request->scheme : ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
+        $host = isset($request->host) ? $request->host : ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        // $request->base may or may not have a trailing slash, so normalize by rtrim
+        $baseUrl = rtrim($scheme . '://' . $host . $request->base, '/');
+        // Use trim to ensure single slash prefix, avoiding double slashes
+        $shareUrl = $baseUrl . '/' . ltrim('p2p/receive/guest/' . $session->shortcode, '/');
+        
+        Flight::render('p2p/receive/create.latte', [
+            'token' => $session->token,
+            'shortcode' => $session->shortcode,
+            'pin' => $session->pin,
+            'shareUrl' => $shareUrl,
+            'expiresAt' => $session->expires_at
+        ]);
+    }
+
+    /**
+     * Renders the receive session waiting page.
+     *
+     * GET /p2p/receive/waiting/@token
+     * Requires authentication.
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function showReceiveWaitingPage(string $token): void
+    {
+        // Require authentication
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::redirect('/login');
+            return;
+        }
+        
+        $session = P2PReceiveSession::findByToken($token);
+        
+        if (!$session) {
+            Flight::halt(404, 'Session not found');
+            return;
+        }
+        
+        // Check ownership
+        if ($session->user_id !== $user->id) {
+            Flight::halt(403, 'Forbidden: not the owner of this session');
+            return;
+        }
+        
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::halt(410, 'Session has expired');
+            return;
+        }
+        
+        // Get full URL with scheme and host
+        $request = Flight::request();
+        $scheme = isset($request->scheme) ? $request->scheme : ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
+        $host = isset($request->host) ? $request->host : ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        // $request->base may or may not have a trailing slash, so normalize by rtrim
+        $baseUrl = rtrim($scheme . '://' . $host . $request->base, '/');
+        // Use trim to ensure single slash prefix, avoiding double slashes
+        $shareUrl = $baseUrl . '/' . ltrim('p2p/receive/guest/' . $session->shortcode, '/');
+        
+        Flight::render('p2p/receive/waiting.latte', [
+            'token' => $session->token,
+            'shortcode' => $session->shortcode,
+            'pin' => $session->pin,
+            'shareUrl' => $shareUrl,
+            'expiresAt' => $session->expires_at
+        ]);
+    }
+
+    /**
+     * Lists all active P2P receive sessions for the current user.
+     *
+     * GET /api/p2p/receive
+     * Requires authentication.
+     *
+     * @return void
+     */
+    public function listReceiveSessions(): void
+    {
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::json(['error' => 'Authentication required'], 401);
+            return;
+        }
+
+        $sessions = P2PReceiveSession::findActiveByUserId($user->id);
+
+        $result = [];
+        foreach ($sessions as $session) {
+            $files = $session->getFilesMetadata();
+
+            $result[] = [
+                'token' => $session->token,
+                'shortcode' => $session->shortcode,
+                'pin' => $session->pin,
+                'files' => $files,
+                'fileCount' => count($files),
+                'totalSize' => $session->getTotalSize(),
+                'createdAt' => $session->created_at,
+                'expiresAt' => $session->expires_at,
+                'peerjsId' => $session->peerjs_id,
+                'isExpired' => $session->isExpired()
+            ];
+        }
+
+        Flight::json(['sessions' => $result]);
+    }
+
+    /**
+     * Creates a new P2P receive session.
+     *
+     * POST /api/p2p/receive/create
+     * Requires authentication.
+     *
+     * @return void
+     */
+    public function createReceiveSession(): void
+    {
+        // Require authentication
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::json(['error' => 'Authentication required'], 401);
+            return;
+        }
+
+        // Create the P2P receive session
+        $session = P2PReceiveSession::create($user->id);
+
+        if (!$session->save()) {
+            Flight::json(['error' => 'Failed to create receive session'], 500);
+            return;
+        }
+
+        // Return the session details
+        Flight::json([
+            'token' => $session->token,
+            'shortcode' => $session->shortcode,
+            'pin' => $session->pin,
+            'expiresAt' => $session->expires_at
+        ]);
+    }
+
+    /**
+     * Gets receive session metadata (public endpoint).
+     *
+     * GET /api/p2p/receive/@token
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function showReceiveSession(string $token): void
+    {
+        $session = P2PReceiveSession::findByToken($token);
+
+        if (!$session) {
+            Flight::json(['error' => 'Session not found'], 404);
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::json(['error' => 'Session has expired'], 410);
+            return;
+        }
+
+        Flight::logger()->info('Fetching receive session', [
+            'token' => $token,
+            'peerjs_id' => $session->peerjs_id
+        ]);
+
+        $isOwner = $this->isReceiveSessionOwner($session);
+
+        // Return metadata only (not file contents). The receiver's peer ID is only
+        // revealed after PIN verification, and the file list only to the owner.
+        Flight::json([
+            'token' => $session->token,
+            'shortcode' => $session->shortcode,
+            'expiresAt' => $session->expires_at,
+            'files' => $isOwner ? $session->getFilesMetadata() : [],
+            'totalSize' => $isOwner ? $session->getTotalSize() : 0,
+            'createdAt' => $session->created_at,
+            'isExpired' => $session->isExpired(),
+            'isLocked' => $session->isLocked(),
+            'peerjsId' => ($isOwner || $this->isReceivePinVerified($session)) ? ($session->peerjs_id ?? '') : ''
+        ]);
+    }
+
+    /**
+     * Renders the guest sender page.
+     *
+     * GET /p2p/receive/@shortcode
+     *
+     * @param string $shortcode The session shortcode.
+     * @return void
+     */
+    public function showReceivePage(string $shortcode): void
+    {
+        $session = P2PReceiveSession::findByShortcode($shortcode);
+
+        if (!$session) {
+            Flight::halt(404, 'Session not found');
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::halt(410, 'Session has expired');
+            return;
+        }
+
+        $pinVerified = $this->isReceivePinVerified($session);
+
+        // Get file metadata for display
+        $files = $session->getFilesMetadata();
+
+        // Ensure files is always an array
+        if (!is_array($files)) {
+            $files = [];
+        }
+
+        $totalSize = $session->getTotalSize();
+
+        // Format file sizes for display
+        foreach ($files as &$file) {
+            $file['sizeFormatted'] = $this->formatBytes($file['size'] ?? 0);
+        }
+
+        // Ensure all values are strings or primitives
+        $token = is_string($session->token) ? $session->token : '';
+        $peerjsId = is_string($session->peerjs_id) ? $session->peerjs_id : '';
+
+        Flight::render('p2p-receive.latte', [
+            'token' => $token,
+            'shortcode' => is_string($session->shortcode) ? $session->shortcode : '',
+            'pinVerified' => $pinVerified,
+            'peerjsId' => $peerjsId,
+            'files' => $files,
+            'filesJson' => json_encode($files),
+            'totalSize' => $totalSize,
+            'totalSizeFormatted' => $this->formatBytes($totalSize),
+            'expiresAt' => is_string($session->expires_at) ? $session->expires_at : '',
+            'isLocked' => $session->isLocked(),
+            'createdAt' => is_string($session->created_at) ? $session->created_at : ''
+        ]);
+    }
+
+    /**
+     * Renders the guest sender send page (new sender interface).
+     *
+     * GET /p2p/receive/guest/@shortcode
+     *
+     * @param string $shortcode The session shortcode.
+     * @return void
+     */
+    public function showReceiveSendPage(string $shortcode): void
+    {
+        $session = P2PReceiveSession::findByShortcode($shortcode);
+
+        if (!$session) {
+            Flight::halt(404, 'Session not found');
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::halt(410, 'Session has expired');
+            return;
+        }
+
+        // Check if locked
+        if ($session->isLocked()) {
+            Flight::halt(403, 'Too many failed PIN attempts');
+            return;
+        }
+
+        // Get the receiver's name (owner of the session)
+        $receiverName = 'User'; // Default fallback
+        $owner = $session->getUser();
+        if ($owner) {
+            $receiverName = is_string($owner->username) ? $owner->username : 'User';
+        }
+
+        // Ensure all values are strings or primitives
+        $token = is_string($session->token) ? $session->token : '';
+
+        Flight::render('p2p/receive/send.latte', [
+            'token' => $token,
+            'shortcode' => is_string($session->shortcode) ? $session->shortcode : '',
+            'receiverName' => $receiverName,
+            'expiresAt' => is_string($session->expires_at) ? $session->expires_at : ''
+        ]);
+    }
+
+    /**
+     * Cancels/expires a receive session (owner only).
+     *
+     * DELETE /api/p2p/receive/@token
+     * Requires authentication.
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function deleteReceiveSession(string $token): void
+    {
+        // Require authentication
+        $user = Flight::user();
+        if (!$user || !$user->id) {
+            Flight::json(['error' => 'Authentication required'], 401);
+            return;
+        }
+
+        $session = P2PReceiveSession::findByToken($token);
+
+        if (!$session) {
+            Flight::json(['error' => 'Session not found'], 404);
+            return;
+        }
+
+        // Check ownership
+        if ($session->user_id !== $user->id) {
+            Flight::json(['error' => 'Forbidden: not the owner of this session'], 403);
+            return;
+        }
+
+        // Soft delete (set is_active = 0)
+        if ($session->delete()) {
+            Flight::json(['success' => true, 'message' => 'Session cancelled']);
+        } else {
+            Flight::json(['error' => 'Failed to cancel session'], 500);
+        }
+    }
+
+    /**
+     * Verifies the sender's PIN.
+     *
+     * POST /api/p2p/receive/@token/verify-pin
+     * Public endpoint.
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function verifyReceivePin(string $token): void
+    {
+        $session = P2PReceiveSession::findByToken($token);
+
+        if (!$session) {
+            Flight::json(['error' => 'Session not found'], 404);
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::json(['error' => 'Session has expired'], 410);
+            return;
+        }
+
+        // Check if locked
+        if ($session->isLocked()) {
+            Flight::json([
+                'valid' => false,
+                'locked' => true,
+                'attemptsRemaining' => 0,
+                'lockExpiresAt' => $session->pin_locked_at
+            ]);
+            return;
+        }
+
+        $data = Flight::request()->data;
+        $pin = $data->pin ?? '';
+
+        // Validate PIN format
+        if (!preg_match('/^\d{2}$/', $pin)) {
+            Flight::json(['error' => 'Invalid PIN format'], 400);
+            return;
+        }
+
+        // Verify PIN
+        $isValid = $session->verifyPin($pin);
+
+        if ($isValid) {
+            $attemptsRemaining = self::MAX_PIN_ATTEMPTS;
+            // Remember PIN verification server-side (a client cookie could be forged)
+            Flight::session()->set($this->receivePinSessionKey($session), true);
+        } else {
+            // Reload to get updated attempt count
+            $session->load($session->id);
+            $attemptsRemaining = max(0, self::MAX_PIN_ATTEMPTS - $session->pin_attempts);
+        }
+
+        Flight::json([
+            'valid' => $isValid,
+            'locked' => $session->isLocked(),
+            'attemptsRemaining' => $attemptsRemaining
+        ]);
+    }
+
+    /**
+     * Registers a PeerJS connection for P2P signaling.
+     *
+     * POST /api/p2p/receive/@token/connect
+     * Requires authentication (session owner only).
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function connectReceiveSession(string $token): void
+    {
+        $session = P2PReceiveSession::findByToken($token);
+
+        if (!$session) {
+            Flight::json(['error' => 'Session not found'], 404);
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::json(['error' => 'Session has expired'], 410);
+            return;
+        }
+
+        // Only the receiving owner may change the session
+        if (!$this->isReceiveSessionOwner($session)) {
+            Flight::json(['error' => 'Forbidden: not the owner of this session'], 403);
+            return;
+        }
+
+        $data = Flight::request()->data;
+        $peerjsId = $data->peerjs_id ?? '';
+
+        if (empty($peerjsId)) {
+            Flight::json(['error' => 'PeerJS ID is required'], 400);
+            return;
+        }
+
+        // Store PeerJS ID
+        $session->peerjs_id = $peerjsId;
+
+        Flight::logger()->info('Registering PeerJS ID for receive session', [
+            'token' => $token,
+            'peerjs_id' => $peerjsId
+        ]);
+
+        if ($session->save()) {
+            Flight::logger()->info('Successfully registered PeerJS ID');
+            Flight::json(['success' => true]);
+        } else {
+            Flight::logger()->error('Failed to save PeerJS ID', ['token' => $token]);
+            Flight::json(['error' => 'Failed to register connection'], 500);
+        }
+    }
+
+    /**
+     * Saves received files metadata to the session.
+     *
+     * POST /api/p2p/receive/@token/complete
+     * Requires authentication (session owner only).
+     *
+     * @param string $token The session token.
+     * @return void
+     */
+    public function completeReceiveSession(string $token): void
+    {
+        $session = P2PReceiveSession::findByToken($token);
+
+        if (!$session) {
+            Flight::json(['error' => 'Session not found'], 404);
+            return;
+        }
+
+        // Check if expired
+        if ($session->isExpired()) {
+            Flight::json(['error' => 'Session has expired'], 410);
+            return;
+        }
+
+        // Only the receiving owner may change the session
+        if (!$this->isReceiveSessionOwner($session)) {
+            Flight::json(['error' => 'Forbidden: not the owner of this session'], 403);
+            return;
+        }
+
+        $data = Flight::request()->data;
+        $files = $data->files ?? [];
+
+        if (empty($files) || !is_array($files)) {
+            Flight::json(['error' => 'No files provided'], 400);
+            return;
+        }
+
+        // Validate file metadata
+        $validatedFiles = [];
+        foreach ($files as $file) {
+            if (!isset($file['name']) || !isset($file['size']) || !isset($file['type'])) {
+                Flight::json(['error' => 'Invalid file metadata: missing required fields'], 400);
+                return;
+            }
+
+            $validatedFiles[] = [
+                'name' => $file['name'],
+                'size' => (int) $file['size'],
+                'type' => $file['type']
+            ];
+        }
+
+        // Save files metadata to session
+        $session->setFilesMetadata($validatedFiles);
+
+        if ($session->save()) {
+            Flight::json([
+                'success' => true,
+                'files' => $validatedFiles
+            ]);
+        } else {
+            Flight::json(['error' => 'Failed to save files'], 500);
+        }
+    }
+
+    /**
+     * Checks whether the current user owns the receive session.
+     *
+     * @param P2PReceiveSession $session The receive session.
+     * @return bool True if the logged-in user is the owner.
+     */
+    private function isReceiveSessionOwner(P2PReceiveSession $session): bool
+    {
+        $user = Flight::user();
+
+        return $user && $user->id && (int) $session->user_id === (int) $user->id;
+    }
+
+    /**
+     * Checks whether the current visitor has verified the session PIN.
+     *
+     * @param P2PReceiveSession $session The receive session.
+     * @return bool True if the PIN was verified in this server session.
+     */
+    private function isReceivePinVerified(P2PReceiveSession $session): bool
+    {
+        return Flight::session()->get($this->receivePinSessionKey($session)) === true;
+    }
+
+    /**
+     * Returns the server-session key that records PIN verification.
+     *
+     * @param P2PReceiveSession $session The receive session.
+     * @return string The session key.
+     */
+    private function receivePinSessionKey(P2PReceiveSession $session): string
+    {
+        return 'p2p_receive_verified_' . $session->id;
     }
 
     /**

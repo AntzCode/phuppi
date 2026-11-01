@@ -1,0 +1,666 @@
+{extends '../../layout.latte'}
+
+{block title}Waiting for Files{/block}
+
+{block content}
+
+<h1 class="ui header">
+    <i class="download icon"></i>
+    <div class="content">
+        Waiting for Files
+    </div>
+</h1>
+<div class="sub header">Waiting for a sender to connect and transfer files</div>
+
+<div id="p2p-receive-waiting-app">
+    <!-- Status Section -->
+    <div id="connection-status" class="ui yellow message">
+        <i class="loading spinner icon"></i>
+        <span id="status-text">Waiting for sender to connect...</span>
+    </div>
+
+    <!-- Error Section (shown on errors) -->
+    <div id="error-section" class="ui red message" style="display: none;">
+        <i class="exclamation circle icon"></i>
+        <span id="error-message">An error occurred</span>
+        <div class="ui center aligned container" style="margin-top: 1em;">
+            <button id="retry-btn" class="ui button">
+                <i class="refresh icon"></i>
+                Try Again
+            </button>
+            <button id="refresh-page-btn" class="ui button">
+                <i class="arrow right icon"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Session Info (in case they need to share again) -->
+    <div class="ui segment" id="session-info-section">
+        <h3 class="ui header">
+            <i class="info circle icon"></i>
+            Session Details
+        </h3>
+        <div class="ui action input" style="width: 100%; margin-bottom: 0.5em;">
+            <input type="text" id="share-url" value="{$shareUrl}" readonly />
+            <button class="ui button" id="copy-url-btn">
+                <i class="copy icon"></i>
+                Copy
+            </button>
+        </div>
+        <p>PIN: <strong>{$pin}</strong> - Share this with the sender if needed</p>
+        <p>Expires at: <strong>{$expiresAt}</strong></p>
+    </div>
+
+    <!-- Files Section (shown when files are received) -->
+    <div id="files-section" class="ui segment" style="display: none;">
+        <h3 class="ui header">
+            <i class="file icon"></i>
+            Received Files
+        </h3>
+        <div id="received-files-list" class="ui divided list"></div>
+        <div class="ui right aligned header">
+            <strong>Total: </strong><span id="total-size-value">0 bytes</span>
+        </div>
+
+        <div class="ui center aligned container" style="margin-top: 1em;">
+            <button id="download-all-btn" class="ui positive button">
+                <i class="download icon"></i>
+                Download All as ZIP
+            </button>
+        </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div id="progress-section" class="ui segment" style="display: none;">
+        <!-- Transfer Speed & ETA -->
+        <div class="ui small horizontal statistics" style="margin-bottom: 1em;">
+            <div class="statistic">
+                <div class="value" id="transfer-speed">0 KB/s</div>
+                <div class="label">Speed</div>
+            </div>
+            <div class="statistic">
+                <div class="value" id="time-remaining">--:--</div>
+                <div class="label">Remaining</div>
+            </div>
+        </div>
+
+        <!-- Overall Progress -->
+        <div class="ui progress" id="transfer-progress">
+            <div class="bar" style="width: 0%; transition: width 0.3s;">
+                <div class="progress-text">Preparing...</div>
+            </div>
+            <div class="label">Receiving files...</div>
+        </div>
+
+        <!-- File-by-file Progress -->
+        <div id="file-progress-container" style="margin-top: 1em;">
+            <h4 class="ui header">Current File:</h4>
+            <div id="current-file-name" class="ui message">No file</div>
+            <div class="ui progress" id="file-progress">
+                <div class="bar" style="width: 0%;">
+                    <div class="progress-text">0%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="ui center aligned container" style="margin-top: 1em;">
+    <button id="cancel-btn" class="ui red button">
+        <i class="times icon"></i>
+        Cancel
+    </button>
+    <a href="/p2p/receive/create/{$token}" class="ui button">
+        <i class="arrow left icon"></i>
+        Back
+    </a>
+</div>
+
+<script src="/assets/peerjs/peerjs.min.js"></script>
+<script src="/assets/p2p-chunk-storage.js"></script>
+<script src="/assets/jszip/jszip.min.js"></script>
+<script>
+    // Pass PHP variables to JavaScript - MUST be outside quotes for Latte
+    var phpToken = {$token};
+    var phpPin = {$pin};
+    var phpShareUrl = {$shareUrl};
+</script>
+<script n:syntax="off">
+(function() {
+    const token = phpToken;
+    const pin = phpPin;
+    const shareUrl = phpShareUrl;
+    const apiBase = '/api/p2p/receive';
+
+    let peer = null;
+    let conn = null;
+    let pollInterval = null;
+    let totalBytesExpected = 0;
+    let totalBytesReceived = 0;
+    let currentFileId = null;
+    let currentFileSize = 0;
+    let currentFileBytesReceived = 0;
+    let receivedFiles = []; // For display only, actual storage is in IndexedDB
+    let isTransferring = false;
+    let sessionActive = true;
+
+    // Speed tracking
+    let speedSamples = [];
+    const MAX_SPEED_SAMPLES = 10;
+    let lastBytesReceived = 0;
+    let lastSpeedUpdate = 0;
+
+    // DOM elements
+    const connectionStatus = document.getElementById('connection-status');
+    const statusText = document.getElementById('status-text');
+    const errorSection = document.getElementById('error-section');
+    const errorMessage = document.getElementById('error-message');
+    const sessionInfoSection = document.getElementById('session-info-section');
+
+    // Copy URL functionality
+    document.getElementById('copy-url-btn').addEventListener('click', function() {
+        const urlInput = document.getElementById('share-url');
+        urlInput.select();
+        document.execCommand('copy');
+        this.innerHTML = '<i class="check icon"></i> Copied!';
+        setTimeout(() => {
+            this.innerHTML = '<i class="copy icon"></i> Copy';
+        }, 2000);
+    });
+
+    // Format bytes helper
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+        else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+
+    // Format time helper (seconds to MM:SS)
+    function formatTime(seconds) {
+        if (seconds < 0 || !isFinite(seconds)) return '--:--';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+    }
+
+    // Show error message
+    function showError(msg, canRetry = true) {
+        sessionActive = false;
+        connectionStatus.style.display = 'none';
+        sessionInfoSection.style.display = 'none';
+        errorMessage.textContent = msg;
+        errorSection.style.display = 'block';
+
+        document.getElementById('retry-btn').style.display = canRetry ? 'inline-block' : 'none';
+    }
+
+    // Show status message
+    function showStatus(msg, type = 'yellow') {
+        connectionStatus.className = 'ui ' + type + ' message';
+        statusText.textContent = msg;
+    }
+
+    // Initialize PeerJS and start polling
+    async function initializeConnection() {
+        if (!sessionActive) return;
+
+        // Initialize PeerJS to receive files
+        initializePeerJS();
+
+        // Start polling for session status
+        startPolling();
+    }
+
+    // Poll for session status (in case sender is connecting)
+    function startPolling() {
+        pollInterval = setInterval(async function() {
+            if (!sessionActive) {
+                clearInterval(pollInterval);
+                return;
+            }
+
+            try {
+                const response = await fetch(apiBase + '/' + token);
+                const data = await response.json();
+
+                // Check if session is still valid
+                if (data.error) {
+                    clearInterval(pollInterval);
+                    // Check for expired session
+                    if (data.error.includes('expired') || response.status === 410) {
+                        showError('This session has expired. Please create a new receive session.', false);
+                    } else {
+                        showError(data.error);
+                    }
+                    return;
+                }
+
+                // Check if peerjs_id is set (sender connected)
+                if (data.peerjsId && data.peerjsId.length > 0) {
+                    clearInterval(pollInterval);
+                    showStatus('Sender connected!', 'green');
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+                // Network error - show retry option
+                showError('Network error. Please check your connection and try again.', true);
+            }
+        }, 3000);
+    }
+
+    // Initialize PeerJS for receiving files
+    function initializePeerJS() {
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.stunprotocol.org:3478' }
+        ];
+
+        // Create a unique peer ID for receiving
+        const peerId = 'receiver-' + token.substring(0, 8) + '-' + Date.now();
+
+        peer = new Peer(peerId, {
+            debug: 2,
+            config: {
+                iceServers: iceServers,
+                iceCandidatePoolSize: 10
+            }
+        });
+
+        peer.on('open', function(id) {
+            console.log('Receiver peer opened with ID:', id);
+            showStatus('Ready and waiting for sender...', 'yellow');
+
+            // Register with server
+            fetch(apiBase + '/' + token + '/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ peerjs_id: id })
+            }).catch(function(err) {
+                console.error('Error registering peer:', err);
+            });
+        });
+
+        peer.on('connection', function(incomingConn) {
+            handleSenderConnection(incomingConn);
+        });
+
+        peer.on('error', function(err) {
+            console.error('PeerJS error:', err);
+            if (err.type === 'disconnected') {
+                showStatus('Connection lost. Reconnecting...', 'yellow');
+                setTimeout(function() {
+                    if (peer && !peer.disconnected && sessionActive) peer.reconnect();
+                }, 1000);
+            } else if (err.type === 'peer-unavailable') {
+                // Normal - waiting for peer
+            } else {
+                showError('Connection error: ' + err.type);
+            }
+        });
+
+        peer.on('disconnected', function() {
+            console.log('PeerJS disconnected, attempting to reconnect...');
+            if (peer && !peer.disconnected && sessionActive) {
+                peer.reconnect();
+            }
+        });
+    }
+
+    // Handle incoming connection from sender
+    function handleSenderConnection(incomingConn) {
+        console.log('Connection from:', incomingConn.peer);
+        conn = incomingConn;
+        isTransferring = true;
+
+        showStatus('Connected! Receiving files...', 'green');
+
+        // Show progress section
+        document.getElementById('progress-section').style.display = 'block';
+
+        // Reset speed tracking
+        speedSamples = [];
+        lastBytesReceived = 0;
+        lastSpeedUpdate = Date.now();
+
+        // Handle messages strictly in order: each one awaits IndexedDB writes, and a
+        // later message (next chunk, file-complete) must not run before they finish
+        let messageQueue = Promise.resolve();
+        conn.on('data', function(message) {
+            messageQueue = messageQueue.then(function() {
+                return handleDataMessage(message);
+            });
+        });
+
+        conn.on('open', function() {
+            console.log('Connection opened - ready to receive');
+        });
+
+        conn.on('close', function() {
+            console.log('Connection closed');
+            isTransferring = false;
+            handleConnectionClosed();
+        });
+
+        conn.on('error', function(err) {
+            console.error('Connection error:', err);
+            isTransferring = false;
+            showError('Connection error: ' + err.message);
+        });
+    }
+
+    // Handle data messages from sender
+    async function handleDataMessage(message) {
+        try {
+            if (message.type === 'file-start') {
+                // Start receiving a new file
+                console.log('Receiving file start:', message.name);
+
+                currentFileId = message.fileId;
+                currentFileSize = message.size;
+                currentFileBytesReceived = 0;
+                totalBytesExpected += message.size;
+
+                // Update current file display
+                document.getElementById('current-file-name').textContent = message.name;
+
+                // Initialize receiving in IndexedDB
+                await P2PChunkStorage.receiveFileStart(
+                    message.fileId,
+                    message.name,
+                    message.size,
+                    message.mimeType,
+                    message.lastModified || Date.now()
+                );
+
+                // Update progress
+                updateProgress(0, totalBytesExpected, 'Starting: ' + message.name);
+                updateFileProgress(0);
+
+            } else if (message.type === 'file-chunk') {
+                // Receive file chunk
+                if (currentFileId && message.fileId === currentFileId) {
+                    // Store chunk in IndexedDB
+                    await P2PChunkStorage.receiveFileChunk(
+                        message.fileId,
+                        message.chunkIndex,
+                        message.data
+                    );
+
+                    // Track bytes for this file
+                    const chunkSize = message.data ? message.data.byteLength : 0;
+                    currentFileBytesReceived += chunkSize;
+                    totalBytesReceived += chunkSize;
+
+                    // Update speed tracking
+                    updateSpeedTracking(chunkSize);
+
+                    // Calculate overall progress
+                    const percent = totalBytesExpected > 0
+                        ? Math.round((totalBytesReceived / totalBytesExpected) * 100)
+                        : 0;
+                    updateProgress(percent, totalBytesExpected, 'Receiving...');
+
+                    // Calculate file progress
+                    const filePercent = currentFileSize > 0
+                        ? Math.round((currentFileBytesReceived / currentFileSize) * 100)
+                        : 0;
+                    updateFileProgress(filePercent);
+                }
+
+            } else if (message.type === 'file-complete') {
+                // File complete
+                console.log('File complete:', message.fileId);
+
+                // Reconstruct the file from chunks
+                const fileData = await P2PChunkStorage.receiveFileComplete(message.fileId);
+
+                // Add to received files list for display
+                receivedFiles.push({
+                    fileId: message.fileId,
+                    name: fileData.metadata.name,
+                    size: fileData.metadata.size,
+                    mimeType: fileData.metadata.mimeType,
+                    blob: fileData.blob
+                });
+
+                // Reset for next file
+                currentFileBytesReceived = 0;
+
+            } else if (message.type === 'all-complete') {
+                // All files complete
+                console.log('All files complete');
+                isTransferring = false;
+
+                // Hide progress
+                document.getElementById('progress-section').style.display = 'none';
+
+                // Show received files
+                await showReceivedFiles();
+
+                // Complete the session on server
+                completeSession();
+
+                // Every file is stored; tell the sender it is safe to disconnect
+                if (conn && conn.open) {
+                    conn.send({ type: 'all-received' });
+                }
+
+                showStatus('Transfer complete! Download your files below.', 'green');
+            }
+        } catch (err) {
+            console.error('Error handling message:', err);
+            showError('Error receiving file: ' + err.message);
+        }
+    }
+
+    // Update speed tracking
+    function updateSpeedTracking(bytesReceived) {
+        const now = Date.now();
+        const elapsed = (now - lastSpeedUpdate) / 1000; // seconds
+
+        if (elapsed >= 0.5) { // Update every 500ms
+            const bytesThisPeriod = totalBytesReceived - lastBytesReceived;
+            const speed = bytesThisPeriod / elapsed; // bytes per second
+
+            speedSamples.push(speed);
+            if (speedSamples.length > MAX_SPEED_SAMPLES) {
+                speedSamples.shift();
+            }
+
+            lastBytesReceived = totalBytesReceived;
+            lastSpeedUpdate = now;
+
+            // Calculate average speed
+            const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+
+            // Update speed display
+            document.getElementById('transfer-speed').textContent = formatBytes(avgSpeed) + '/s';
+
+            // Calculate ETA
+            const remainingBytes = totalBytesExpected - totalBytesReceived;
+            if (remainingBytes > 0 && avgSpeed > 0) {
+                const etaSeconds = remainingBytes / avgSpeed;
+                document.getElementById('time-remaining').textContent = formatTime(etaSeconds);
+            } else {
+                document.getElementById('time-remaining').textContent = '--:--';
+            }
+        }
+    }
+
+    // Handle connection closed
+    async function handleConnectionClosed() {
+        const completedCount = await P2PChunkStorage.getCompletedReceivedFilesCount();
+
+        if (completedCount > 0) {
+            await showReceivedFiles();
+            showStatus('Transfer complete! Download your files below.', 'green');
+        } else if (!sessionActive) {
+            // Already showed error
+        } else {
+            showStatus('Connection closed. Waiting for sender to reconnect...', 'yellow');
+        }
+    }
+
+    // Update progress bar
+    function updateProgress(percent, total, status) {
+        var progressBar = document.querySelector('#transfer-progress .bar');
+        var progressText = document.querySelector('#transfer-progress .progress-text');
+        var progressLabel = document.querySelector('#transfer-progress .label');
+
+        if (progressBar) progressBar.style.width = percent + '%';
+        if (progressText) progressText.textContent = status || (percent + '%');
+        if (progressLabel) progressLabel.textContent = 'Receiving files...';
+    }
+
+    // Update file progress bar
+    function updateFileProgress(percent) {
+        var fileProgressBar = document.querySelector('#file-progress .bar');
+        var fileProgressText = document.querySelector('#file-progress .progress-text');
+
+        if (fileProgressBar) fileProgressBar.style.width = percent + '%';
+        if (fileProgressText) fileProgressText.textContent = percent + '%';
+    }
+
+    // Show received files section
+    async function showReceivedFiles() {
+        // Get completed files from IndexedDB
+        const completedFiles = await P2PChunkStorage.getReceivedFiles();
+        const files = completedFiles.filter(f => f.status === 'complete');
+
+        if (files.length === 0) return;
+
+        var filesSection = document.getElementById('files-section');
+        var filesList = document.getElementById('received-files-list');
+        var totalSize = document.getElementById('total-size-value');
+
+        filesSection.style.display = 'block';
+        filesList.innerHTML = '';
+
+        let totalBytes = 0;
+
+        for (var file of files) {
+            totalBytes += file.size;
+            var item = document.createElement('div');
+            item.className = 'item';
+            item.innerHTML =
+                '<i class="file icon"></i>' +
+                '<div class="content">' +
+                    '<div class="header"></div>' +
+                    '<div class="description"></div>' +
+                '</div>';
+            // File names come from the guest, so set them as text, never as HTML
+            item.querySelector('.header').textContent = file.name;
+            item.querySelector('.description').textContent = formatBytes(file.size);
+            filesList.appendChild(item);
+        }
+
+        totalSize.textContent = formatBytes(totalBytes);
+    }
+
+    // Complete session on server
+    async function completeSession() {
+        // Get all completed files metadata
+        const completedFiles = await P2PChunkStorage.getReceivedFiles();
+        const files = completedFiles.filter(f => f.status === 'complete');
+
+        var filesData = files.map(function(f) {
+            return {
+                name: f.name,
+                size: f.size,
+                type: f.mimeType
+            };
+        });
+
+        try {
+            await fetch(apiBase + '/' + token + '/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: filesData })
+            });
+        } catch (err) {
+            console.error('Error completing session:', err);
+        }
+    }
+
+    // Cleanup function
+    async function cleanup() {
+        sessionActive = false;
+
+        // Clear intervals
+        if (pollInterval) clearInterval(pollInterval);
+
+        // Close peer connection
+        if (conn) {
+            try { conn.close(); } catch (e) {}
+            conn = null;
+        }
+
+        if (peer) {
+            try { peer.destroy(); } catch (e) {}
+            peer = null;
+        }
+
+        // Clear IndexedDB
+        try {
+            await P2PChunkStorage.clearReceivedFiles();
+        } catch (e) {
+            console.error('Error clearing IndexedDB:', e);
+        }
+    }
+
+    // Download all as ZIP
+    document.getElementById('download-all-btn').addEventListener('click', async function() {
+        await P2PChunkStorage.downloadAllReceivedAsZip();
+    });
+
+    // Retry button
+    document.getElementById('retry-btn').addEventListener('click', function() {
+        window.location.reload();
+    });
+
+    // Refresh page button
+    document.getElementById('refresh-page-btn').addEventListener('click', function() {
+        window.location.reload();
+    });
+
+    // Cancel button
+    document.getElementById('cancel-btn').addEventListener('click', async function() {
+        if (confirm('Are you sure you want to cancel this receive session?')) {
+            await cleanup();
+
+            try {
+                var response = await fetch(apiBase + '/' + token, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    window.location.href = '/p2p/receive';
+                } else {
+                    alert('Failed to cancel session');
+                }
+            } catch (err) {
+                console.error('Error cancelling session:', err);
+                alert('Failed to cancel session');
+            }
+        }
+    });
+
+    // Handle page unload for cleanup
+    window.addEventListener('beforeunload', function() {
+        if (sessionActive) {
+            cleanup();
+        }
+    });
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', initializeConnection);
+})();
+</script>
+{/block}

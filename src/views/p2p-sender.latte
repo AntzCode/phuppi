@@ -417,7 +417,7 @@
             
             // Generate QR Code
             const baseUrl = window.location.origin;
-            const shareUrl = baseUrl + '/p2p/' + session.shortcode;
+            const shareUrl = baseUrl + '/p2p/share/' + session.shortcode;
             
             document.getElementById('share-url').value = shareUrl;
             
@@ -539,7 +539,7 @@
         // Register peer ID with server
         registerPeerId: async function(token, peerId) {
             try {
-                const response = await fetch('/api/p2p/' + token + '/connect', {
+                const response = await fetch('/api/p2p/share/' + token + '/connect', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ peerjs_id: peerId })
@@ -625,7 +625,7 @@
         // Register connection with server
         registerConnection: async function(token, peerId) {
             try {
-                await fetch('/api/p2p/' + token + '/connections', {
+                await fetch('/api/p2p/share/' + token + '/connections', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ recipient_peerjs_id: peerId })
@@ -830,7 +830,7 @@
         // Cancel a session
         cancelSession: async function(sessionToken) {
             try {
-                const response = await fetch('/api/p2p/' + sessionToken, {
+                const response = await fetch('/api/p2p/share/' + sessionToken, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1059,7 +1059,7 @@
         }));
         
         try {
-            const response = await fetch('/api/p2p/create', {
+            const response = await fetch('/api/p2p/share/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
