@@ -10,6 +10,7 @@ Notes for AI coding agents (and humans) working in this repository.
 - Follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/): group entries under `### Added`, `### Changed`, `### Fixed` (and `### Removed` / `### Security` when relevant).
 - New work goes under the topmost version heading if it has not been released yet; otherwise start a new heading `## [x.y.z] - YYYY-MM-DD`. Use a minor bump for features and a patch bump for fixes ([Semantic Versioning](https://semver.org/spec/v2.0.0.html)).
 - Describe what changed for users and developers, not how the code was written. Mention renamed environment variables, new migrations, new routes, and anything someone must do when upgrading.
+- **Keep the displayed version in sync with the changelog.** The version shown in the page footer (and appended to asset URLs for cache busting) comes from `Phuppi\Helper::getPhuppiVersion()` in `src/Phuppi/Helper.php`. Whenever the topmost `## [x.y.z]` heading of `CHANGELOG.md` changes, update that method to return the same version in the same change set. Before suggesting a commit, check that the two match.
 - Pure housekeeping that changes nothing for users or developers (for example, marking a plan as implemented) does not need an entry.
 
 ## Commits
