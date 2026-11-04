@@ -14,9 +14,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Plan and issue: [`plans/mobile-app-share-integration-plan.md`](plans/mobile-app-share-integration-plan.md), [`plans/mobile-app-share-integration-issue.md`](plans/mobile-app-share-integration-issue.md)
 
 ### Changed
+- Files: the search field, sort order and rows-per-page dropdowns now sit together in a bar on the left, with the blue Upload Files button at its right end, matching the notes page. This replaces the three-dot options button. On phones the bar stacks into one column with its contents aligned right.
+- Files: the Select All and "With n Selected" menu is hidden until something is selected, then floats at the top of the screen while scrolling as before.
+- Files: each card has a checkbox button at the end of its footer, next to Share, to select or deselect it (shift+click selects a range, as clicking the card does).
+- Notes: the Edit and Share buttons on each card are attached to each other, like Download and Share on the files page.
+- Notes: the search field is on the left of the list bar, with the sort order and rows-per-page choices next to it.
+- Notes: the blue Create New Note button sits at the right end of the search bar. On phones, where the bar stacks into one column, its contents are aligned to the right.
+- Notes: the pagination moved below the list and floats at the bottom of the screen while scrolling, as on the files page.
+- Notes: the View button is gone. Click or tap a note's preview text to open it. Selecting text in the preview (drag, long press or double click) still works for copying and does not open the note.
 - Settings → Preview Settings → Preview Management: an "Only regenerate these file extensions" checkbox enables a comma separated list (for example `jpg, png, pdf`) that restricts both "Regenerate All Previews" and "Regenerate Failed Previews" to files with those extensions, so video previews are not redone needlessly. Unticked, every file is included as before. The settings endpoint accepts an optional `extensions` field for the two regenerate actions.
 
 ### Fixed
+- Notes and Files: with several pages of results the pagination bar was wider than a phone screen, which made the whole page scroll sideways and pushed dialogs off the edge. The bar now stays within the screen and scrolls inside itself.
+- Notes: with a long note name, the close icon in the view and share dialogs dropped under the title; it now stays at the top right.
+- Notes: the note view dialog now fits inside the screen on phones (it was off-center and clipped), laid out like the file preview dialog: a close icon in the header, the text scrolling inside, and View Raw and Copy below.
+- Notes: long preview text with no spaces (a URL, for example) no longer spills outside its card; it wraps.
 - Photo thumbnails now honor the EXIF orientation tag, so pictures taken in portrait are no longer shown sideways in the file list. Existing thumbnails are not changed; regenerate them to correct old photos.
 - Image thumbnails keep the photo's proportions. They were stretched to the configured width and height; that size is now a maximum the thumbnail fits inside, and small images are no longer enlarged. Regenerate existing previews to apply it.
 - File type icons, default avatars and the docs pages were not found on installs laid out as `src/` and `public/` (as `deploy.sh` produces): the web root defaulted to `html/`, which only existed in the Docker image. It now defaults to `public/`, and `PHUPPI_PUBLIC_PATH` still overrides it. The Docker dev and e2e stacks now mount `public/` at `/var/www/public` (Apache's document root moved with it); run `docker compose up -d --build` after pulling.

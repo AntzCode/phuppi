@@ -21,6 +21,9 @@
 
     import { html, render, useState, useEffect } from '/assets/preact/htm-standalone.mjs';
 
+    // Pending open of the view modal after a click on a note preview (see previewClick)
+    let previewClickTimer = null;
+
     const NoteList = ({  }) => {
 
         const getCookie = (name) => {
@@ -170,6 +173,35 @@
                 }
         };
 
+        // A click on the preview opens the note, unless the user is selecting text to copy it:
+        // a drag or long press leaves a selection, and a double click (word select) cancels the open.
+        const previewClick = (e, note) => {
+            clearTimeout(previewClickTimer);
+            if (e.detail > 1) return;
+            previewClickTimer = setTimeout(() => {
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed && selection.toString().trim() !== '') return;
+                openViewModal(note);
+            }, 250);
+        };
+
+        // Sticky: the page links float at the bottom of the screen while the list is scrolled,
+        // and rest in their own space under the last card at the end, so they never cover it.
+        const renderPaginationMenu = () => html`
+            <div class="pagination-bar" style="text-align: center; position: sticky; bottom: 0; z-index: 10; padding: 0.75em 0;">
+                <div class="ui pagination menu" style="overflow-x: auto; white-space: nowrap; max-width: 100%;">
+                    <a class=${page === 1 ? "disabled item" : "item"} onClick=${page > 1 ? () => setPage(page - 1) : null}>
+                        <i class="left chevron icon"></i>
+                        Previous
+                    </a>
+                    ${renderPagination()}
+                    <a class=${page === totalPages ? "disabled item" : "item"} onClick=${page < totalPages ? () => setPage(page + 1) : null}>
+                        Next
+                        <i class="right chevron icon"></i>
+                    </a>
+                </div>
+            </div>`;
+
         const openViewModal = async (note) => {
             try {
                 const response = await fetch(`/notes/${note.id}`);
@@ -288,13 +320,8 @@
         return html`
         <div class="ui segment">
             <h3 class="header"><i class="sticky note icon"></i> Your Notes</h3>
-            <div class="ui stackable menu">
-                <div class="item">
-                    ${userCan.note_create && html`<button class="ui primary button" onClick=${createNote}>
-                        <i class="plus icon"></i> Create New Note
-                    </button>`}
-                </div>
-                <div class="right menu">
+            <div class="ui stackable menu list-bar">
+                <div class="menu" style="display: flex; flex-wrap: wrap;">
                     <div class="item">
                         <div class="ui icon input">
                             <input type="text" placeholder="Search..." value=${keyword} onChange=${(e) => setKeyword(e.target.value)} />
@@ -345,23 +372,12 @@
                         </div>
                     </div>
                 </div>
+                ${userCan.note_create && html`<div class="right item">
+                    <button class="ui blue labeled icon button" id="create-note" onClick=${createNote}>
+                        <i class="plus icon"></i> Create New Note
+                    </button>
+                </div>`}
             </div>
-            <div class="ui divider"></div>
-
-            ${totalPages > 1 ? html`
-            <div class="ui pagination menu" style="overflow-x: auto; white-space: nowrap;">
-                <a class=${page === 1 ? "disabled item" : "item"} onClick=${page > 1 ? () => setPage(page - 1) : null}>
-                    <i class="left chevron icon"></i>
-                    Previous
-                </a>
-                ${renderPagination()}
-                <a class=${page === totalPages ? "disabled item" : "item"} onClick=${page < totalPages ? () => setPage(page + 1) : null}>
-                    Next
-                    <i class="right chevron icon"></i>
-                </a>
-            </div>
-            <div class="ui divider"></div>
-            ` : ''}
 
             ${notes.length === 0 ? html`
             <div class="ui placeholder segment">
@@ -378,23 +394,21 @@
                 ${notes.map(note => html`
                 <div class="fluid card">
                     <div class="ui header attached">${note.filename}</div>
-                    ${userCan.note_view && html`<div class="content" style="display: grid; grid-template-rows: 1fr auto; min-height: 100px;">
-                        <div class="description" style="margin-bottom: 1em;">
+                    ${userCan.note_view && html`<div class="content" style="display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr auto; min-height: 100px;">
+                        <div class="description clickable" style="margin-bottom: 1em; cursor: pointer; overflow-wrap: anywhere;" title="Click to view the note" onClick=${(e) => previewClick(e, note)}>
                             ${note.content.length > 150 ? note.content.substring(0, 150) + '...' : note.content}
                         </div>
                         <div class="meta">Created: ${note.created_at}</div>
                     </div>`}
                     <div class="extra content" style="display: flex; justify-content: flex-start; gap: 10px; flex-wrap: wrap">
-                        ${userCan.note_view && html`<button class="ui positive right labeled icon button clickable" onClick=${() => openViewModal(note)}>
-                            <i class="glasses icon"></i> View
-                        </button>`}
-                        ${userCan.note_update && html`<button class="ui positive right labeled icon button clickable" onClick=${() => editNote(note)}>
-                            <i class="edit icon"></i> Edit
-                        </button>`}
-                        ${userCan.note_view && html`<button class="ui positive right labeled icon button clickable" onClick=${() => shareNote(note)}>
-                            Share
-                            <i class="share icon"></i>
-                        </button>`}
+                        <div class="ui buttons">
+                            ${userCan.note_update && html`<button class="ui button clickable" onClick=${() => editNote(note)}>
+                                <i class="edit icon"></i> Edit
+                            </button>`}
+                            ${userCan.note_view && html`<button class="ui positive button clickable" onClick=${() => shareNote(note)}>
+                                <i class="share icon"></i> Share
+                            </button>`}
+                        </div>
                         ${userCan.note_delete && html`<button class="ui red right rounded icon button clickable" onClick=${() => deleteNote(note)}>
                             <i class="trash icon"></i>
                         </button>`}
@@ -403,6 +417,8 @@
                 `)}
             </div>
             `}
+
+            ${totalPages > 1 ? renderPaginationMenu() : ''}
 
             ${modalOpen && html`<div class="ui dimmer modals page transition visible active">
                 <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
@@ -427,22 +443,21 @@
             </div>`}
 
             ${viewModalOpen && html`<div class="ui dimmer modals page transition visible active">
-                <div class="ui fullscreen modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-                    <div class="header">${viewNote.filename}</div>
-                    <div class="content">
-                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${viewNote.content}</pre>
+                <div class="ui modal transition visible active" id="note-view-modal" style="position: fixed !important; top: 50% !important; left: 1em !important; right: 1em !important; width: auto !important; max-width: 850px; margin: 0 auto !important; transform: translateY(-50%) !important; z-index: 1000;">
+                    <div class="header" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5em;"><span style="overflow-wrap: anywhere;">${viewNote.filename}</span><i class="close icon clickable" style="flex: 0 0 auto; margin: 0;" onClick=${() => setViewModalOpen(false)}></i></div>
+                    <div class="content" style="max-height: calc(100vh - 12em); max-height: calc(100dvh - 12em); overflow-y: auto;">
+                        <pre style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;">${viewNote.content}</pre>
                     </div>
                     <div class="actions">
                         <button class="ui button" onClick=${viewRawNote}>View Raw</button>
                         <button class="ui button" onClick=${copyNote}>Copy</button>
-                        <button class="ui button" onClick=${() => setViewModalOpen(false)}>Close</button>
                     </div>
                 </div>
             </div>`}
 
             ${shareModalOpen && html`<div class="ui dimmer modals page transition visible active">
                 <div class="ui modal transition visible active" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-                    <div class="header">Share ${shareNoteData.filename}<i class="close icon clickable" style="float: right;" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}></i></div>
+                    <div class="header" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5em;"><span style="overflow-wrap: anywhere;">Share ${shareNoteData.filename}</span><i class="close icon clickable" style="flex: 0 0 auto; margin: 0;" onClick=${() => { setShareModalOpen(false); setShareUrl(''); setShareExpiresAt(null); }}></i></div>
                     <div class="content">
                         ${shortShareUrl ? html`
                             <div class="ui form">

@@ -66,3 +66,18 @@ body>footer.page-footer {
 .ui.cards>.card>.content>form>.description {
     color: rgba(0, 0, 0, .68);
 }
+/* Notes and files list bar: when the stackable menu collapses into one column on phones, align its contents to the right */
+@media only screen and (max-width: 767px) {
+    .ui.stackable.menu.list-bar > .item,
+    .ui.stackable.menu.list-bar > .menu > .item {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        text-align: right;
+    }
+
+    .ui.stackable.menu.list-bar > .menu {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

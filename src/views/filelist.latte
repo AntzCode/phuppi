@@ -88,20 +88,6 @@ $userCan = [
         const [totalPages, setTotalPages] = useState(0);
         const [uploading, setUploading] = useState(false);
         const [showUploadForm, setShowUploadForm] = useState(false);
-        const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-
-        // Close the "more options" menu on an outside click or Escape
-        useEffect(() => {
-            if (!moreMenuOpen) return;
-            const close = () => setMoreMenuOpen(false);
-            const onKey = (e) => { if (e.key === 'Escape') close(); };
-            document.addEventListener('click', close);
-            document.addEventListener('keydown', onKey);
-            return () => {
-                document.removeEventListener('click', close);
-                document.removeEventListener('keydown', onKey);
-            };
-        }, [moreMenuOpen]);
 
         // Cards per row: three on desktop, two on tablets, one on phones. Driven from here (inline
         // grid styles) so a stale cached stylesheet cannot break the layout.
@@ -113,15 +99,6 @@ $userCan = [
             const update = () => setColumns(getColumns());
             queries.forEach(q => q.addEventListener('change', update));
             return () => queries.forEach(q => q.removeEventListener('change', update));
-        }, []);
-
-        // On narrow screens (Fomantic's mobile breakpoint) the search field and the upload button stack
-        const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
-        useEffect(() => {
-            const query = window.matchMedia('(max-width: 767px)');
-            const onChange = (e) => setIsMobile(e.matches);
-            query.addEventListener('change', onChange);
-            return () => query.removeEventListener('change', onChange);
         }, []);
 
         // The upload form slides open: its grid row animates between 0fr and 1fr. The styles are
@@ -553,19 +530,29 @@ $userCan = [
         ];
         const limitOptions = [5, 10, 25, 50, 100, 250, 500, 1000];
 
-        const chooseSort = (value) => {
-            setSort(value);
-            setCookie('filelist_sort', value);
-            setPage(1);
-            setMoreMenuOpen(false);
-        };
+        const getSortLabel = (value) => (sortOptions.find(o => o.value === value) || sortOptions[3]).label;
 
         const chooseLimit = (value) => {
             setLimit(value);
             setCookie('filelist_limit', value);
             setPage(1);
-            setMoreMenuOpen(false);
         };
+
+        useEffect(() => {
+            $('.ui.dropdown.files-sort').dropdown({
+                onChange: function (value) {
+                    setSort(value);
+                    setCookie('filelist_sort', value);
+                    setPage(1);
+                }
+            });
+            $('.ui.dropdown.files-limit').dropdown();
+        }, []);
+
+        useEffect(() => {
+            // Show the current sort order as selected in the dropdown
+            $('.ui.dropdown.files-sort').dropdown('set selected', sort);
+        }, [sort]);
 
         const totalSize = selectedFiles.reduce((sum, id) => {
             const file = files.find(f => f.id === id);
@@ -788,7 +775,7 @@ $userCan = [
         // so they never cover it.
         const renderPaginationMenu = () => html`
             <div class="pagination-bar" style="text-align: center; position: sticky; bottom: 0; z-index: 10; padding: 0.75em 0;">
-                <div class="ui pagination menu" style="overflow-x: auto; white-space: nowrap;">
+                <div class="ui pagination menu" style="overflow-x: auto; white-space: nowrap; max-width: 100%;">
                     <a class=${page === 1 ? "disabled item" : "item"} onClick=${page > 1 ? () => setPage(page - 1) : null}>
                         <i class="left chevron icon"></i>
                         Previous
@@ -803,32 +790,35 @@ $userCan = [
 
         return html`
 
-        <div class="ui clearing basic segment" style="padding: 0;">
-            <div id="file-search-group" style=${"display: flex; align-items: center; gap: 0.5em;" + (isMobile ? "" : " float: left;")}>
-                <div class=${isMobile ? "ui fluid icon input" : "ui icon input"} id="file-search" style=${isMobile ? "flex: 1;" : ""}>
-                    <input type="text" placeholder="Search..." value=${keyword} onChange=${(e) => setKeyword(e.target.value)} />
-                    <i class="search link icon" title="Perform search" onClick=${() => { setPage(1); fetchFiles(); }}></i>
+        <div class="ui stackable menu list-bar" id="file-search-bar" style="position: relative; z-index: 30;">
+            <div class="menu" style="display: flex; flex-wrap: wrap;">
+                <div class="item">
+                    <div class="ui icon input" id="file-search">
+                        <input type="text" placeholder="Search..." value=${keyword} onChange=${(e) => setKeyword(e.target.value)} />
+                        <i class="search link icon" title="Perform search" onClick=${() => { setPage(1); fetchFiles(); }}></i>
+                    </div>
                 </div>
-                <div style="position: relative;">
-                    <button class="ui icon button" id="more-options-button" title="More options" aria-haspopup="true" aria-expanded=${moreMenuOpen}
-                        style="margin: 0;" onClick=${(e) => { e.stopPropagation(); setMoreMenuOpen(!moreMenuOpen); }}>
-                        <i class="ellipsis vertical icon"></i>
-                    </button>
-                    ${moreMenuOpen && html`<div class="ui vertical menu" id="more-options-menu"
-                        style=${"position: absolute; top: 100%; margin-top: 0.25em; z-index: 30; min-width: 14em; max-height: 70vh; overflow-y: auto;" + (isMobile ? " right: 0;" : " left: 0;")}
-                        onClick=${(e) => e.stopPropagation()}>
-                        <div class="header item">Sort by</div>
-                        ${sortOptions.map(o => html`<a class=${sort === o.value ? "active item" : "item"} data-sort=${o.value} onClick=${() => chooseSort(o.value)}>${o.label}</a>`)}
-                        <div class="header item">Rows per page</div>
-                        ${limitOptions.map(n => html`<a class=${limit === n ? "active item" : "item"} data-limit=${n} onClick=${() => chooseLimit(n)}>${n}</a>`)}
-                    </div>`}
+                <div class="ui dropdown files-sort item clickable" id="file-sort" title="Sorting order">
+                    <label>${getSortLabel(sort)}</label>
+                    <i class="dropdown icon"></i>
+                    <div class="ui labeled icon menu">
+                        ${sortOptions.map(o => html`<div class="item" data-value=${o.value}>${o.label}</div>`)}
+                    </div>
+                </div>
+                <div class="ui dropdown files-limit item clickable" id="file-limit" title="Rows per page">
+                    <label>${limit} per page</label>
+                    <i class="dropdown icon"></i>
+                    <div class="ui labeled icon menu">
+                        ${limitOptions.map(n => html`<div class="item" data-value=${n} onClick=${() => chooseLimit(n)}>${n}</div>`)}
+                    </div>
                 </div>
             </div>
-            ${isMobile && userCan.file_create && userCan.file_put && html`<div class="ui divider" id="file-search-divider"></div>`}
-            ${userCan.file_create && userCan.file_put && html`<button class="ui blue right floated labeled icon button" id="toggle-upload-form" onClick=${() => setShowUploadForm(!showUploadForm)} disabled=${uploading}>
-                <i class=${showUploadForm ? "close icon" : "upload icon"}></i>
-                ${showUploadForm ? 'Hide Upload' : 'Upload Files'}
-            </button>`}
+            ${userCan.file_create && userCan.file_put && html`<div class="right item">
+                <button class="ui blue labeled icon button" id="toggle-upload-form" onClick=${() => setShowUploadForm(!showUploadForm)} disabled=${uploading}>
+                    <i class=${showUploadForm ? "close icon" : "upload icon"}></i>
+                    ${showUploadForm ? 'Hide Upload' : 'Upload Files'}
+                </button>
+            </div>`}
         </div>
         ${userCan.file_create && userCan.file_put && html`<div class="upload-form-collapse" style=${uploadFormCollapseStyle} aria-hidden=${!showUploadForm}><div style="min-height: 0; overflow: hidden;"><div class="ui form segment">
             <h3 class="header"><i class="upload icon"></i> Upload Some Files</h3>
@@ -880,7 +870,7 @@ $userCan = [
                 <i class="list icon"></i>
                 <label> Your Uploaded Files ${files.length} of ${total}</label>
             </h3>
-            <div class="ui stackable menu" id="file-list-menu" style="position: sticky; top: 0; z-index: 20;">
+            ${selectedFiles.length > 0 && html`<div class="ui stackable menu" id="file-list-menu" style="position: sticky; top: 0; z-index: 20;">
                 ${(userCan.file_get || userCan.file_delete || userCan.file_update) && html`<div class="clickable item" onClick=${handleSelectAll}>
                     <i class=${selectedFiles.length === files.length && files.length > 0 ? "check square large primary icon" : "square outline large primary icon"}></i>
                     <label>Select All</label>
@@ -907,7 +897,7 @@ $userCan = [
                         </div>`}
                     </div>
                 </div>`}
-            </div>
+            </div>`}
             <div class="ui divider"></div>
 
             <div>
@@ -940,15 +930,21 @@ $userCan = [
                             </div>
                         </div>
                         ${userCan.file_get && html`<div class="extra content" onClick=${(e) => e.stopPropagation()}>
-                            <div class="ui two buttons">
-                                <a class="ui button" href="/files/${file.id}?download=true">
-                                    <i class="download icon"></i>
-                                    Download
-                                </a>
-                                <button class="ui positive button clickable" onClick=${() => shareFile(file)}>
-                                    <i class="share icon"></i>
-                                    Share
-                                </button>
+                            <div style="display: flex; align-items: stretch; gap: 0.5em;">
+                                <div class="ui two buttons" style="flex: 1 1 auto; margin: 0;">
+                                    <a class="ui button" style="white-space: nowrap; padding-left: 0.5em; padding-right: 0.5em;" href="/files/${file.id}?download=true">
+                                        <i class="download icon"></i>
+                                        Download
+                                    </a>
+                                    <button class="ui positive button clickable" style="white-space: nowrap; padding-left: 0.5em; padding-right: 0.5em;" onClick=${() => shareFile(file)}>
+                                        <i class="share icon"></i>
+                                        Share
+                                    </button>
+                                </div>
+                                ${canSelect && html`<button class="ui icon button clickable select-toggle" title=${selected ? "Deselect" : "Select"} aria-pressed=${selected}
+                                    style="flex: 0 0 auto; margin: 0; padding-left: 0.9em; padding-right: 0.9em;" onClick=${(e) => toggleSelection(file.id, e)}>
+                                    <i class=${selected ? "check square primary icon" : "square outline icon"}></i>
+                                </button>`}
                             </div>
                         </div>`}
                     </div>`;

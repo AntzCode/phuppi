@@ -52,12 +52,18 @@ test.describe('Regenerate previews by file extension', () => {
         await page.locator('#regenerateExtensions').fill(' .QZX ');
         page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#regenerateAllBtn').click();
-        const list = await (await request.get('/files?limit=100&sort=date_newest')).json();
+        // Read every page of the file list: earlier runs leave files behind, so one page is not enough
+        const files = [];
+        for (let pageNumber = 1; ; pageNumber++) {
+            const list = await (await request.get(`/files?limit=100&page=${pageNumber}&sort=date_newest`)).json();
+            files.push(...list.files);
+            if (files.length >= list.total || list.files.length === 0) break;
+        }
         // One job for every qzx file (earlier runs may have left some); none for the jpg
-        const qzxCount = list.files.filter((f) => f.extension === 'qzx').length;
+        const qzxCount = files.filter((f) => f.extension === 'qzx').length;
         await expect(page.locator('#previewActionResult')).toContainText(`Previews for qzx reset and requeued. Created ${qzxCount} preview jobs.`);
-        expect(list.files.find((f) => f.id === jpg.id).preview_status).toBe('completed');
-        expect(list.files.some((f) => f.id === target.id)).toBe(true);
+        expect(files.find((f) => f.id === jpg.id).preview_status).toBe('completed');
+        expect(files.some((f) => f.id === target.id)).toBe(true);
     });
 
     test('rejects an invalid list and matches nothing for an unused extension', async ({ request }) => {

@@ -53,12 +53,12 @@ test.describe('File cards', () => {
         expect(footerBox.y + footerBox.height).toBeGreaterThan(cardBox.y + cardBox.height - 6);
     });
 
-    test('a selected card has a blue border and shadow, and there is no checkbox', async ({ page, request }) => {
+    test('a selected card has a blue border and shadow, and no checkbox in its body', async ({ page, request }) => {
         await seed(request, 3);
         await page.goto('/');
         const cards = page.locator('#file-cards > .file-card');
         await expect(cards.first()).toBeVisible();
-        await expect(page.locator('#file-cards i.square.icon')).toHaveCount(0);
+        await expect(page.locator('#file-cards .file-card > .content:not(.extra) i.square.icon')).toHaveCount(0);
 
         const card = cards.nth(1);
         const style = () => card.evaluate((el) => { const c = getComputedStyle(el); return { border: c.borderTopColor, shadow: c.boxShadow }; });

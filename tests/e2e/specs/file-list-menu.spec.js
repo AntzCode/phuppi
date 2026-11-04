@@ -14,7 +14,13 @@ test.describe('File list menu', () => {
 
         await page.goto('/');
         const menu = page.locator('#file-list-menu');
+
+        // Hidden until something is selected
+        await expect(page.locator('#file-cards .file-card').first()).toBeVisible();
+        await expect(menu).toHaveCount(0);
+        await page.locator('#file-cards .file-card .select-toggle').first().click();
         await expect(menu).toBeVisible();
+        await page.evaluate(() => window.scrollTo(0, 0));
 
         // At the top of the page it sits in its normal place, below the page header
         expect((await menu.boundingBox()).y).toBeGreaterThan(100);
@@ -26,10 +32,14 @@ test.describe('File list menu', () => {
 
         // And it still works from there
         await menu.getByText('Select All').click();
-        await expect(menu.getByText(/With \d+ Selected/)).not.toContainText('With 0 Selected');
+        await expect(menu.getByText(/With 10 Selected/)).toBeVisible();
+
+        // Deselecting everything hides it again
+        await menu.getByText('Select All').click();
+        await expect(menu).toHaveCount(0);
     });
 
-    test('search lives beside the upload button, far left, and still filters', async ({ page, request }) => {
+    test('search is on the left of the bar, level with the upload button, and still filters', async ({ page, request }) => {
         const name = `needle-${Date.now()}.txt`;
         await request.post('/files', {
             multipart: { file: { name, mimeType: 'text/plain', buffer: Buffer.from('needle') } },
@@ -45,7 +55,7 @@ test.describe('File list menu', () => {
         const [searchBox, buttonBox, menuBox] = await Promise.all([
             page.locator('#file-search').boundingBox(),
             page.locator('#toggle-upload-form').boundingBox(),
-            page.locator('#file-list-menu').boundingBox(),
+            page.locator('#file-search-bar').boundingBox(),
         ]);
         expect(Math.abs(searchBox.y - buttonBox.y)).toBeLessThan(20);
         expect(searchBox.x).toBeLessThan(menuBox.x + 30);
@@ -56,35 +66,5 @@ test.describe('File list menu', () => {
         await search.press('Enter');
         await expect(page.getByText(name).first()).toBeVisible();
         await expect(page.getByText('Your Uploaded Files 1 of 1')).toBeVisible();
-    });
-
-    test('on mobile the search row is full width, with a divider before the upload button', async ({ page }) => {
-        await page.setViewportSize({ width: 375, height: 700 });
-        await page.goto('/');
-
-        const search = page.locator('#file-search-group');
-        const divider = page.locator('#file-search-divider');
-        const button = page.locator('#toggle-upload-form');
-        await expect(divider).toBeVisible();
-
-        const [searchBox, dividerBox, buttonBox, menuBox] = await Promise.all([
-            search.boundingBox(), divider.boundingBox(), button.boundingBox(), page.locator('#file-list-menu').boundingBox(),
-        ]);
-
-        // Full width: search and the options button together span the content area, as wide as the list menu below
-        expect(searchBox.width).toBeGreaterThan(menuBox.width - 4);
-        // Stacked, with the divider between them and space around it
-        expect(dividerBox.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height + 8);
-        expect(buttonBox.y).toBeGreaterThanOrEqual(dividerBox.y + dividerBox.height + 8);
-    });
-
-    test('on desktop there is no divider and the search keeps its natural width', async ({ page }) => {
-        await page.setViewportSize({ width: 1100, height: 700 });
-        await page.goto('/');
-
-        await expect(page.locator('#toggle-upload-form')).toBeVisible();
-        await expect(page.locator('#file-search-divider')).toHaveCount(0);
-        const [searchBox, menuBox] = await Promise.all([page.locator('#file-search-group').boundingBox(), page.locator('#file-list-menu').boundingBox()]);
-        expect(searchBox.width).toBeLessThan(menuBox.width / 2);
     });
 });
