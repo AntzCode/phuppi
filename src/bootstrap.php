@@ -70,7 +70,7 @@ Flight::set('flight.root.path', $rootPath);
 $dataPath = getenv('PHUPPI_DATA_PATH') ?: $rootPath . DIRECTORY_SEPARATOR . 'data';
 Flight::set('flight.data.path', $dataPath);
 
-$publicPath = getenv('PHUPPI_PUBLIC_PATH') ?: $rootPath . DIRECTORY_SEPARATOR . 'html';
+$publicPath = getenv('PHUPPI_PUBLIC_PATH') ?: $rootPath . DIRECTORY_SEPARATOR . 'public';
 Flight::set('flight.public.path', $publicPath);
 
 $cachePath = getenv('PHUPPI_CACHE_PATH') ?: $dataPath . DIRECTORY_SEPARATOR . 'cache';

@@ -103,10 +103,18 @@ class SettingsController
                 $this->updateVideoPreviewSettings($data);
                 break;
             case 'regenerate_all':
-                $this->regenerateAllPreviews();
-                break;
             case 'regenerate_failed_previews':
-                $this->regenerateFailedPreviews();
+                try {
+                    $extensions = $this->parseExtensionFilter($data);
+                } catch (\InvalidArgumentException $e) {
+                    Flight::json(['error' => $e->getMessage()], 400);
+                    break;
+                }
+                if ($action === 'regenerate_all') {
+                    $this->regenerateAllPreviews($extensions);
+                } else {
+                    $this->regenerateFailedPreviews($extensions);
+                }
                 break;
             case 'regenerate_all_video_previews':
                 $this->regenerateAllVideoPreviews();
@@ -204,19 +212,75 @@ class SettingsController
         Flight::json(['message' => 'Preview settings updated']);
     }
    
-    private function regenerateAllPreviews(): void
+    /**
+     * Reads the optional comma separated list of file extensions that restricts a regenerate action.
+     *
+     * @param mixed $data The request data.
+     * @return string[]|null Lowercase extensions without dots, or null when all files are included.
+     * @throws \InvalidArgumentException When a list was sent but holds no valid extension.
+     */
+    private function parseExtensionFilter($data): ?array
+    {
+        if (!isset($data->extensions)) {
+            return null;
+        }
+
+        $extensions = [];
+        foreach (explode(',', (string) $data->extensions) as $extension) {
+            $extension = strtolower(ltrim(trim($extension), '.'));
+            if ($extension === '') {
+                continue;
+            }
+            if (!preg_match('/^[a-z0-9]{1,10}$/', $extension)) {
+                throw new \InvalidArgumentException("Invalid file extension: $extension");
+            }
+            $extensions[$extension] = $extension;
+        }
+
+        if (!$extensions) {
+            throw new \InvalidArgumentException('Enter at least one file extension, for example: jpg, png, pdf');
+        }
+
+        return array_values($extensions);
+    }
+
+    /**
+     * Builds the SQL condition and parameters that restrict a query on uploaded_files to some extensions.
+     *
+     * @param string[]|null $extensions Extensions to include, or null for all files.
+     * @param string $column The extension column, with its table alias when the query has one.
+     * @return array{0: string, 1: array} Condition (starting with " AND ") and its parameters.
+     */
+    private function extensionCondition(?array $extensions, string $column = 'extension'): array
+    {
+        if ($extensions === null) {
+            return ['', []];
+        }
+        return [' AND LOWER(' . $column . ') IN (' . implode(',', array_fill(0, count($extensions), '?')) . ')', $extensions];
+    }
+
+    /**
+     * Resets and requeues previews.
+     *
+     * @param string[]|null $extensions Only files with these extensions, or null for every file.
+     * @return void
+     */
+    private function regenerateAllPreviews(?array $extensions = null): void
     {
         $db = Flight::db();
         $storage = Flight::storage();
-    
+        [$condition, $params] = $this->extensionCondition($extensions, 'uf.extension');
+        [$plainCondition] = $this->extensionCondition($extensions);
+
         // Delete preview files - join with users to get username
-        $stmt = $db->query('
+        $stmt = $db->prepare('
             SELECT DISTINCT uf.preview_filename, u.username, v.voucher_code
             FROM uploaded_files uf
             LEFT JOIN users u ON uf.user_id = u.id
             LEFT JOIN vouchers v ON uf.voucher_id = v.id
-            WHERE uf.preview_filename IS NOT NULL
+            WHERE uf.preview_filename IS NOT NULL' . $condition . '
         ');
+        $stmt->execute($params);
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
             $username = !empty($row['username']) ? $row['username'] : 'voucher_' . $row['voucher_code'];
             $previewKey = $username . '/previews/' . $row['preview_filename'];
@@ -226,44 +290,55 @@ class SettingsController
                 Flight::logger()->warning("Failed to delete preview file $previewKey: " . $e->getMessage());
             }
         }
-    
+
         // Reset status
-        $db->exec('UPDATE uploaded_files SET preview_filename = NULL, preview_status = "pending", preview_generated_at = NULL');
-   
+        $db->prepare('UPDATE uploaded_files SET preview_filename = NULL, preview_status = "pending", preview_generated_at = NULL WHERE 1=1' . $plainCondition)->execute($params);
+
         // Clear jobs
-        $db->exec('DELETE FROM preview_jobs');
-        $db->exec('DELETE FROM queue_locks');
-   
-        // Create new preview jobs for all files
+        if ($extensions === null) {
+            $db->exec('DELETE FROM preview_jobs');
+            $db->exec('DELETE FROM queue_locks');
+        } else {
+            $matching = 'SELECT id FROM uploaded_files WHERE 1=1' . $plainCondition;
+            $db->prepare("DELETE FROM queue_locks WHERE job_id IN (SELECT id FROM preview_jobs WHERE uploaded_file_id IN ($matching))")->execute($params);
+            $db->prepare("DELETE FROM preview_jobs WHERE uploaded_file_id IN ($matching)")->execute($params);
+        }
+
+        // Create new preview jobs for the files
         $queueManager = new \Phuppi\Queue\QueueManager();
-        $filesStmt = $db->query('SELECT id FROM uploaded_files');
+        $filesStmt = $db->prepare('SELECT id FROM uploaded_files WHERE 1=1' . $plainCondition);
+        $filesStmt->execute($params);
         $jobCount = 0;
         while ($fileRow = $filesStmt->fetch(\PDO::FETCH_ASSOC)) {
             $queueManager->createJob((int)$fileRow['id']);
             $jobCount++;
         }
-   
-        Flight::json(['message' => "All previews reset and requeued. Created $jobCount preview jobs."]);
+
+        $scope = $extensions === null ? 'All previews' : 'Previews for ' . implode(', ', $extensions);
+        Flight::json(['message' => "$scope reset and requeued. Created $jobCount preview jobs."]);
     }
 
     /**
      * Regenerates failed previews.
      *
+     * @param string[]|null $extensions Only files with these extensions, or null for every file.
      * @return void
      */
-    private function regenerateFailedPreviews(): void
+    private function regenerateFailedPreviews(?array $extensions = null): void
     {
         $db = Flight::db();
         $storage = Flight::storage();
+        [$condition, $params] = $this->extensionCondition($extensions, 'uf.extension');
 
         // Get files with failed preview status (only 'failed', not 'not_supported')
-        $failedFilesStmt = $db->query('
+        $failedFilesStmt = $db->prepare('
             SELECT uf.id, uf.preview_filename, u.username, v.voucher_code
             FROM uploaded_files uf
             LEFT JOIN users u ON uf.user_id = u.id
             LEFT JOIN vouchers v ON uf.voucher_id = v.id
-            WHERE uf.preview_status = "failed"
+            WHERE uf.preview_status = "failed"' . $condition . '
         ');
+        $failedFilesStmt->execute($params);
 
         $failedCount = 0;
         while ($row = $failedFilesStmt->fetch(\PDO::FETCH_ASSOC)) {

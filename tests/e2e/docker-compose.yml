@@ -27,7 +27,7 @@ services:
     ports:
       - "${E2E_APP_PORT:-8089}:80"
     volumes:
-      - ../../public:/var/www/html:ro
+      - ../../public:/var/www/public:ro
       - ../../src:/var/www/src:ro
       - ../../docker/php/php.ini-development:/usr/local/etc/php/php.ini:ro
       - ../../docker/php/000-default.conf:/etc/apache2/sites-enabled/000-default.conf:ro

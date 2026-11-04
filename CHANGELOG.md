@@ -13,7 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Optional `public_endpoint` on S3 connectors: the address browsers use in presigned URLs when it differs from the address this server connects to. Every S3 connector pointing at the dev Garage sets it from the new `S3_DEV_PUBLIC_ENDPOINT` (default `request`: the HTTPS origin the browser used), so browser uploads to Garage no longer need a `garage` hosts entry when using the HTTPS address.
   - Plan and issue: [`plans/mobile-app-share-integration-plan.md`](plans/mobile-app-share-integration-plan.md), [`plans/mobile-app-share-integration-issue.md`](plans/mobile-app-share-integration-issue.md)
 
+### Changed
+- Settings → Preview Settings → Preview Management: an "Only regenerate these file extensions" checkbox enables a comma separated list (for example `jpg, png, pdf`) that restricts both "Regenerate All Previews" and "Regenerate Failed Previews" to files with those extensions, so video previews are not redone needlessly. Unticked, every file is included as before. The settings endpoint accepts an optional `extensions` field for the two regenerate actions.
+
 ### Fixed
+- Photo thumbnails now honor the EXIF orientation tag, so pictures taken in portrait are no longer shown sideways in the file list. Existing thumbnails are not changed; regenerate them to correct old photos.
+- Image thumbnails keep the photo's proportions. They were stretched to the configured width and height; that size is now a maximum the thumbnail fits inside, and small images are no longer enlarged. Regenerate existing previews to apply it.
+- File type icons, default avatars and the docs pages were not found on installs laid out as `src/` and `public/` (as `deploy.sh` produces): the web root defaulted to `html/`, which only existed in the Docker image. It now defaults to `public/`, and `PHUPPI_PUBLIC_PATH` still overrides it. The Docker dev and e2e stacks now mount `public/` at `/var/www/public` (Apache's document root moved with it); run `docker compose up -d --build` after pulling.
 - Preview and file redirects to S3 presigned URLs now use a temporary (302) redirect instead of a permanent (301) one, so browsers no longer cache an expired or unreachable storage address for a file.
 
 ## [2.7.0] - 2026-11-01

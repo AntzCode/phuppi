@@ -28,7 +28,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./public:/var/www/html
+      - ./public:/var/www/public
       - ./src:/var/www/src
       - ./data:/var/www/data
       - ./docker/php/php.ini-development:/usr/local/etc/php/php.ini

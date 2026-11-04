@@ -284,11 +284,11 @@
             </div>
             <div class="two fields">
                 <div class="field">
-                    <label>Preview Width</label>
+                    <label>Preview Max Width</label>
                     <input type="number" name="width" value="{$previewSettings['width']}" min="100" max="1024">
                 </div>
                 <div class="field">
-                    <label>Preview Height</label>
+                    <label>Preview Max Height</label>
                     <input type="number" name="height" value="{$previewSettings['height']}" min="100" max="1024">
                 </div>
             </div>
@@ -314,6 +314,18 @@
     
         <div class="ui divider"></div>
         <h3>Preview Management</h3>
+        <div class="ui form" style="margin-bottom: 1em; max-width: 32em;">
+            <div class="field">
+                <div class="ui checkbox">
+                    <input type="checkbox" id="regenerateExtensionsToggle">
+                    <label for="regenerateExtensionsToggle">Only regenerate these file extensions</label>
+                </div>
+            </div>
+            <div class="field">
+                <input type="text" id="regenerateExtensions" placeholder="jpg, png, pdf" autocomplete="off" disabled>
+                <small>Comma separated. Applies to both buttons below; leave the box unchecked to include every file.</small>
+            </div>
+        </div>
         <div class="ui buttons">
             <button class="ui orange button" id="regenerateAllBtn">Regenerate All Previews</button>
             <button class="ui red button" id="regenerateFailedBtn">Regenerate Failed Previews</button>
@@ -981,9 +993,32 @@ document.addEventListener('DOMContentLoaded', function() {
     videoPreviewQueueMode.addEventListener('change', updateVideoQueueModeDisplay);
     updateVideoQueueModeDisplay();
 
+    // Optional restriction of the regenerate buttons to some file extensions
+    const regenerateExtensionsToggle = document.getElementById('regenerateExtensionsToggle');
+    const regenerateExtensionsInput = document.getElementById('regenerateExtensions');
+    regenerateExtensionsToggle.addEventListener('change', function() {
+        regenerateExtensionsInput.disabled = !this.checked;
+        if (this.checked) regenerateExtensionsInput.focus();
+    });
+
+    // Returns the extension list to send ('' when every file is included), or null after showing an error
+    function getRegenerateExtensions() {
+        if (!regenerateExtensionsToggle.checked) return '';
+        const list = regenerateExtensionsInput.value.split(',').map(function(e) { return e.trim(); }).filter(Boolean);
+        if (!list.length) {
+            document.getElementById('previewActionResult').innerHTML = '<div class="ui negative message"><div class="header">Error</div><p>Enter at least one file extension, for example: jpg, png, pdf</p></div>';
+            regenerateExtensionsInput.focus();
+            return null;
+        }
+        return list.join(',');
+    }
+
     // Regenerate All Previews
     document.getElementById('regenerateAllBtn').addEventListener('click', function() {
-        if (!confirm('Are you sure you want to regenerate all previews? This will queue all files for preview generation.')) return;
+        const extensions = getRegenerateExtensions();
+        if (extensions === null) return;
+        const scope = extensions ? 'files with the extensions ' + extensions : 'all files';
+        if (!confirm('Are you sure you want to regenerate previews? This will queue ' + scope + ' for preview generation.')) return;
 
         const resultDiv = document.getElementById('previewActionResult');
         this.disabled = true;
@@ -991,6 +1026,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const formData = new FormData();
         formData.append('action', 'regenerate_all');
+        if (extensions) formData.append('extensions', extensions);
 
         fetch('/admin/settings/preview', {
             method: 'POST',
@@ -1016,7 +1052,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Regenerate Failed Previews
     document.getElementById('regenerateFailedBtn').addEventListener('click', function() {
-        if (!confirm('Are you sure you want to regenerate failed previews? This will requeue files that failed to generate previews.')) return;
+        const extensions = getRegenerateExtensions();
+        if (extensions === null) return;
+        if (!confirm('Are you sure you want to regenerate failed previews' + (extensions ? ' for the extensions ' + extensions : '') + '? This will requeue files that failed to generate previews.')) return;
 
         const resultDiv = document.getElementById('previewActionResult');
         this.disabled = true;
@@ -1024,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const formData = new FormData();
         formData.append('action', 'regenerate_failed_previews');
+        if (extensions) formData.append('extensions', extensions);
 
         fetch('/admin/settings/preview', {
             method: 'POST',

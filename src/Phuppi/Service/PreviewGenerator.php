@@ -18,6 +18,7 @@ use Flight;
 use PDO;
 use Phuppi\UploadedFile;
 use Phuppi\Helper;
+use Phuppi\Helper\ImageOrientation;
 use Phuppi\Storage\StorageFactory;
 use Phuppi\Service\TransferStats;
 use Exception;
@@ -261,13 +262,24 @@ class PreviewGenerator
         if (!$srcImage) return null;
 
         /** @var \GdImage $srcImage */
-        $thumb = imagecreatetruecolor($width, $height);
-        
+        // Phone photos are stored sideways with an EXIF orientation tag; turn them upright before resizing
+        if (($imageInfo['mime'] ?? '') === 'image/jpeg') {
+            $srcImage = ImageOrientation::apply($srcImage, ImageOrientation::read($tempPath));
+        }
+        $srcWidth = imagesx($srcImage);
+        $srcHeight = imagesy($srcImage);
+
+        // Fit inside the configured width x height, keeping the photo's proportions (never enlarge a small image)
+        $scale = min($width / $srcWidth, $height / $srcHeight, 1);
+        $thumbWidth = max(1, (int) round($srcWidth * $scale));
+        $thumbHeight = max(1, (int) round($srcHeight * $scale));
+        $thumb = imagecreatetruecolor($thumbWidth, $thumbHeight);
+
         // Fill with white background (for transparent images)
         $white = imagecolorallocate($thumb, 255, 255, 255);
         imagefill($thumb, 0, 0, $white);
-        
-        imagecopyresampled($thumb, $srcImage, 0, 0, 0, 0, $width, $height, $imageInfo[0], $imageInfo[1]);
+
+        imagecopyresampled($thumb, $srcImage, 0, 0, 0, 0, $thumbWidth, $thumbHeight, $srcWidth, $srcHeight);
 
         $tempPreview = tempnam(sys_get_temp_dir(), 'preview_thumb_');
         $this->saveImage($thumb, $tempPreview, $format);
