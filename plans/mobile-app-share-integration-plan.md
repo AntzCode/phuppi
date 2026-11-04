@@ -61,7 +61,9 @@ Goal: Phuppi appears in the Android share sheet for users who installed it to th
 3. Add the receiving page `/share-target/receive`: shows the pending files, uploads them with the existing uploader (local and S3 flows, with progress), clears them on success, and offers retry on failure.
 4. If the user is not logged in, keep the stored files, send them to `/login`, and return to the receiving page afterwards.
 
-Notes: Web Share Target works on Chrome for Android once the PWA is installed; it is not available on iOS Safari. It needs HTTPS (localhost is exempt for development).
+Notes:
+- Web Share Target works in Chrome for Android once the app is installed; it is not available in Firefox or on iOS Safari. It needs HTTPS.
+- Confirmed working on production (valid domain and certificate). On the LAN dev stack (`https://<lan-ip>` with a local CA) Chrome installed only a home-screen shortcut, which never appears in the share sheet; the share target needs a real install, so test it on a public HTTPS address (production or a tunnel).
 
 ### Phase 1: Capacitor app shell and share-in
 
@@ -130,12 +132,12 @@ The existing upload endpoints and the S3 presigned flow are reused rather than r
 ## 8. Implementation Checklist
 
 ### Phase 0: PWA share target
-- [ ] Web app manifest and icons, linked from the layout
-- [ ] Service worker with a share-target handler and file storage
-- [ ] `/share-target/receive` page reusing the uploader (local and S3 flows)
-- [ ] Not-logged-in path (keep files, log in, resume)
-- [ ] e2e tests (local and S3)
-- [ ] Changelog entry
+- [x] Web app manifest and icons, linked from the layout
+- [x] Service worker with a share-target handler and file storage
+- [x] `/share-target/receive` page with the uploader (local and S3 flows)
+- [x] Not-logged-in path (keep files, log in, resume)
+- [x] e2e tests (local and S3)
+- [x] Changelog entry
 
 ### Phase 1: Capacitor app
 - [ ] Spike: confirm the share-in plugin or write native receivers (Android and iOS)

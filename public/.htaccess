@@ -3,6 +3,8 @@
 
 RewriteEngine On
 
+AddType application/manifest+json .webmanifest
+
 # Standard rewrite for non-existing files to index.php (Flight routing)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

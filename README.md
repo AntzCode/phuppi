@@ -92,6 +92,15 @@ docker exec -it phuppi php src/bootstrap.php install
 
 `echo "127.0.0.1 garage" | sudo tee -a /etc/hosts`
 
+**HTTPS for development** (needed to install Phuppi as an app and share to it from a phone). The stack includes a Caddy proxy that serves the app and the Garage bucket over HTTPS from one address, with certificates from its own local CA:
+
+```bash
+# Optional: the names or IPs devices on your network use to reach this machine
+printf "DEV_HOSTS=localhost, 192.168.1.20\nDEV_DEFAULT_HOST=192.168.1.20\n" >> .env
+docker compose up -d --build
+```
+
+Open `https://localhost`, or `https://192.168.1.20` from a phone on the same network. Browsers will warn until they trust the local CA: download it from `https://<host>/dev-ca.crt` (or `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .`) and install it as a CA certificate (Android: Settings → Security → Install a certificate → CA certificate). Chrome will not register the service worker or offer to install the app on an untrusted certificate. Uploads to Garage go through the same HTTPS address, so the `garage` hosts entry is not needed there. The LAN address is good for the web UI and uploads, but Chrome only installs a real app (needed for the Android share sheet) on a public HTTPS domain, so test sharing there. Plain `http://localhost` still works, but S3 uploads then need the hosts entry above.
 
 ## 📚 Documentation
 

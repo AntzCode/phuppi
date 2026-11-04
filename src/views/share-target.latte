@@ -1,0 +1,214 @@
+{extends 'layout.latte'}
+
+{block title}Shared Files{/block}
+
+{block content}
+
+<h1 class="ui header">
+    <i class="share alternate icon"></i>
+    <div class="content">
+        Shared Files
+        <div class="sub header">Files you shared to Phuppi from another app</div>
+    </div>
+</h1>
+
+{if !$canUpload}
+    <div class="ui warning message" id="share-no-permission">
+        <i class="lock icon"></i>
+        Your account is not allowed to upload files.
+    </div>
+{else}
+    <div class="ui info message" id="share-empty" style="display: none;">
+        <i class="info circle icon"></i>
+        There are no shared files waiting. Share a photo, video or file to Phuppi from another app to upload it here.
+    </div>
+
+    <div class="ui segment" id="share-pending" style="display: none;">
+        <div class="ui divided items" id="share-list"></div>
+        <div class="ui indicating progress" id="share-overall" style="margin-top: 1em;">
+            <div class="bar"><div class="progress"></div></div>
+            <div class="label" id="share-status">Waiting...</div>
+        </div>
+        <button class="ui primary button" id="share-retry" style="display: none;"><i class="redo icon"></i> Retry failed</button>
+        <a class="ui green button" id="share-done" href="/" style="display: none;"><i class="folder open icon"></i> View my files</a>
+    </div>
+
+<script>
+(function () {
+    var DB_NAME = 'phuppi-share';
+    var STORE = 'pending';
+
+    var openDb = function () {
+        return new Promise(function (resolve, reject) {
+            var request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = function () { request.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true }); };
+            request.onsuccess = function () { resolve(request.result); };
+            request.onerror = function () { reject(request.error); };
+        });
+    };
+
+    var request = function (mode, action) {
+        return openDb().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(STORE, mode);
+                var req = action(tx.objectStore(STORE));
+                tx.oncomplete = function () { db.close(); resolve(req && req.result); };
+                tx.onerror = function () { db.close(); reject(tx.error); };
+            });
+        });
+    };
+
+    var listPending = function () { return request('readonly', function (store) { return store.getAll(); }); };
+    var removePending = function (id) { return request('readwrite', function (store) { return store.delete(id); }); };
+
+    var formatSize = function (bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+        return (bytes / 1073741824).toFixed(2) + ' GB';
+    };
+
+    // Same two flows as the file list: presigned PUT for S3 storage, multipart POST for local storage
+    var uploadOne = function (entry, onProgress) {
+        var file = entry.blob;
+        var name = entry.name || 'shared-file';
+        var type = entry.type || 'application/octet-stream';
+
+        return fetch('/files/presigned-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: name, filesize: file.size, mimetype: type })
+        }).then(function (response) {
+            if (!response.ok) throw new Error('Failed to prepare the upload');
+            return response.json();
+        }).then(function (meta) {
+            return new Promise(function (resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                xhr.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+                xhr.onerror = function () { reject(new Error('Network error')); };
+
+                if (meta.presigned_url) {
+                    xhr.open('PUT', meta.presigned_url);
+                    xhr.setRequestHeader('Content-Type', meta.mimetype);
+                    xhr.onload = function () {
+                        if (xhr.status !== 200) return reject(new Error('Upload to storage failed'));
+                        fetch('/files/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                filename: meta.filename,
+                                display_filename: meta.display_filename,
+                                filesize: meta.filesize,
+                                mimetype: meta.mimetype,
+                                extension: meta.extension,
+                                user_id: meta.user_id,
+                                voucher_id: meta.voucher_id
+                            })
+                        }).then(function (r) { return r.ok ? resolve() : reject(new Error('Failed to register the file')); }, reject);
+                    };
+                    xhr.send(file);
+                } else {
+                    var formData = new FormData();
+                    formData.append('file', new File([file], name, { type: type }));
+                    xhr.open('POST', '/files');
+                    xhr.onload = function () { xhr.status === 200 ? resolve() : reject(new Error('Upload failed')); };
+                    xhr.send(formData);
+                }
+            });
+        });
+    };
+
+    var list = document.getElementById('share-list');
+    var pending = document.getElementById('share-pending');
+    var empty = document.getElementById('share-empty');
+    var overall = document.getElementById('share-overall');
+    var statusLabel = document.getElementById('share-status');
+    var retryButton = document.getElementById('share-retry');
+    var doneLink = document.getElementById('share-done');
+    var running = false;
+
+    var rowFor = function (entry) {
+        var row = document.createElement('div');
+        row.className = 'item';
+        row.dataset.id = entry.id;
+        var content = document.createElement('div');
+        content.className = 'content';
+        var header = document.createElement('div');
+        header.className = 'header';
+        header.textContent = entry.name || 'shared-file';
+        var meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = formatSize(entry.size || 0);
+        var state = document.createElement('div');
+        state.className = 'description share-state';
+        state.textContent = 'Waiting';
+        content.append(header, meta, state);
+        row.append(content);
+        return row;
+    };
+
+    var setState = function (row, text, color) {
+        var state = row.querySelector('.share-state');
+        state.textContent = text;
+        state.style.color = color || '';
+    };
+
+    var run = async function () {
+        if (running) return;
+        running = true;
+        retryButton.style.display = 'none';
+
+        var entries = await listPending();
+        list.replaceChildren();
+        if (!entries.length) {
+            pending.style.display = 'none';
+            empty.style.display = '';
+            running = false;
+            return;
+        }
+        empty.style.display = 'none';
+        pending.style.display = '';
+        doneLink.style.display = 'none';
+        var rows = entries.map(function (entry) { var row = rowFor(entry); list.append(row); return row; });
+
+        var failed = 0;
+        var done = 0;
+        for (var i = 0; i < entries.length; i++) {
+            statusLabel.textContent = 'Uploading ' + (i + 1) + ' of ' + entries.length + '...';
+            try {
+                await uploadOne(entries[i], function (fraction) {
+                    setState(rows[i], 'Uploading ' + Math.round(fraction * 100) + '%');
+                    $(overall).progress('set percent', ((done + failed + fraction) / entries.length) * 100);
+                });
+                await removePending(entries[i].id);
+                setState(rows[i], 'Uploaded', '#21ba45');
+                done++;
+            } catch (error) {
+                console.error('Shared upload failed for', entries[i].name, error);
+                setState(rows[i], 'Failed: ' + error.message, '#db2828');
+                failed++;
+            }
+            $(overall).progress('set percent', ((done + failed) / entries.length) * 100);
+        }
+
+        if (failed) {
+            statusLabel.textContent = done + ' uploaded, ' + failed + ' failed. The failed files are kept here until they upload.';
+            retryButton.style.display = '';
+        } else {
+            statusLabel.textContent = 'All ' + done + ' uploaded.';
+        }
+        doneLink.style.display = '';
+        running = false;
+    };
+
+    $(overall).progress({ autoSuccess: false, showActivity: false });
+    retryButton.addEventListener('click', run);
+    run().catch(function (error) {
+        console.error('Could not read the shared files', error);
+        empty.style.display = '';
+    });
+})();
+</script>
+{/if}
+
+{/block}

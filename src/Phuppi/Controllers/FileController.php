@@ -1356,7 +1356,7 @@ class FileController
 
         if (Flight::storage() instanceof S3Storage) {
             $presignedUrl = Flight::storage()->getUrl($previewKey);
-            Flight::redirect($presignedUrl, 301);
+            Flight::redirect($presignedUrl, 302);
             exit;
         }
 
@@ -1640,7 +1640,7 @@ class FileController
 
         if (Flight::storage() instanceof S3Storage) {
             $presignedUrl = Flight::storage()->getUrl($posterKey);
-            Flight::redirect($presignedUrl, 301);
+            Flight::redirect($presignedUrl, 302);
             exit;
         }
 

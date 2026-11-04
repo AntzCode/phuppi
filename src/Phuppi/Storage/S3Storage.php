@@ -31,7 +31,7 @@ class S3Storage implements StorageInterface
     /**
      * Constructor for S3Storage.
      *
-     * @param array $config Configuration array with bucket, path_prefix, region, key, secret, endpoint.
+     * @param array $config Configuration array with bucket, path_prefix, region, key, secret, endpoint, public_endpoint (optional: the address browsers use for presigned URLs).
      */
     public function __construct(array $config)
     {
@@ -59,6 +59,7 @@ class S3Storage implements StorageInterface
             'key' => $key,
             'secret' => $secret,
             'endpoint' => $endpoint,
+            'public_endpoint' => $config['public_endpoint'] ?? null,
             'bucket' => $this->bucket,
             // DO Spaces uses virtual-hosted style URLs, not path-style
             'path_style' => !$isDigitalOcean,

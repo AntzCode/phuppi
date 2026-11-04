@@ -41,6 +41,19 @@ class UserController
     }
 
     /**
+     * Sends a freshly logged-in visitor to the page they were turned away from (set by the server
+     * for a few fixed pages, never from request input), or to the home page.
+     *
+     * @return void
+     */
+    private function redirectAfterLogin(): void
+    {
+        $returnTo = Flight::session()->get('return_to');
+        Flight::session()->delete('return_to');
+        Flight::redirect(is_string($returnTo) && str_starts_with($returnTo, '/') && !str_starts_with($returnTo, '//') ? $returnTo : '/');
+    }
+
+    /**
      * Shows the login form.
      *
      * @return void
@@ -135,7 +148,7 @@ class UserController
                 Flight::logger()->info('Remember token created for user: ' . $username);
             }
 
-            Flight::redirect('/');
+            $this->redirectAfterLogin();
         } else {
             Flight::render('login.latte', [
                 'formUrl' => '/login',
@@ -208,7 +221,7 @@ class UserController
 
         Flight::session()->set('voucher_id', $voucher->id);
         // Flight::session()->set('id', $voucher->user_id);
-        Flight::redirect('/');
+        $this->redirectAfterLogin();
     }
 
     /**

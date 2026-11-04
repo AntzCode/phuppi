@@ -285,6 +285,23 @@ if (!isset($connectors['s3-dev']) && getenv('S3_DEV_ACCESS_KEY')) {
     $connectors['s3-dev'] = $s3DevConfig;
 }
 
+// Connectors that point at the dev Garage follow the environment: browsers reach it through the HTTPS proxy, not at
+// its Docker address. "request" means the origin the browser used for this page (only when the request came through the proxy).
+$s3DevPublicEndpoint = getenv('S3_DEV_PUBLIC_ENDPOINT');
+if ($s3DevPublicEndpoint === 'request') {
+    $s3DevPublicEndpoint = (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' && !empty($_SERVER['HTTP_HOST']))
+        ? 'https://' . $_SERVER['HTTP_HOST']
+        : '';
+}
+if ($s3DevPublicEndpoint) {
+    $s3DevEndpoint = getenv('S3_DEV_ENDPOINT') ?: 'http://garage:3900';
+    foreach ($connectors as $name => $connector) {
+        if (($connector['type'] ?? '') === 's3' && ($connector['endpoint'] ?? '') === $s3DevEndpoint) {
+            $connectors[$name]['public_endpoint'] = $s3DevPublicEndpoint;
+        }
+    }
+}
+
 Flight::set('storage_connectors', $connectors);
 Flight::set('active_storage_connector', $activeConnector);
 

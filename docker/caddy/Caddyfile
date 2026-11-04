@@ -1,0 +1,47 @@
+# Caddyfile
+#
+# HTTPS front door for the development stack. Caddy issues certificates from its own local CA
+# (tls internal), so no certificates need to be created by hand. Installable web apps, service
+# workers and the share target need a trusted HTTPS origin, which is why the stack has this.
+#
+# DEV_HOSTS lists the names or IP addresses devices use to reach this machine, for example
+# "localhost, 192.168.1.20". DEV_DEFAULT_HOST is the one devices open by IP address (the LAN IP).
+# Everything is served from that one origin:
+#   - the app, proxied to the phuppi container
+#   - the dev S3 bucket (Garage), so browsers upload and download through the same HTTPS origin
+#     and the same hostname the presigned URLs are signed for (Caddy passes the Host header through)
+#   - /dev-ca.crt, the local CA's public certificate, to install on phones
+#
+# @package Phuppi
+# @author Anthony Gallon
+# @copyright AntzCode Ltd
+# @license GPLv3
+# @link https://github.com/AntzCode/phuppi/
+# @since 2.8.0
+
+{
+    # Browsers send no server name when the address is an IP, so name the certificate to use then
+    default_sni {$DEV_DEFAULT_HOST:localhost}
+}
+
+{$DEV_HOSTS:localhost} {
+    tls internal
+
+    handle /dev-ca.crt {
+        root * /data/caddy/pki/authorities/local
+        rewrite * /root.crt
+        header Content-Type application/x-x509-ca-cert
+        file_server
+    }
+
+    handle /{$S3_DEV_BUCKET:phuppi-files} {
+        reverse_proxy garage:3900
+    }
+    handle /{$S3_DEV_BUCKET:phuppi-files}/* {
+        reverse_proxy garage:3900
+    }
+
+    handle {
+        reverse_proxy phuppi:80
+    }
+}

@@ -107,6 +107,7 @@ S3_DEV_PATH_PREFIX=data/uploadedFiles
 | `S3_DEV_ACCESS_KEY` | Username for cloud storage access |
 | `S3_DEV_SECRET_KEY` | Password for cloud storage access |
 | `S3_DEV_BUCKET` | The storage container name |
+| `S3_DEV_PUBLIC_ENDPOINT` | Address browsers use in presigned URLs when it differs from `S3_DEV_ENDPOINT`. `request` (default in the Docker stack) uses the HTTPS origin the page was opened on |
 
 **For most users, you don't need to change anything!** The defaults work fine for basic installation.
 

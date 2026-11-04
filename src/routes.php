@@ -23,6 +23,7 @@ use Phuppi\Controllers\UserSettingsController;
 use Phuppi\Controllers\ShortLinkController;
 use Phuppi\Controllers\QueueController;
 use Phuppi\Controllers\P2PController;
+use Phuppi\Controllers\ShareTargetController;
 
 use Phuppi\Helper;
 use Phuppi\Note;
@@ -67,6 +68,9 @@ if ($userCount < 1) {
     }
 
     Flight::route('GET /', [FileController::class, 'index'])->addMiddleware(RequireLogin::class);
+
+    Flight::route('GET /share-target/receive', [ShareTargetController::class, 'receive']);
+    Flight::route('POST /share-target', [ShareTargetController::class, 'fallback']);
 
     Flight::route('GET /login', [UserController::class, 'login']);
     Flight::route('POST /login', [UserController::class, 'login']);

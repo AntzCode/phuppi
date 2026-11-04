@@ -23,6 +23,8 @@ services:
       S3_DEV_SECRET_KEY: ${S3_DEV_SECRET_KEY:-6f0e4b1c9d2a7385e1f4c6b0a93d7e28b5c1f04a69d3e7820b4c5a1f6e9d3b07}
       S3_DEV_BUCKET: ${S3_DEV_BUCKET:-phuppi-files}
       S3_DEV_PATH_PREFIX: ${S3_DEV_PATH_PREFIX:-data/uploadedFiles}
+      # "request": browsers reach the bucket through the HTTPS proxy on the hostname they used for the app
+      S3_DEV_PUBLIC_ENDPOINT: ${S3_DEV_PUBLIC_ENDPOINT:-request}
     ports:
       - "80:80"
     volumes:
@@ -35,6 +37,24 @@ services:
     depends_on:
       garage-init:
         condition: service_completed_successfully
+
+  # Caddy: HTTPS front door for the app and the dev S3 bucket, with certificates from its own local CA.
+  # Open https://localhost, or https://<DEV_HOSTS entry> from another device on the LAN.
+  caddy:
+    image: caddy:2
+    ports:
+      - "443:443"
+    environment:
+      DEV_HOSTS: ${DEV_HOSTS:-localhost}
+      DEV_DEFAULT_HOST: ${DEV_DEFAULT_HOST:-localhost}
+      S3_DEV_BUCKET: ${S3_DEV_BUCKET:-phuppi-files}
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - phuppi
+      - garage
 
   # Garage: S3-compatible dev storage (replaces MinIO, whose images were removed from Docker Hub).
   # The rpc secret and admin token are development-only.
@@ -80,3 +100,5 @@ services:
 
 volumes:
   garage_data:
+  caddy_data:
+  caddy_config:

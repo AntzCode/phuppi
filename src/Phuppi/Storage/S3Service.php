@@ -24,6 +24,8 @@ class S3Service
     private string $host;
     private ?int $port;
     private string $basePath;
+    /** @var array|null Origin browsers use for presigned URLs when it differs from the one this server connects to */
+    private ?array $publicOrigin = null;
     private string $region;
     private string $accessKey;
     private string $secretKey;
@@ -31,7 +33,7 @@ class S3Service
     private bool $pathStyle;
 
     /**
-     * @param array $config Keys: bucket, region, key, secret, endpoint (null = AWS), path_style (bool, default true)
+     * @param array $config Keys: bucket, region, key, secret, endpoint (null = AWS), public_endpoint (optional, see presignUrl()), path_style (bool, default true)
      */
     public function __construct(array $config)
     {
@@ -52,14 +54,40 @@ class S3Service
             $endpoint = 'https://' . $endpoint;
         }
 
+        $origin = self::parseOrigin($endpoint);
+        $this->scheme = $origin['scheme'];
+        $this->host = $origin['host'];
+        $this->port = $origin['port'];
+        $this->basePath = $origin['basePath'];
+
+        if (!empty($config['public_endpoint'])) {
+            $this->publicOrigin = self::parseOrigin((string) $config['public_endpoint']);
+        }
+    }
+
+    /**
+     * @return array{scheme: string, host: string, port: ?int, basePath: string}
+     */
+    private static function parseOrigin(string $endpoint): array
+    {
+        if (!preg_match('#^https?://#i', $endpoint)) {
+            $endpoint = 'https://' . $endpoint;
+        }
         $parts = parse_url($endpoint);
         if ($parts === false || empty($parts['host'])) {
             throw new \InvalidArgumentException('Invalid S3 endpoint: ' . $endpoint);
         }
-        $this->scheme = strtolower($parts['scheme'] ?? 'https');
-        $this->host = $parts['host'];
-        $this->port = $parts['port'] ?? null;
-        $this->basePath = rtrim($parts['path'] ?? '', '/');
+        return [
+            'scheme' => strtolower($parts['scheme'] ?? 'https'),
+            'host' => $parts['host'],
+            'port' => $parts['port'] ?? null,
+            'basePath' => rtrim($parts['path'] ?? '', '/'),
+        ];
+    }
+
+    private function origin(): array
+    {
+        return ['scheme' => $this->scheme, 'host' => $this->host, 'port' => $this->port, 'basePath' => $this->basePath];
     }
 
     // ---------------------------------------------------------------- operations
@@ -208,12 +236,18 @@ class S3Service
     /**
      * Creates a presigned URL (query-string authentication).
      *
+     * The URL is signed for, and points at, the public endpoint when one is configured: browsers
+     * reach the bucket at a different address than this server does (for example through an HTTPS
+     * proxy in front of the dev storage). The proxy must pass the Host header through unchanged,
+     * because the signature covers it.
+     *
      * @param string $method GET or PUT
      * @param array $extraQuery Additional signed query parameters, e.g. ['response-content-disposition' => 'attachment']
      * @param int|null $now Unix time to sign for (tests only)
      */
     public function presignUrl(string $method, string $key, int $expiresIn = 3600, array $extraQuery = [], ?int $now = null): string
     {
+        $origin = $this->publicOrigin ?? $this->origin();
         $now = $now ?? time();
         $date = gmdate('Ymd\THis\Z', $now);
         $day = gmdate('Ymd', $now);
@@ -229,16 +263,16 @@ class S3Service
 
         $canonicalRequest = implode("\n", [
             $method,
-            $this->canonicalPath($key),
+            $this->canonicalPath($key, $origin),
             $this->canonicalQuery($query),
-            'host:' . $this->hostHeader() . "\n",
+            'host:' . $this->hostHeader($origin) . "\n",
             'host',
             'UNSIGNED-PAYLOAD',
         ]);
 
         $query['X-Amz-Signature'] = $this->signature($canonicalRequest, $date, $day);
 
-        return $this->url($key, $query);
+        return $this->url($key, $query, $origin);
     }
 
     // ------------------------------------------------------------------ signing
@@ -315,16 +349,17 @@ class S3Service
 
     // --------------------------------------------------------------- addressing
 
-    private function hostHeader(): string
+    private function hostHeader(?array $origin = null): string
     {
-        $host = $this->pathStyle ? $this->host : $this->bucket . '.' . $this->host;
-        $default = $this->scheme === 'https' ? 443 : 80;
-        return ($this->port !== null && $this->port !== $default) ? $host . ':' . $this->port : $host;
+        $origin ??= $this->origin();
+        $host = $this->pathStyle ? $origin['host'] : $this->bucket . '.' . $origin['host'];
+        $default = $origin['scheme'] === 'https' ? 443 : 80;
+        return ($origin['port'] !== null && $origin['port'] !== $default) ? $host . ':' . $origin['port'] : $host;
     }
 
-    private function canonicalPath(?string $key): string
+    private function canonicalPath(?string $key, ?array $origin = null): string
     {
-        $path = $this->basePath;
+        $path = ($origin ?? $this->origin())['basePath'];
         if ($this->pathStyle) {
             $path .= '/' . rawurlencode($this->bucket);
         }
@@ -336,9 +371,10 @@ class S3Service
         return $path === '' ? '/' : $path;
     }
 
-    private function url(?string $key, array $query): string
+    private function url(?string $key, array $query, ?array $origin = null): string
     {
-        $url = $this->scheme . '://' . $this->hostHeader() . $this->canonicalPath($key);
+        $origin ??= $this->origin();
+        $url = $origin['scheme'] . '://' . $this->hostHeader($origin) . $this->canonicalPath($key, $origin);
         $queryString = $this->canonicalQuery($query);
         return $queryString === '' ? $url : $url . '?' . $queryString;
     }

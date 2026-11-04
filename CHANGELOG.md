@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-11-04
+### Added
+- Share to Phuppi from Android - Phuppi is now an installable web app (`public/manifest.webmanifest`, `public/sw.js`) and appears in the share sheet for photos, videos and files once it has been added to the home screen in Chrome. Shared files are kept in the browser, then uploaded to the account on the new `/share-target/receive` page (local and S3 storage, with per-file progress and retry for failures). Visitors who are not logged in are sent to log in first and returned to that page, with the shared files kept in the meantime.
+  - Works in Chrome for Android on a site with a valid HTTPS certificate and a public domain name (confirmed on production). Not available in Firefox or on iOS Safari, which do not support web share targets; the planned mobile app covers those.
+  - New routes `GET /share-target/receive` and `POST /share-target` (fallback when no service worker is active), `ShareTargetController`
+  - Dev stack: a Caddy service now serves the app and the dev S3 bucket over HTTPS on port 443 from one address, with certificates from its own local CA (no files to generate). Set `DEV_HOSTS` (for example `localhost, 192.168.1.20`) and `DEV_DEFAULT_HOST` (the LAN IP) in `.env` so phones on the local network can use it, rebuild with `docker compose up -d --build`, and install the CA from `https://<host>/dev-ca.crt` on the phone.
+  - Optional `public_endpoint` on S3 connectors: the address browsers use in presigned URLs when it differs from the address this server connects to. Every S3 connector pointing at the dev Garage sets it from the new `S3_DEV_PUBLIC_ENDPOINT` (default `request`: the HTTPS origin the browser used), so browser uploads to Garage no longer need a `garage` hosts entry when using the HTTPS address.
+  - Plan and issue: [`plans/mobile-app-share-integration-plan.md`](plans/mobile-app-share-integration-plan.md), [`plans/mobile-app-share-integration-issue.md`](plans/mobile-app-share-integration-issue.md)
+
+### Fixed
+- Preview and file redirects to S3 presigned URLs now use a temporary (302) redirect instead of a permanent (301) one, so browsers no longer cache an expired or unreachable storage address for a file.
+
 ## [2.7.0] - 2026-11-01
 ### Added
 - Reverse P2P file receiving - a logged-in user creates a receive session and shares its URL or QR code; a guest (no account needed) opens the page, enters the PIN, picks files on their device and sends them straight to the owner over WebRTC. Files never touch the Phuppi server.
