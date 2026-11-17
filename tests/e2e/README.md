@@ -2,7 +2,7 @@
 
 Browser tests driven by [Playwright](https://playwright.dev). Everything here is
 dev-only and self-contained: nothing in `tests/` is needed to run Phuppi, and
-`deploy.sh` only ships `src/` and `public/`.
+`./dev deploy` only ships `src/` and `public/`.
 
 ## What runs
 

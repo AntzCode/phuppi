@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# Development helper for Phuppi. Works on its own and from LanProjectsControlPanel (lpcp).
+#
+#   ./dev up                    start the stack; ports published on 127.0.0.1
+#   ./dev up --bind=127.0.0.3   publish the same ports on one address (what lpcp calls)
+#   ./dev up --lan              publish on every address (0.0.0.0), for phones and tablets
+#   ./dev up --host=phuppi.localhost
+#                               also serve HTTPS under this name (DEV_HOSTS; the name must resolve
+#                               to the bound address, e.g. a /etc/hosts entry)
+#   ./dev down                  stop the stack
+#   ./dev logs [service]        follow the logs
+#   ./dev deploy [user@host] [remote_path]
+#                               rsync src/ and public/ to a server (formerly deploy.sh)
+#
+# --bind and --lan are mutually exclusive. With --bind IP, the HTTPS proxy also gets a certificate
+# for IP, so https://IP works. --host replaces DEV_HOSTS from .env for this run.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+cmd="${1:-}"
+shift || true
+
+bind="" lan="" host=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --bind=*) bind="${1#--bind=}"; [[ -n "$bind" ]] || { echo "--bind needs an address" >&2; exit 2; }; shift ;;
+    --bind)   bind="${2:?--bind needs an address}"; shift 2 ;;
+    --host=*) host="${1#--host=}"; [[ -n "$host" ]] || { echo "--host needs a name" >&2; exit 2; }; shift ;;
+    --host)   host="${2:?--host needs a name}"; shift 2 ;;
+    --lan)    lan=1; shift ;;
+    *) break ;;
+  esac
+done
+if [[ -n "$bind" && -n "$lan" ]]; then
+  echo "--bind and --lan can't be used together" >&2
+  exit 2
+fi
+# docker-compose.yml publishes every port on ${BIND:-127.0.0.1}: no option = loopback only.
+# Names in Caddy's certificate: --host, else DEV_HOSTS from the environment or .env, else localhost
+env_hosts="$(grep -E '^DEV_HOSTS=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+hosts="${host:-${DEV_HOSTS:-${env_hosts:-localhost}}}"
+if [[ -n "$bind" ]]; then
+  export BIND="$bind"
+  hosts="$hosts, $bind"   # so https://<address> works too
+  export DEV_DEFAULT_HOST="$bind"
+elif [[ -n "$lan" ]]; then
+  export BIND=0.0.0.0
+fi
+[[ -z "$host" && -z "$bind" ]] || export DEV_HOSTS="$hosts"
+
+deploy() {
+  local user="deploy" host="example.com" path="/var/www/phuppi"
+  case "$#" in
+    0) ;;
+    1) host="$1" ;;
+    2) host="$1"; path="$2" ;;
+    *) echo "usage: ./dev deploy [user@host] [remote_path]" >&2; exit 2 ;;
+  esac
+  if [[ "$host" == *"@"* ]]; then user="${host%%@*}"; host="${host#*@}"; fi
+
+  echo "Deploying to ${user}@${host}:${path}"
+  # -r -l -t: recurse, keep symlinks, keep timestamps. Owner, group and permissions are not
+  # copied: files are created by www-data on the server (deploy has sudo).
+  local opts=(-rlt -z --delete --progress --rsync-path="sudo -u www-data rsync")
+  echo "Syncing src folder..."
+  rsync "${opts[@]}" ./src/ "${user}@${host}:${path}/src/"
+  echo "Syncing public folder..."
+  rsync "${opts[@]}" ./public/ "${user}@${host}:${path}/public/"
+  echo "Deployment complete!"
+}
+
+case "$cmd" in
+  up)     docker compose up -d --build ;;
+  down)   docker compose stop ;;
+  logs)   exec docker compose logs -f "$@" ;;
+  deploy) deploy "$@" ;;
+  *)      echo "usage: ./dev up [--bind=IP | --lan] [--host=NAME] | down | logs [service] | deploy [user@host] [path]" >&2; exit 2 ;;
+esac

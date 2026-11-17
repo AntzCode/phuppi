@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Browsers could keep running an old cached `p2p-*.js` after an upgrade, which broke the P2P pages: the scripts are now loaded with a version based on the file's modification time.
 
 ### Changed
+- The dev stack is now driven by `./dev` (`./dev up`, `down`, `logs`, `deploy`), compatible with LanProjectsControlPanel (lpcp). Ports (80, 443, 3900) are now published on 127.0.0.1 only (previously every address): `./dev up --bind=IP` publishes them on one address so several projects can run side by side, `./dev up --host=NAME` serves HTTPS under that name (replaces `DEV_HOSTS` for the run), and `./dev up --lan` publishes them on every address, which phones and tablets on the network need. Register it in lpcp with `./dev add phuppi <path> --bind auto --port 443 --no-proxy`. `deploy.sh` is replaced by `./dev deploy [user@host] [path]` (same behavior).
 - P2P share and receive sessions now expire 2 hours after their last activity instead of 7 days after creation. Any activity (PIN check, an open sender page, transfers, downloads) extends them. Expired sessions, their stored files and their connection history are cleaned up automatically as requests come in (no cron needed).
 - The P2P PIN verification of a share is now also remembered server-side (the relay trusts that, not the browser cookie)
 
