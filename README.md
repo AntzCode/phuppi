@@ -100,7 +100,15 @@ printf "DEV_HOSTS=localhost, 192.168.1.20\nDEV_DEFAULT_HOST=192.168.1.20\n" >> .
 ./dev up --lan   # --lan publishes the ports on every address; plain ./dev up is localhost only
 ```
 
-Open `https://localhost`, or `https://192.168.1.20` from a phone on the same network. Browsers will warn until they trust the local CA: download it from `https://<host>/dev-ca.crt` (or `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .`) and install it as a CA certificate (Android: Settings → Security → Install a certificate → CA certificate). Chrome will not register the service worker or offer to install the app on an untrusted certificate. Uploads to Garage go through the same HTTPS address, so the `garage` hosts entry is not needed there. The LAN address is good for the web UI and uploads, but Chrome only installs a real app (needed for the Android share sheet) on a public HTTPS domain, so test sharing there. Plain `http://localhost` still works, but S3 uploads then need the hosts entry above.
+Open `https://localhost`, or `https://192.168.1.20` from a phone on the same network. Browsers will warn until they trust the local CA: download it from `https://<host>/dev-ca.crt` (or `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .`) and install it as a CA certificate (Android: Settings → Security → Install a certificate → CA certificate). Chrome will not register the service worker or offer to install the app on an untrusted certificate. Uploads to Garage go through the same HTTPS address, so the `garage` hosts entry is not needed there. The LAN address is good for the web UI and uploads, but Chrome only installs a real app (needed for the Android share sheet) on a public HTTPS domain, so test sharing there. Plain `http://localhost` works too, with S3 uploads, because the same Caddy proxy answers on port 80.
+
+**Running next to other projects with [LanProjectsControlPanel](https://github.com/AntzCode/LanProjectsControlPanel) (lpcp):** register it once from the lpcp repo, then start it from the panel or with `./dev up` here:
+
+```bash
+./dev add phuppi /path/to/phuppi --up './dev up --bind={bind} --host={host}'   # https://phuppi.localhost
+```
+
+`./dev up --bind=IP` publishes the ports on one address, `--host=NAME` serves that name, and `--lan` publishes on every address. Names other than `*.localhost` need a hosts-file entry pointing at the address.
 
 ## 📚 Documentation
 

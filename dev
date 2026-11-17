@@ -12,6 +12,10 @@
 #   ./dev logs [service]        follow the logs
 #   ./dev deploy [user@host] [remote_path]
 #                               rsync src/ and public/ to a server (formerly deploy.sh)
+#   ./dev launch [--app=NAME] [--print]
+#                               open a launcher from config.launchers in the browser (default: the
+#                               first); --print only prints the URL
+#   ./dev config.launchers      print the launchers as JSON (read-only, works when stopped)
 #
 # --bind and --lan are mutually exclusive. With --bind IP, the HTTPS proxy also gets a certificate
 # for IP, so https://IP works. --host replaces DEV_HOSTS from .env for this run.
@@ -40,6 +44,10 @@ fi
 # Names in Caddy's certificate: --host, else DEV_HOSTS from the environment or .env, else localhost
 env_hosts="$(grep -E '^DEV_HOSTS=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
 hosts="${host:-${DEV_HOSTS:-${env_hosts:-localhost}}}"
+if [[ ( "$host" == localhost || "$host" == *.localhost ) && -n "$bind" && "$bind" != 127.0.0.1 ]]; then
+  echo "--host $host always resolves to 127.0.0.1, so it can't reach $bind: use another name (and a hosts entry)" >&2
+  exit 2
+fi
 if [[ -n "$bind" ]]; then
   export BIND="$bind"
   hosts="$hosts, $bind"   # so https://<address> works too
@@ -48,6 +56,63 @@ elif [[ -n "$lan" ]]; then
   export BIND=0.0.0.0
 fi
 [[ -z "$host" && -z "$bind" ]] || export DEV_HOSTS="$hosts"
+# Private ports (Garage S3) follow --bind only to another loopback address, never onto the network.
+if [[ "$bind" == 127.* ]]; then export PRIVATE_BIND="$bind"; fi
+
+# The name the site answers to: lpcp's host, else the first DEV_HOSTS entry, else localhost.
+primary_host() {
+  local h="${LPCP_HOST:-${hosts%%,*}}"
+  echo "${h// /}"
+}
+base_url() { echo "${LPCP_URL:-https://$(primary_host)}"; }
+
+json_str() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "$s"; }
+
+# One launcher per line: app|title|path|class. The first line is the default. No "|" inside a title.
+launchers() {
+  cat <<EOF
+site|Open $(primary_host) in your browser|/
+EOF
+}
+
+config_launchers() {
+  local first=1 app title path kind
+  printf '['
+  while IFS='|' read -r app title path kind; do
+    [[ -n "$app" ]] || continue
+    (( first )) || printf ','
+    first=0
+    printf '{"app":%s,"title":%s' "$(json_str "$app")" "$(json_str "$title")"
+    [[ -z "$kind" ]] || printf ',"class":%s' "$(json_str "$kind")"
+    printf '}'
+  done < <(launchers)
+  printf ']\n'
+}
+
+cmd_launch() {
+  local want="" print="" app title path kind url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --app=*) want="${1#--app=}"; shift ;;
+      --app)   want="${2:?--app needs a name}"; shift 2 ;;
+      --print) print=1; shift ;;
+      *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+  done
+  while IFS='|' read -r app title path kind; do
+    [[ -n "$app" ]] || continue
+    if [[ -z "$want" || "$app" == "$want" ]]; then url="$(base_url)${path}"; break; fi
+  done < <(launchers)
+  if [[ -z "$url" ]]; then
+    echo "unknown app '$want'; choose from: $(launchers | cut -d'|' -f1 | paste -sd' ')" >&2; exit 2
+  fi
+  echo "$url"
+  [[ -n "$print" ]] && return 0
+  if ! curl -ks -o /dev/null --max-time 3 "$url"; then echo "the project isn't running: ./dev up first" >&2; exit 1; fi
+  if command -v xdg-open >/dev/null; then xdg-open "$url" >/dev/null 2>&1 &
+  elif command -v open >/dev/null; then open "$url"
+  fi
+}
 
 deploy() {
   local user="deploy" host="example.com" path="/var/www/phuppi"
@@ -71,9 +136,12 @@ deploy() {
 }
 
 case "$cmd" in
-  up)     docker compose up -d --build ;;
+  up)     docker compose up -d --build && echo "Phuppi: $(base_url)/" ;;
   down)   docker compose stop ;;
   logs)   exec docker compose logs -f "$@" ;;
   deploy) deploy "$@" ;;
-  *)      echo "usage: ./dev up [--bind=IP | --lan] [--host=NAME] | down | logs [service] | deploy [user@host] [path]" >&2; exit 2 ;;
+  launch)           cmd_launch "$@" ;;
+  config.launchers) config_launchers ;;
+  config.*)         echo "unknown config key: ${cmd#config.}" >&2; exit 2 ;;
+  *)      echo "usage: ./dev up [--bind=IP | --lan] [--host=NAME] | down | logs [service] | deploy [user@host] [path] | launch | config.launchers" >&2; exit 2 ;;
 esac

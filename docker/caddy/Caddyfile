@@ -22,11 +22,20 @@
 {
     # Browsers send no server name when the address is an IP, so name the certificate to use then
     default_sni {$DEV_DEFAULT_HOST:localhost}
+
+    # Serve the named hosts on plain HTTP too, instead of redirecting them to HTTPS: behind the lpcp
+    # proxy a redirect would loop, and http://localhost keeps working
+    auto_https disable_redirects
+
+    # The plain-HTTP site below is also the front door for LanProjectsControlPanel (lpcp), whose
+    # proxy terminates TLS and forwards X-Forwarded-Proto/-Host: trust them from private addresses
+    # so the app builds https:// URLs.
+    servers :80 {
+        trusted_proxies static private_ranges
+    }
 }
 
-{$DEV_HOSTS:localhost} {
-    tls internal
-
+(phuppi_routes) {
     handle /dev-ca.crt {
         root * /data/caddy/pki/authorities/local
         rewrite * /root.crt
@@ -44,4 +53,14 @@
     handle {
         reverse_proxy phuppi:80
     }
+}
+
+{$DEV_HOSTS:localhost} {
+    tls internal
+    import phuppi_routes
+}
+
+# Plain HTTP on port 80 with the same routes, for any name: http://localhost, and the lpcp proxy
+http://:80 {
+    import phuppi_routes
 }

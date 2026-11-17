@@ -25,8 +25,7 @@ services:
       S3_DEV_PATH_PREFIX: ${S3_DEV_PATH_PREFIX:-data/uploadedFiles}
       # "request": browsers reach the bucket through the HTTPS proxy on the hostname they used for the app
       S3_DEV_PUBLIC_ENDPOINT: ${S3_DEV_PUBLIC_ENDPOINT:-request}
-    ports:
-      - "${BIND:-127.0.0.1}:80:80"
+    # No published ports: Caddy is the front door (80 and 443) and proxies to this container
     volumes:
       - ./public:/var/www/public
       - ./src:/var/www/src
@@ -43,6 +42,7 @@ services:
   caddy:
     image: caddy:2
     ports:
+      - "${BIND:-127.0.0.1}:80:80"
       - "${BIND:-127.0.0.1}:443:443"
     environment:
       DEV_HOSTS: ${DEV_HOSTS:-localhost}
@@ -61,7 +61,7 @@ services:
   garage:
     image: dxflrs/garage:v2.4.1
     ports:
-      - "${BIND:-127.0.0.1}:3900:3900"
+      - "${PRIVATE_BIND:-127.0.0.1}:3900:3900"
     environment:
       GARAGE_RPC_SECRET: 483d6e7676f649fcc7ca9cbbd7cc4af430b259aec4543e0612c3b3ae4f57652a
       GARAGE_ADMIN_TOKEN: development-only-garage-admin-token
