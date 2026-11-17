@@ -164,6 +164,7 @@
 </div>
 
 <script src="/assets/peerjs/peerjs.min.js"></script>
+<script src="{asset_url('/assets/p2p-transport.js')}"></script>
 {var $token = $token}
 {var $receiverName = $receiverName}
 <script>
@@ -502,33 +503,11 @@
         conn = peer.connect(receiverPeerId, {
             reliable: true
         });
+        wireConnection(conn);
 
-        conn.on('open', function() {
-            console.log('Connected to receiver!');
-            sendFiles();
-        });
-
-        conn.on('data', function(data) {
-            handleDataMessage(data);
-        });
-
-        conn.on('close', function() {
-            console.log('Connection closed');
-            if (resolveReceiverAck) resolveReceiverAck(false);
-            if (!transferCancelled && transferInProgress && selectedFiles.length > 0) {
-                showError('Connection lost. Please try again.');
-            }
-            transferInProgress = false;
-        });
-
-        conn.on('error', function(err) {
-            console.error('Connection error:', err);
-            transferInProgress = false;
-            showError('Connection error: ' + err.message);
-        });
-
-        conn.on('iceStateChanged', function(state) {
-            console.log('ICE connection state:', state);
+        // If the direct WebRTC connection does not open in time, continue through the PHP relay
+        P2PTransport.watchDirectConnection(conn, function(reason) {
+            startRelay(receiverPeerId, conn, reason);
         });
 
         // Timeout after 30 seconds
@@ -538,6 +517,70 @@
                 showError('Connection timeout. Please try again.');
             }
         }, 30000);
+    }
+
+    // Falls back to the PHP relay (encrypted in the browser, key from the link's #fragment)
+    async function startRelay(receiverPeerId, directConn, reason) {
+        if (directConn.open || transferCancelled) {
+            return;
+        }
+        const key = P2PTransport.keyFromHash();
+        if (!(await P2PTransport.isAvailable(key))) {
+            showError('Could not connect directly. The relay needs HTTPS and the complete link (including the part after #).');
+            return;
+        }
+
+        console.log('Direct connection failed (' + reason + '), using the relay');
+        sendFilesBtn.innerHTML = '<i class="loading spinner icon"></i> Connecting through the relay...';
+
+        // Ignore anything the abandoned direct connection still reports
+        directConn.__abandoned = true;
+        try { directConn.close(); } catch (e) { /* ignore */ }
+
+        try {
+            conn = await P2PTransport.openGuestChannel({ type: 'receive', token: token, key: key, peer: receiverPeerId });
+            wireConnection(conn);
+            conn.start();
+        } catch (err) {
+            console.error('Relay connection failed:', err);
+            showError('Could not connect through the relay: ' + err.message);
+        }
+    }
+
+    function wireConnection(conn) {
+        conn.on('open', function() {
+            if (conn.__abandoned) {
+                try { conn.close(); } catch (e) { /* ignore */ }
+                return;
+            }
+            console.log('Connected to receiver!');
+            sendFiles();
+        });
+
+        conn.on('data', function(data) {
+            handleDataMessage(data);
+        });
+
+        conn.on('close', function() {
+            if (conn.__abandoned) return;
+            console.log('Connection closed');
+            if (resolveReceiverAck) resolveReceiverAck(false);
+            if (!transferCancelled && transferInProgress && selectedFiles.length > 0) {
+                showError('Connection lost. Please try again.');
+            }
+            transferInProgress = false;
+        });
+
+        conn.on('error', function(err) {
+            if (conn.__abandoned) return;
+            console.error('Connection error:', err);
+            transferInProgress = false;
+            showError('Connection error: ' + (err.message || err.type));
+        });
+
+        conn.on('iceStateChanged', function(state) {
+            console.log('ICE connection state:', state);
+        });
     }
 
     // Handle data from receiver
@@ -574,7 +617,7 @@
     // so without this the whole file is queued at once and lost if the connection closes.
     async function waitForSendBuffer(limitBytes) {
         while (conn && conn.open) {
-            const queued = (conn.bufferSize || 0) + (conn.dataChannel ? conn.dataChannel.bufferedAmount : 0);
+            const queued = (conn.bufferSize || 0) + (conn.bufferedBytes || 0) + (conn.dataChannel ? conn.dataChannel.bufferedAmount : 0);
             if (queued <= limitBytes) return;
             await new Promise(function(resolve) { setTimeout(resolve, 10); });
         }
@@ -730,6 +773,8 @@
             return;
         }
 
+        // Over the relay, tell the server we are done so it deletes the channel
+        if (conn.isRelay) conn.close();
         showSuccess();
     }
 

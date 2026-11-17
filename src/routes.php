@@ -23,6 +23,7 @@ use Phuppi\Controllers\UserSettingsController;
 use Phuppi\Controllers\ShortLinkController;
 use Phuppi\Controllers\QueueController;
 use Phuppi\Controllers\P2PController;
+use Phuppi\Controllers\P2PRelayController;
 use Phuppi\Controllers\ShareTargetController;
 
 use Phuppi\Helper;
@@ -498,6 +499,17 @@ if ($userCount < 1) {
     Flight::route('GET /api/p2p/share/@token/connections', [P2PController::class, 'listConnections']);
     Flight::route('POST /api/p2p/share/@token/connections', [P2PController::class, 'createConnection']);
     Flight::route('DELETE /api/p2p/share/@token/connections/@id', [P2PController::class, 'deleteConnection']);
+
+    // P2P relay fallback (used when a direct WebRTC connection cannot be established)
+    Flight::route('GET /api/p2p/relay/capabilities', [P2PRelayController::class, 'capabilities']);
+    Flight::route('POST /api/p2p/relay/@type/@token/drop', [P2PRelayController::class, 'drop']);
+    Flight::route('GET /api/p2p/relay/@type/@token/drop', [P2PRelayController::class, 'drop']);
+    Flight::route('DELETE /api/p2p/relay/@type/@token/drop', [P2PRelayController::class, 'deleteDrop']);
+    Flight::route('POST /api/p2p/relay/@type/@token/channels', [P2PRelayController::class, 'createChannel']);
+    Flight::route('GET /api/p2p/relay/@type/@token/channels', [P2PRelayController::class, 'listChannels']);
+    Flight::route('POST /api/p2p/relay/@type/@token/@channel/data', [P2PRelayController::class, 'send']);
+    Flight::route('GET /api/p2p/relay/@type/@token/@channel/data', [P2PRelayController::class, 'receive']);
+    Flight::route('DELETE /api/p2p/relay/@type/@token/@channel', [P2PRelayController::class, 'close']);
 
     // Reverse P2P Receive Session routes
     Flight::route('GET /p2p/receive', [P2PController::class, 'receiveIndex'])->addMiddleware(IsAuthenticated::class);

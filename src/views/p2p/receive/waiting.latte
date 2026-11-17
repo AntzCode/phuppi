@@ -118,7 +118,8 @@
 </div>
 
 <script src="/assets/peerjs/peerjs.min.js"></script>
-<script src="/assets/p2p-chunk-storage.js"></script>
+<script src="{asset_url('/assets/p2p-chunk-storage.js')}"></script>
+<script src="{asset_url('/assets/p2p-transport.js')}"></script>
 <script src="/assets/jszip/jszip.min.js"></script>
 <script>
     // Pass PHP variables to JavaScript - MUST be outside quotes for Latte
@@ -130,7 +131,24 @@
 (function() {
     const token = phpToken;
     const pin = phpPin;
-    const shareUrl = phpShareUrl;
+    // The relay's encryption key lives in the link's #fragment, which is never sent to the server
+    const relayKey = (function() {
+        if (!P2PTransport.isSupported()) return null;
+        try {
+            const storageKey = 'p2p_relay_key_' + token;
+            let key = localStorage.getItem(storageKey);
+            if (!key) {
+                key = P2PTransport.createKey();
+                localStorage.setItem(storageKey, key);
+            }
+            return key;
+        } catch (e) {
+            return null;
+        }
+    })();
+    const shareUrl = phpShareUrl + P2PTransport.keyFragment(relayKey);
+    document.getElementById('share-url').value = shareUrl;
+    let relayWatcher = null;
     const apiBase = '/api/p2p/receive';
 
     let peer = null;
@@ -252,6 +270,19 @@
 
     // Initialize PeerJS for receiving files
     function initializePeerJS() {
+        // Accept senders that fell back to the PHP relay
+        if (relayKey) {
+            relayWatcher = P2PTransport.watchGuestChannels({
+                type: 'receive',
+                token: token,
+                key: relayKey,
+                onConnection: function(relayConn) {
+                    console.log('Sender connected through the relay');
+                    handleSenderConnection(relayConn);
+                }
+            });
+        }
+
         const iceServers = [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -603,6 +634,7 @@
 
         if (peer) {
             try { peer.destroy(); } catch (e) {}
+            if (relayWatcher) { relayWatcher.stop(); relayWatcher = null; }
             peer = null;
         }
 

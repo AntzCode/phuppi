@@ -121,7 +121,7 @@ class P2PReceiveSession
      * Creates a new P2P receive session.
      *
      * @param int $userId The user ID creating the receive session.
-     * @param string|null $expiresAt Expiration timestamp (default: 7 days from now).
+     * @param string|null $expiresAt Expiration timestamp (default: 2 hours from now; activity extends it).
      * @return self The created P2PReceiveSession instance.
      */
     public static function create(int $userId, ?string $expiresAt = null): self
@@ -132,7 +132,7 @@ class P2PReceiveSession
         $session->shortcode = self::generateShortcode();
         $session->pin = self::generatePin();
         $session->files_metadata = '[]';
-        $session->expires_at = $expiresAt ?? date('Y-m-d H:i:s', strtotime('+7 days'));
+        $session->expires_at = $expiresAt ?? date('Y-m-d H:i:s', time() + \Phuppi\Service\P2PRelay::SESSION_IDLE_TTL);
         $session->is_active = true;
 
         return $session;

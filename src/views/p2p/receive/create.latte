@@ -80,11 +80,27 @@
 {var $shareUrlJs = $shareUrl}
 
 <script src="/assets/qrcode/qrcode.min.js"></script>
+<script src="{asset_url('/assets/p2p-transport.js')}"></script>
 <script>
 (function() {
     const token = {$tokenJs};
     const pin = {$pinJs};
-    const shareUrl = {$shareUrlJs};
+    // The relay's encryption key lives in the link's #fragment, which is never sent to the server
+    let relayKey = null;
+    if (P2PTransport.isSupported()) {
+        try {
+            const storageKey = 'p2p_relay_key_' + token;
+            relayKey = localStorage.getItem(storageKey);
+            if (!relayKey) {
+                relayKey = P2PTransport.createKey();
+                localStorage.setItem(storageKey, relayKey);
+            }
+        } catch (e) {
+            relayKey = null;
+        }
+    }
+    const shareUrl = {$shareUrlJs} + P2PTransport.keyFragment(relayKey);
+    document.getElementById('share-url').value = shareUrl;
     
     // Generate QR Code on page load
     document.addEventListener('DOMContentLoaded', function() {

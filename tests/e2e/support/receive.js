@@ -35,6 +35,26 @@ export async function usePeerServer(context) {
 }
 
 /**
+ * Makes WebRTC connections hang instead of opening, and shortens the wait before the pages
+ * fall back to the PHP relay. Signaling still works, so the pages try a direct connection first.
+ */
+export async function blockWebRtc(context, fallbackMs = 1500) {
+    await context.addInitScript((ms) => {
+        const Real = window.RTCPeerConnection;
+        window.RTCPeerConnection = class extends Real {
+            createOffer() {
+                return new Promise(() => {});
+            }
+
+            createAnswer() {
+                return new Promise(() => {});
+            }
+        };
+        window.P2P_FALLBACK_MS = ms;
+    }, fallbackMs);
+}
+
+/**
  * Creates a receive session as the logged-in owner and leaves the page on the
  * waiting screen with its peer ID registered.
  */

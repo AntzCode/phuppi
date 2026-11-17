@@ -15,6 +15,7 @@
         <a class="item" data-tab="secure-keys">Secure Keys</a>
         <a class="item" data-tab="preview-settings">Preview Settings</a>
         <a class="item" data-tab="video-preview-settings">Video Preview</a>
+        <a class="item" data-tab="p2p-relay-settings">P2P Relay</a>
         {if user_can('file_list') and user_can('file_delete') and user_can('file_view')}<a class="item" id="duplicates-link" href="/duplicates"><i class="clone outline icon"></i> Duplicates</a>{/if}
     </div>
 
@@ -399,6 +400,34 @@
         <h3>Video Preview Management</h3>
         <button class="ui orange button" id="regenerateAllVideoPreviewsBtn">Regenerate All Video Previews</button>
         <div id="videoPreviewActionResult" style="margin-top: 10px;"></div>
+    </div>
+
+    <!-- P2P Relay Tab -->
+    <div class="ui bottom attached tab segment" data-tab="p2p-relay-settings">
+        <h3>P2P Relay</h3>
+        <p>
+            P2P transfers connect two browsers directly. When that is not possible (mobile networks, strict firewalls),
+            the transfer continues through this server instead. The relay only carries data that the browsers encrypted
+            themselves, holds a few megabytes at a time, and deletes it as soon as it has been delivered.
+            It needs HTTPS and counts toward this server's bandwidth.
+        </p>
+        <form class="ui form" id="p2pRelaySettingsForm">
+            <input type="hidden" name="action" value="update_p2p_relay">
+            <div class="field">
+                <div class="ui toggle checkbox">
+                    <input type="hidden" name="p2p_relay_enabled" value="0">
+                    <input type="checkbox" name="p2p_relay_enabled" value="1" {if $p2pRelaySettings['enabled']}checked{/if}>
+                    <label>Allow P2P transfers to fall back to the relay</label>
+                </div>
+            </div>
+            <div class="field" style="max-width: 20em;">
+                <label>Maximum stored on the server per share (MB)</label>
+                <input type="number" name="p2p_relay_max_mb" min="1" step="1" value="{$p2pRelaySettings['max_mb']}">
+                <small>How much encrypted data the relay may hold on disk at once for one share. The sender uploads ahead of a slower recipient up to this amount, then waits, so any file size works, and a bigger limit lets a fast sender finish sooner. Files left for later cannot exceed it. Largest batch PHP accepts here: {$p2pRelaySettings['max_batch_kb']} KB.</small>
+            </div>
+            <button type="submit" class="ui primary button" id="saveP2pRelaySettingsBtn">Save P2P Relay Settings</button>
+        </form>
+        <div id="p2pRelayResult" style="margin-top: 10px;"></div>
     </div>
 </div>
 
@@ -1118,6 +1147,28 @@ document.addEventListener('DOMContentLoaded', function() {
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Video Preview Settings';
         });
+    });
+
+    // P2P Relay Settings Form - AJAX submit
+    document.getElementById('p2pRelaySettingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const saveBtn = document.getElementById('saveP2pRelaySettingsBtn');
+        const resultDiv = document.getElementById('p2pRelayResult');
+
+        saveBtn.disabled = true;
+        fetch('/admin/settings/preview', { method: 'POST', body: new FormData(this) })
+            .then(response => response.json())
+            .then(data => {
+                const ok = !!data.message;
+                resultDiv.innerHTML = '<div class="ui ' + (ok ? 'positive' : 'negative') + ' message"><p></p></div>';
+                resultDiv.querySelector('p').textContent = data.message || data.error || 'Unexpected response';
+            })
+            .catch(() => {
+                resultDiv.innerHTML = '<div class="ui negative message"><p>Failed to save P2P relay settings</p></div>';
+            })
+            .finally(() => {
+                saveBtn.disabled = false;
+            });
     });
 
     // Regenerate All Video Previews

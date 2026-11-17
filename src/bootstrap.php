@@ -90,6 +90,11 @@ Flight::register('latte', 'Latte\Engine');
 $latte = Flight::latte();
 // $latte->setTempDirectory(null); // Disable cache to avoid cache issues
 $latte->setLoader(new \Latte\Loaders\FileLoader(Flight::get('flight.views.path')));
+// URL of a public asset with its modification time, so browsers never run a stale script after an upgrade
+$latte->addFunction('asset_url', function (string $path): string {
+    $file = dirname(__DIR__) . '/public' . $path;
+    return $path . (is_file($file) ? '?v=' . filemtime($file) : '');
+});
 $latte->addFunction('phuppi_version', [Phuppi\Helper::class, 'getPhuppiVersion']);
 $latte->addFunction('get_user_messages', [Phuppi\Helper::class, 'getUserMessages']);
 $latte->addFunction('user_id', [Phuppi\Helper::class, 'getUserId']);

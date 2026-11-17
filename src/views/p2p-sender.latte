@@ -93,6 +93,11 @@
                 <i class="loading spinner icon"></i>
                 Waiting for recipient to connect...
             </div>
+
+            <details style="margin-bottom: 1em;">
+                <summary style="cursor: pointer;">Connection details</summary>
+                <pre id="p2p-debug-log" style="white-space: pre-wrap; font-size: 0.8em; max-height: 14em; overflow: auto; background: rgba(0,0,0,0.05); padding: 0.5em;"></pre>
+            </details>
             <div class="ui segment">
                 <h3 class="ui header">
                     <i class="lock icon"></i>
@@ -128,6 +133,27 @@
                 <div id="qrcode-target" style="text-align: left; padding: 1em; min-height: 256px; min-width: 256px; max-width: 512px; background: #fff;"></div>
                 
             </div>
+
+            <div class="ui segment" id="leave-files-segment" style="display: none;">
+                <h3 class="ui header">
+                    <i class="cloud upload icon"></i>
+                    Recipient not available right now?
+                </h3>
+                <p>
+                    Leave the files on this server so the recipient can download them later, even if you are offline.
+                    They are encrypted in your browser (the server cannot read them) and deleted automatically after
+                    2 hours without activity.
+                </p>
+                <button class="ui button" id="leave-files-btn" type="button">
+                    <i class="cloud upload icon"></i>
+                    Leave files for later
+                </button>
+                <button class="ui basic red button" id="remove-drop-btn" type="button" style="display: none;">
+                    <i class="trash icon"></i>
+                    Delete stored files
+                </button>
+                <div id="drop-status" class="ui small message" style="display: none; margin-top: 1em;"></div>
+            </div>
                 
                 
         
@@ -160,7 +186,8 @@
 </script>
 <script src="/assets/peerjs/peerjs.min.js"></script>
 <script src="/assets/jszip/jszip.min.js"></script>
-<script src="/assets/p2p-chunk-storage.js"></script>
+<script src="{asset_url('/assets/p2p-chunk-storage.js')}"></script>
+<script src="{asset_url('/assets/p2p-transport.js')}"></script>
 <script>
     // Pass sessions data from PHP
     var initialSessionData = {$sessionsJson};
@@ -185,6 +212,11 @@
     
     let selectedFiles = [];
     let peer = null;
+    // Watches the PHP relay for recipients that could not connect directly (see p2p-transport.js)
+    let relayWatcher = null;
+    // Leaving the files on the server for a recipient who is offline (the relay "drop")
+    let dropUploading = false;
+    let dropUploaded = false;
     let token = null;
     let pin = null;
     let shortcode = null;
@@ -284,6 +316,14 @@
             
             this.renderSessions();
             this.bindEvents();
+
+            // After a reload (for example the phone was locked and the browser discarded the page),
+            // reopen the session that was showing so the recipient can resume without a manual tap
+            let openToken = null;
+            try { openToken = sessionStorage.getItem('p2p_open_session'); } catch (e) {}
+            if (openToken && sessions.some(s => s.token === openToken)) {
+                this.loadSession(openToken);
+            }
         },
         
         // Render session list
@@ -383,6 +423,7 @@
             pin = session.pin;
             shortcode = session.shortcode;
             currentPeerId = session.peerjsId || null;
+            try { sessionStorage.setItem('p2p_open_session', session.token); } catch (e) {}
             
             // Show share section
             this.showShareSection(session);
@@ -397,6 +438,11 @@
             sessionListSection.style.display = 'none';
             shareSection.style.display = 'block';
             
+            // Leaving files on the server needs WebCrypto (HTTPS) for the browser-side encryption
+            document.getElementById('leave-files-segment').style.display = P2PTransport.isSupported() ? 'block' : 'none';
+            document.getElementById('leave-files-btn').onclick = () => this.leaveFilesOnServer(session);
+            document.getElementById('remove-drop-btn').onclick = () => this.removeStoredFiles(session);
+
             // Show PIN
             pinDisplay.textContent = session.pin;
             
@@ -417,7 +463,8 @@
             
             // Generate QR Code
             const baseUrl = window.location.origin;
-            const shareUrl = baseUrl + '/p2p/share/' + session.shortcode;
+            // The relay key travels in the URL fragment, which browsers never send to the server
+            const shareUrl = baseUrl + '/p2p/share/' + session.shortcode + P2PTransport.keyFragment(this.getRelayKey(session.token));
             
             document.getElementById('share-url').value = shareUrl;
             
@@ -450,8 +497,118 @@
             }
         },
         
+        // The relay encryption key of a session, kept in this browser so reloads show the same link
+        getRelayKey: function(sessionToken) {
+            if (!P2PTransport.isSupported()) return null;
+            const storageKey = 'p2p_relay_key_' + sessionToken;
+            try {
+                let key = localStorage.getItem(storageKey);
+                if (!key) {
+                    key = P2PTransport.createKey();
+                    localStorage.setItem(storageKey, key);
+                }
+                return key;
+            } catch (e) {
+                return null;
+            }
+        },
+
+        // Accept recipients that fell back to the PHP relay
+        watchRelay: function(session) {
+            if (relayWatcher) { relayWatcher.stop(); relayWatcher = null; }
+            const key = this.getRelayKey(session.token);
+            if (!key) {
+                P2PTransport.log('relay watch off: no key (needs HTTPS)');
+                return;
+            }
+            P2PTransport.log('relay watch on for this share');
+            relayWatcher = P2PTransport.watchGuestChannels({
+                type: 'share',
+                token: session.token,
+                key: key,
+                onConnection: (conn) => {
+                    console.log('[SENDER] Recipient connected through the relay');
+                    this.handleNewConnection(conn, session);
+                }
+            });
+        },
+
+        // Uploads the encrypted files to the server's drop so the recipient can download them later.
+        // Resolves true when everything was stored.
+        leaveFilesOnServer: async function(session) {
+            const statusEl = document.getElementById('drop-status');
+            const uploadBtn = document.getElementById('leave-files-btn');
+            const say = (color, html) => {
+                statusEl.style.display = 'block';
+                statusEl.className = 'ui small message ' + color;
+                statusEl.innerHTML = html;
+            };
+
+            if (dropUploaded) return true;
+            if (dropUploading) return false;
+
+            const key = this.getRelayKey(session.token);
+            if (!(await P2PTransport.isAvailable(key))) {
+                say('red', '<i class="exclamation circle icon"></i> Leaving files on the server needs HTTPS and the relay to be enabled by the administrator.');
+                return false;
+            }
+
+            dropUploading = true;
+            uploadBtn.disabled = true;
+            say('blue', '<i class="loading spinner icon"></i> Uploading encrypted files...');
+
+            let conn = null;
+            try {
+                conn = await P2PTransport.openDropWriter({ type: 'share', token: session.token, key: key });
+                conn.on('error', (ev) => {
+                    say('red', '<i class="exclamation circle icon"></i> ' + (ev.type === 'relay-limit-reached'
+                        ? 'The server size limit was reached. The files were not stored.'
+                        : 'Upload failed (' + ev.type + ').'));
+                });
+                conn.start();
+                // start() opens the connection on the next tick
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                await this.sendFiles(conn, session.files, null, []);
+                if (conn.failed || !conn.open) {
+                    return false;
+                }
+                await conn.finish();
+
+                dropUploaded = true;
+                say('green', '<i class="check circle icon"></i> Files stored on the server (encrypted). The recipient can download them for up to 2 hours after the last activity. You can close this page.');
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML =
+                    '<i class="check circle icon"></i> Files are waiting on the server for the recipient.';
+                document.getElementById('remove-drop-btn').style.display = '';
+                return true;
+            } catch (err) {
+                console.error('Leaving files on the server failed:', err);
+                say('red', '<i class="exclamation circle icon"></i> Could not upload the files (' + err.message + ').');
+                return false;
+            } finally {
+                dropUploading = false;
+                uploadBtn.disabled = dropUploaded;
+            }
+        },
+
+        removeStoredFiles: async function(session) {
+            const ok = await P2PTransport.deleteDrop({ type: 'share', token: session.token });
+            const statusEl = document.getElementById('drop-status');
+            statusEl.style.display = 'block';
+            statusEl.className = 'ui small message ' + (ok ? 'green' : 'red');
+            statusEl.textContent = ok ? 'The stored files were deleted from the server.' : 'Could not delete the stored files.';
+            if (ok) {
+                dropUploaded = false;
+                document.getElementById('leave-files-btn').disabled = false;
+                document.getElementById('remove-drop-btn').style.display = 'none';
+            }
+        },
+
         // Initialize PeerJS for the session
         initializePeerJS: function(session) {
+            this.watchRelay(session);
+
             // Clean up existing peer
             if (peer) {
                 try {
@@ -554,6 +711,7 @@
         handleNewConnection: function(conn, session) {
             const connId = conn.peer;
             console.log('New connection from:', connId);
+            P2PTransport.log('recipient connecting' + (conn.isRelay ? ' (via relay)' : ' (direct)') + ': ' + connId);
             
             // Register connection with server
             this.registerConnection(session.token, connId);
@@ -582,6 +740,20 @@
                     
                 }
 
+                // A recipient whose browser cannot store files asks for the server drop instead
+                if (message.type === 'request-drop') {
+                    this.leaveFilesOnServer(session).then((ok) => {
+                        if (conn.open) {
+                            conn.send({ type: ok ? 'drop-ready' : 'drop-unavailable' });
+                        }
+                    });
+                    return;
+                }
+
+                if (message.type === 'request-files' || message.type === 'resume-request') {
+                    P2PTransport.log('recipient sent ' + message.type);
+                }
+
                 if(message.type === 'request-files') {
                     const completedFileIds = message.completedFileIds ?? [];
 
@@ -597,6 +769,7 @@
             });
             
             conn.on('open', () => {
+                P2PTransport.log('recipient connection open' + (conn.isRelay ? ' (via relay)' : ' (direct)'));
                 connOpen = true;
                 document.getElementById('connection-status').className = 'ui green message';
                 document.getElementById('connection-status').innerHTML = 
@@ -607,8 +780,14 @@
             });
             
             conn.on('close', () => {
+                P2PTransport.log('recipient connection closed' + (conn.isRelay ? ' (via relay)' : ' (direct)'));
                 connOpen = false;
                 this.peerConnections[connId] = null;
+                // A relay connection that failed already showed why
+                if (conn.failed) {
+                    this.unregisterConnection(session.token, connId);
+                    return;
+                }
                 document.getElementById('connection-status').className = 'ui yellow message';
                 document.getElementById('connection-status').innerHTML = 
                     '<i class="info circle icon"></i> Transfer complete! Waiting for new recipient...';
@@ -619,6 +798,15 @@
             conn.on('error', (err) => {
                 console.error('Connection error:', err);
                 connOpen = false;
+                if (conn.isRelay) {
+                    const reasons = {
+                        'relay-limit-reached': 'the relay size limit was reached',
+                        'relay-network-error': 'the connection to the server was lost'
+                    };
+                    document.getElementById('connection-status').className = 'ui red message';
+                    document.getElementById('connection-status').innerHTML =
+                        '<i class="exclamation circle icon"></i> Transfer failed: ' + (reasons[err.type] || err.type);
+                }
             });
         },
         
@@ -699,6 +887,11 @@
             const sortedFiles = [...filesToSend].sort((a, b) => a.size - b.size);
             
             for (const file of sortedFiles) {
+                // The connection dropped or the relay refused data: stop and leave the error on screen
+                if (!conn.open) {
+                    return;
+                }
+
                 // Generate unique fileId for this file using name, size, and lastModified
                 // This must match the fileId generated on the receiver side for resume to work
                 const fileId = btoa(file.name + ':' + file.size + ':' + file.lastModified);
@@ -719,64 +912,47 @@
                 // Read file and send in chunks
                 // Use streaming from OPFS if available, otherwise use arrayBuffer
                 try {
-                    let bytes;
-                    
-                    // Determine the actual file to read from:
-                    // - If file is a restored OPFS file (wrapper object with .file property), use that
-                    // - If file is a direct File object, use it directly
-                    // - Otherwise try to get from OPFS using fileId
-                    let fileToRead = file;
-                    let isRestoredFile = false;
-                    
-                    // Check if this is a restored OPFS file (wrapper object with nested file property)
+                    // The Blob to read from. It is read one megabyte at a time: loading a whole video into
+                    // memory with arrayBuffer() can fail for large files, and nothing would be sent.
+                    let source = file;
                     if (file.file && file.file instanceof File) {
-                        // This is a restored file from OPFS - use the nested file object directly
-                        fileToRead = file.file;
-                        isRestoredFile = true;
-                        console.log('Using restored OPFS file:', file.name);
-                    }
-                    
-                    if (opfsAvailable && fileToRead instanceof File) {
-                        // OPFS is available and we have a File object
-                        // Check if background storage has completed for this file
-                        const fileStored = BackgroundStorageManager.isFileReady(fileId);
-
+                        // A restored OPFS file (wrapper object with a nested File)
+                        source = file.file;
+                    } else if (opfsAvailable && file instanceof File && BackgroundStorageManager.isFileReady(fileId)) {
                         try {
-                            let arrayBuffer;
-                            if (isRestoredFile) {
-                                // Use the already-retrieved file from restoration
-                                arrayBuffer = await fileToRead.arrayBuffer();
-                            } else if (fileStored) {
-                                // Background storage complete - use OPFS for better performance
-                                const opfsFile = await P2PChunkStorage.getOPFSFileAsFile(fileId);
-                                arrayBuffer = await opfsFile.arrayBuffer();
-                            } else {
-                                // Storage not complete yet - use original File object
-                                arrayBuffer = await fileToRead.arrayBuffer();
-                            }
-                            bytes = new Uint8Array(arrayBuffer);
+                            source = await P2PChunkStorage.getOPFSFileAsFile(fileId);
                         } catch (opfsErr) {
-                            // Fallback to direct file access using the file object we determined above
-                            const arrayBuffer = await fileToRead.arrayBuffer();
-                            bytes = new Uint8Array(arrayBuffer);
+                            source = file;
                         }
-                    } else if (fileToRead instanceof File) {
-                        // Direct file access (no OPFS available but we have a File object)
-                        const arrayBuffer = await fileToRead.arrayBuffer();
-                        bytes = new Uint8Array(arrayBuffer);
-                    } else {
-                        // Cannot read file - it's not a valid File object
+                    }
+                    if (!(source instanceof Blob)) {
                         throw new Error('Invalid file object: not a File and no OPFS file available');
                     }
+
+                    const BLOCK_SIZE = CHUNK_SIZE * 64;
+                    const totalBytes = source.size;
+                    let blockStart = -1;
+                    let block = null;
+                    const readChunk = async (offset) => {
+                        const start = Math.floor(offset / BLOCK_SIZE) * BLOCK_SIZE;
+                        if (start !== blockStart) {
+                            block = new Uint8Array(await source.slice(start, start + BLOCK_SIZE).arrayBuffer());
+                            blockStart = start;
+                        }
+                        return block.slice(offset - start, offset - start + CHUNK_SIZE);
+                    };
                     
                     // Track how many chunks were skipped due to resume
                     let skippedChunks = 0;
                     let sentChunks = 0;
                     
-                    for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+                    for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
+                        if (!conn.open) {
+                            return;
+                        }
                         // Calculate chunkIndex from offset: chunkIndex = offset / CHUNK_SIZE
                         const chunkIndex = Math.floor(offset / CHUNK_SIZE);
-                        const chunk = bytes.slice(offset, offset + CHUNK_SIZE);
+                        const chunk = await readChunk(offset);
                         
                         // Skip chunks that were already received (resume support)
                         // Check both the passed resumeMap and window-level resumeMap
@@ -794,13 +970,30 @@
                             fileId: fileId,
                             chunkIndex: chunkIndex,
                             data: chunk.buffer,
-                            total: bytes.length
+                            total: totalBytes
                         });
                         
                         sentChunks++;
+
+                        // Over the relay, wait while its small window is full instead of queueing the whole file
+                        if (conn.waitForDrain) {
+                            await conn.waitForDrain();
+                            if (!conn.open) {
+                                return;
+                            }
+                        } else if (conn.dataChannel) {
+                            // Direct connection: send() never blocks, so without this the whole file is queued in the
+                            // browser at once, reported as "sent" and lost if the (slower) link drops
+                            while (conn.open && conn.dataChannel.bufferedAmount > 1024 * 1024) {
+                                await new Promise(resolve => setTimeout(resolve, 20));
+                            }
+                            if (!conn.open) {
+                                return;
+                            }
+                        }
                         
                         // Update progress
-                        const progress = Math.round((offset + chunk.length) / bytes.length * 100);
+                        const progress = Math.round((offset + chunk.length) / totalBytes * 100);
                         let statusMsg = '<i class="loading spinner icon"></i> Sending ' + file.name + '... ' + progress + '%';
                         if (skippedChunks > 0) {
                             statusMsg += ' (resuming, ' + skippedChunks + ' chunks already received)';
@@ -809,7 +1002,15 @@
                     }
                     
                 } catch (err) {
+                    // Say so on both sides instead of reporting a file that was never sent
                     console.error('Error reading file:', err);
+                    P2PTransport.log('could not read ' + file.name + ': ' + (err && err.message ? err.message : err));
+                    document.getElementById('connection-status').className = 'ui red message';
+                    document.getElementById('connection-status').innerHTML =
+                        '<i class="exclamation circle icon"></i> Could not read ' + file.name + ' (' + (err && err.message ? err.message : err) +
+                        '). Select the file again and create a new share.';
+                    sendWithCheck({ type: 'file-error', fileId: fileId, name: file.name, message: String(err && err.message ? err.message : err) });
+                    return;
                 }
                 
                 // Send file-complete message with fileId
@@ -820,8 +1021,34 @@
                 });
             }
             
+            // The connection may have dropped (or the relay refused data) part way through
+            if (!conn.open) {
+                return;
+            }
+
+            P2PTransport.log('all files handed to the ' + (conn.isRelay ? 'relay' : 'connection'));
             sendWithCheck({ type: 'all-complete' });
+            // Let a direct connection deliver everything before reporting success
+            if (!conn.waitForDrain && conn.dataChannel) {
+                while (conn.open && conn.dataChannel.bufferedAmount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                if (!conn.open) {
+                    return;
+                }
+            }
             
+            if (conn.isRelay && conn.waitForDrain) {
+                // Through the relay the recipient downloads at its own pace from the server's copy
+                await conn.waitForDrain(0);
+                if (!conn.open) {
+                    return;
+                }
+                document.getElementById('connection-status').className = 'ui green message';
+                document.getElementById('connection-status').innerHTML =
+                    '<i class="check circle icon"></i> All files uploaded to the server. Keep this page open until the recipient has finished downloading.';
+                return;
+            }
             document.getElementById('connection-status').className = 'ui green message';
             document.getElementById('connection-status').innerHTML = 
                 '<i class="check circle icon"></i> All files sent successfully!';
@@ -863,11 +1090,13 @@
                     peer.destroy();
                 } catch (e) {}
                 peer = null;
+                if (relayWatcher) { relayWatcher.stop(); relayWatcher = null; }
             }
             
             shareSection.style.display = 'none';
             fileSelectionSection.style.display = 'none';
             sessionListSection.style.display = 'block';
+            try { sessionStorage.removeItem('p2p_open_session'); } catch (e) {}
             
             token = null;
             pin = null;
@@ -889,6 +1118,7 @@
                     peer.destroy();
                 } catch (e) {}
                 peer = null;
+                if (relayWatcher) { relayWatcher.stop(); relayWatcher = null; }
             }
             
             sessionListSection.style.display = 'none';
@@ -898,8 +1128,22 @@
             token = null;
             pin = null;
             shortcode = null;
+            try { sessionStorage.removeItem('p2p_open_session'); } catch (e) {}
         }
     };
+
+    // Keep the screen on while a share is open: a locked phone suspends the page and stops the upload
+    let wakeLock = null;
+    const holdWakeLock = async () => {
+        if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+        if (shareSection.style.display === 'none' || wakeLock) return;
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        } catch (e) { wakeLock = null; }
+    };
+    document.addEventListener('visibilitychange', holdWakeLock);
+    setInterval(holdWakeLock, 5000);
     
     // Initialize Session Manager when DOM is ready
     document.addEventListener('DOMContentLoaded', async function() {
@@ -1090,6 +1334,8 @@
                 peerjsId: null
             });
             
+            try { sessionStorage.setItem('p2p_open_session', data.token); } catch (e) {}
+
             // Show share section (QR code generated immediately)
             SessionManager.showShareSection({
                 token: data.token,

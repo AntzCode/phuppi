@@ -2,7 +2,7 @@
 
 A PHP file-uppie thingy. Share your files and notes easily. Keep your data safe with top-notch security. 
 
-– new feature: **mind-blowing P2P file sharing**!! transfer files directly between devices on the same network or hotspot - no need to install apps!
+– new feature: **mind-blowing P2P file sharing**!! transfer files directly between devices - no need to install apps! On the same network it is a direct connection; over the internet it falls back to an end-to-end encrypted PHP relay, so it works on plain FTP hosting too (needs HTTPS).
 
 ![Preview of Phuppi file uploader](./assets/screenshots/preview.png)
 
@@ -43,7 +43,7 @@ No tricky database configuration needed - it uses [SQLite](https://sqlite.org/)!
 - Local filesystem storage or S3-compatible API support [(↗️ screenshot)](./assets/screenshots/active-storage-connector.png)
 - Docker-ready configuration for dev & prod
 - Automatic preview thumbnails for files (images, videos, documents) with configurable background queue processing (CLI worker or AJAX for shared hosting) [(↗️ screenshot)](./assets/screenshots/preview.png)
-- P2P File Sharing – Share via QR code or URL, files flow straight from sender to receiver!
+- P2P File Sharing – Share via QR code or URL, files flow straight from sender to receiver (or through an encrypted relay on your own server when a direct connection is impossible)!
 
 ## ☁️ Supported Cloud Storage Providers
 

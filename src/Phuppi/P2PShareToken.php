@@ -119,7 +119,7 @@ class P2PShareToken
      *
      * @param int $user_id The user ID creating the share.
      * @param string $filesMetadata JSON-encoded file metadata.
-     * @param string|null $expiresAt Expiration timestamp (default: 7 days from now).
+     * @param string|null $expiresAt Expiration timestamp (default: 2 hours from now; activity extends it).
      * @return self The created P2PShareToken instance.
      */
     public static function create(int $user_id, string $filesMetadata, ?string $expiresAt = null): self
@@ -130,7 +130,7 @@ class P2PShareToken
         $token->shortcode = self::generateShortcode();
         $token->pin = self::generatePin();
         $token->files_metadata = $filesMetadata;
-        $token->expires_at = $expiresAt ?? date('Y-m-d H:i:s', strtotime('+7 days'));
+        $token->expires_at = $expiresAt ?? date('Y-m-d H:i:s', time() + \Phuppi\Service\P2PRelay::SESSION_IDLE_TTL);
         $token->is_active = true;
         
         return $token;

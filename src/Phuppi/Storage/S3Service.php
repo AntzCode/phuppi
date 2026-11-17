@@ -190,7 +190,7 @@ class S3Service
      * Lists objects under a prefix (one page).
      *
      * @param array $params Optional 'Prefix', 'ContinuationToken', 'MaxKeys'
-     * @return array ['Contents' => [['Key' => string, 'Size' => int], ...], 'NextContinuationToken' => string|null]
+     * @return array ['Contents' => [['Key' => string, 'Size' => int, 'LastModified' => string], ...], 'NextContinuationToken' => string|null]
      * @throws S3Exception
      */
     public function listObjectsV2(array $params = []): array
@@ -214,7 +214,7 @@ class S3Service
 
         $contents = [];
         foreach ($xml->Contents ?? [] as $object) {
-            $contents[] = ['Key' => (string) $object->Key, 'Size' => (int) $object->Size];
+            $contents[] = ['Key' => (string) $object->Key, 'Size' => (int) $object->Size, 'LastModified' => (string) ($object->LastModified ?? '')];
         }
         $truncated = strtolower((string) ($xml->IsTruncated ?? '')) === 'true';
         $next = (string) ($xml->NextContinuationToken ?? '');

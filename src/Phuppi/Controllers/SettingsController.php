@@ -17,6 +17,7 @@ namespace Phuppi\Controllers;
 
 use Flight;
 use Phuppi\Helper;
+use Phuppi\Service\P2PRelay;
 use Phuppi\Service\TransferStats;
 use Phuppi\User;
 
@@ -45,6 +46,11 @@ class SettingsController
             'videoPreviewSettings' => $videoPreviewSettings,
             'queueWorkerStatus' => $queueWorkerStatus,
             'connectorStats' => $connectorStats,
+            'p2pRelaySettings' => [
+                'enabled' => P2PRelay::isEnabled(),
+                'max_mb' => (int) round(P2PRelay::maxBytes() / 1048576),
+                'max_batch_kb' => (int) round(P2PRelay::maxBatchBytes() / 1024),
+            ],
         ]);
     }
 
@@ -101,6 +107,9 @@ class SettingsController
                 break;
             case 'update_video_preview':
                 $this->updateVideoPreviewSettings($data);
+                break;
+            case 'update_p2p_relay':
+                $this->updateP2pRelaySettings($data);
                 break;
             case 'regenerate_all':
             case 'regenerate_failed_previews':
@@ -394,6 +403,33 @@ class SettingsController
         }
     
         Flight::json(['message' => 'Video preview settings updated']);
+    }
+
+    /**
+     * Saves the P2P relay settings (fallback transport for P2P transfers).
+     *
+     * @param mixed $data Request data.
+     * @return void
+     */
+    private function updateP2pRelaySettings($data): void
+    {
+        $maxMb = (string) ($data->p2p_relay_max_mb ?? '');
+        if (!ctype_digit($maxMb) || (int) $maxMb < 1 || (int) $maxMb > 102400) {
+            Flight::json(['error' => 'Maximum size must be a whole number of megabytes between 1 and 102400'], 400);
+            return;
+        }
+
+        $settings = [
+            'p2p_relay_enabled' => ($data->p2p_relay_enabled ?? '1') === '1' ? '1' : '0',
+            'p2p_relay_max_bytes' => (string) ((int) $maxMb * 1048576),
+        ];
+
+        $stmt = Flight::db()->prepare('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)');
+        foreach ($settings as $name => $value) {
+            $stmt->execute([$name, $value]);
+        }
+
+        Flight::json(['message' => 'P2P relay settings updated']);
     }
 
     /**

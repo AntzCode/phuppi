@@ -19,6 +19,7 @@ use Flight;
 use Phuppi\P2PConnection;
 use Phuppi\P2PReceiveSession;
 use Phuppi\P2PShareToken;
+use Phuppi\Service\P2PRelay;
 
 class P2PController
 {
@@ -197,6 +198,8 @@ class P2PController
             return;
         }
 
+        P2PRelay::touchSession('share', $p2pToken->token);
+
         // Get file metadata for display
         $files = $p2pToken->getFilesMetadata();
         $totalSize = $p2pToken->getTotalSize();
@@ -238,6 +241,8 @@ class P2PController
             Flight::halt(410, 'Share has expired');
             return;
         }
+
+        P2PRelay::touchSession('share', $p2pToken->token);
 
         // Check if PIN was verified via cookie
         $cookieName = 'p2p_verified_' . substr($p2pToken->token, 0, 16);
@@ -340,6 +345,8 @@ class P2PController
             return;
         }
 
+        P2PRelay::touchSession('share', $p2pToken->token);
+
         // Check if locked
         if ($p2pToken->isLocked()) {
             Flight::json([
@@ -368,6 +375,8 @@ class P2PController
             // Set cookie to remember PIN was verified (expires in 1 hour)
             $cookieName = 'p2p_verified_' . substr($p2pToken->token, 0, 16);
             setcookie($cookieName, '1', time() + 3600, '/');
+            // The relay trusts this server-side flag, not the cookie (a client can forge cookies)
+            Flight::session()->set(P2PRelayController::sharePinSessionKey($p2pToken), true);
         } else {
             // Reload to get updated attempt count
             $p2pToken->load($p2pToken->id);
@@ -404,6 +413,8 @@ class P2PController
             Flight::json(['error' => 'Share has expired'], 410);
             return;
         }
+
+        P2PRelay::touchSession('share', $p2pToken->token);
 
         $data = Flight::request()->data;
         $peerjsId = $data->peerjs_id ?? '';
@@ -533,6 +544,8 @@ class P2PController
             Flight::json(['error' => 'Share has expired'], 410);
             return;
         }
+
+        P2PRelay::touchSession('share', $p2pToken->token);
 
         $data = Flight::request()->data;
         $peerjsId = $data->recipient_peerjs_id ?? null;
@@ -722,6 +735,8 @@ class P2PController
             Flight::halt(410, 'Session has expired');
             return;
         }
+
+        P2PRelay::touchSession('receive', $session->token);
         
         // Get full URL with scheme and host
         $request = Flight::request();
@@ -882,6 +897,8 @@ class P2PController
             return;
         }
 
+        P2PRelay::touchSession('receive', $session->token);
+
         $pinVerified = $this->isReceivePinVerified($session);
 
         // Get file metadata for display
@@ -940,6 +957,8 @@ class P2PController
             Flight::halt(410, 'Session has expired');
             return;
         }
+
+        P2PRelay::touchSession('receive', $session->token);
 
         // Check if locked
         if ($session->isLocked()) {
@@ -1028,6 +1047,8 @@ class P2PController
             return;
         }
 
+        P2PRelay::touchSession('receive', $session->token);
+
         // Check if locked
         if ($session->isLocked()) {
             Flight::json([
@@ -1091,6 +1112,8 @@ class P2PController
             Flight::json(['error' => 'Session has expired'], 410);
             return;
         }
+
+        P2PRelay::touchSession('receive', $session->token);
 
         // Only the receiving owner may change the session
         if (!$this->isReceiveSessionOwner($session)) {

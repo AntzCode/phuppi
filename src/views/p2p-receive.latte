@@ -56,6 +56,11 @@
         <i class="loading spinner icon"></i>
         Connecting to sender...
     </div>
+
+    <details style="margin-bottom: 1em;">
+        <summary style="cursor: pointer;">Connection details</summary>
+        <pre id="p2p-debug-log" style="white-space: pre-wrap; font-size: 0.8em; max-height: 14em; overflow: auto; background: rgba(0,0,0,0.05); padding: 0.5em;"></pre>
+    </details>
     
     <div id="received-files-list-container" class="ui segment">
         <h3 class="ui header">
@@ -107,7 +112,8 @@
 </div>
 
 <script src="/assets/peerjs/peerjs.min.js"></script>
-<script src="/assets/p2p-chunk-storage.js"></script>
+<script src="{asset_url('/assets/p2p-chunk-storage.js')}"></script>
+<script src="{asset_url('/assets/p2p-transport.js')}"></script>
 <script src="/assets/jszip/jszip.min.js"></script>
 <script src="/assets/filesaver/filesaver.min.js"></script>
 <script n:syntax="off">
@@ -185,7 +191,13 @@
         }
     } else {
         // P2P receive logic
-        initializeP2PReceive();
+        initializeP2PReceive().catch(function(err) {
+            console.error('P2P receive failed to start:', err);
+            document.getElementById('connection-status').className = 'ui red message';
+            document.getElementById('connection-status').innerHTML =
+                '<i class="exclamation circle icon"></i> Could not start the transfer: ' + (err && err.message ? err.message : err) +
+                '. Try reloading the page (Ctrl+F5).';
+        });
     }
     
     async function initializeP2PReceive() {
@@ -204,6 +216,33 @@
         // FIRST: Load completed files from IndexedDB BEFORE starting P2P
         // This populates completedFileIds Set so we can skip re-downloading
         await loadCompletedFiles();
+
+        // Without IndexedDB (for example private browsing) received files would only live in memory.
+        // The sender can then leave the files on the server (the relay "drop") for us to download.
+        const storageAvailable = await P2PChunkStorage.isStorageAvailable();
+        let dropMode = false;
+        let relayMode = false;
+        let transferFinished = false;
+        // Direct connections that opened but dropped before the transfer finished (a link that connects
+        // yet cannot carry data, common on mobile networks): after two, continue through the relay
+        let directDrops = 0;
+        // Set when the relay cannot be used, so the polling below does not overwrite the explanation
+        let stickyError = false;
+        // The sender said it is finished (or failed): stop reconnecting instead of repeating the same transfer
+        let sessionDone = false;
+        const dlog = function(message) { P2PTransport.log(message); };
+        dlog('page ready; sender peer id ' + (currentPeerId || 'none yet') + '; storage ' + (storageAvailable ? 'IndexedDB' : 'memory only') +
+            '; link key ' + (P2PTransport.keyFromHash() ? 'present' : 'MISSING') + '; secure context ' + window.isSecureContext);
+        if (!storageAvailable) {
+            const statusEl = document.getElementById('connection-status');
+            if (statusEl) {
+                const note = document.createElement('div');
+                note.className = 'ui small yellow message';
+                note.innerHTML = '<i class="info circle icon"></i> This browser cannot store files (private browsing?). ' +
+                    'Files will be kept in memory only. If the sender is offline, ask them to use "Leave files for later".';
+                statusEl.parentNode.insertBefore(note, statusEl);
+            }
+        }
         
         // Configure ICE servers for better NAT/firewall traversal
         // Note: TURN requires credentials - for mobile/CGNAT you need to deploy a TURN server
@@ -247,8 +286,27 @@
             P2PChunkStorage.flushAllChunkBuffers();
         });
         
-        peer.on('open', function(id) {
-            
+        // The relay does not need PeerJS: if the PeerJS broker cannot be reached, go straight to it
+        const peerOpenTimer = setTimeout(function() {
+            if (!peer.open && !isConnected && !dropMode) {
+                dlog('PeerJS signaling server not reachable');
+                startRelay(currentPeerId, null, 'signaling server unreachable');
+            }
+        }, window.P2P_FALLBACK_MS || 10000);
+
+        peer.on('open', async function(id) {
+            clearTimeout(peerOpenTimer);
+            dlog('PeerJS signaling connected');
+
+            // Files the sender already left on the server are the surest way to get them
+            try {
+                if (await P2PTransport.hasDrop({ type: 'share', token: token }) && await startDrop()) {
+                    return;
+                }
+            } catch (err) {
+                console.error('Checking for stored files failed:', err);
+            }
+
             // Connect to sender
             if (currentPeerId) {
                 // Initial connection - skip retry delay since this is first attempt
@@ -269,6 +327,10 @@
                 return;
             }
             
+            if (dropMode || relayMode || sessionDone) {
+                return;
+            }
+
             // Check if already connected to this peer
             if (isConnected && currentConnection && currentConnection.peer === senderId) {
                 return;
@@ -296,6 +358,7 @@
                 currentConnection = null;
             }
             
+            dlog('connecting directly to sender ' + senderId);
             // Mark connection attempt in progress
             isConnecting = true;
             lastConnectionAttempt = now;
@@ -308,13 +371,150 @@
                 ssl: true
             });
             currentConnection = conn;
-            
+            wireConnection(conn);
+
+            // If the direct WebRTC connection does not open in time, continue through the PHP relay
+            P2PTransport.watchDirectConnection(conn, function(reason) {
+                dlog('direct connection did not open (' + reason + '), trying the relay');
+                startRelay(senderId, conn, reason);
+            });
+        }
+
+        // Falls back to the PHP relay (encrypted in the browser, key from the link's #fragment)
+        async function startRelay(senderId, directConn, reason) {
+            if (isConnected || dropMode || relayMode) {
+                return;
+            }
+            // The sender may have left the files on the server instead of staying online
+            if (await startDrop()) {
+                if (directConn) directConn.__abandoned = true;
+                return;
+            }
+            const key = P2PTransport.keyFromHash();
+            if (!(await P2PTransport.isAvailable(key))) {
+                isConnecting = false;
+                stickyError = true;
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML =
+                    '<i class="exclamation circle icon"></i> Could not connect directly (' + reason + '). The relay needs HTTPS, the relay enabled by the administrator and the complete share link (including the part after #).';
+                return;
+            }
+
+            document.getElementById('connection-status').className = 'ui yellow message';
+            document.getElementById('connection-status').innerHTML =
+                '<i class="loading spinner icon"></i> Direct connection failed (' + reason + '). Connecting through the relay...';
+
+            relayMode = true;
+
+            // Ignore anything the abandoned direct connection still reports
+            if (directConn) {
+                directConn.__abandoned = true;
+                try { directConn.close(); } catch (e) { /* ignore */ }
+            }
+
+            try {
+                const relay = await P2PTransport.openGuestChannel({ type: 'share', token: token, key: key, peer: senderId });
+                currentConnection = relay;
+                wireConnection(relay);
+                relay.start();
+            } catch (err) {
+                console.error('Relay connection failed:', err);
+                relayMode = false;
+                isConnecting = false;
+                stickyError = true;
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML =
+                    '<i class="exclamation circle icon"></i> Could not connect through the relay: ' + err.message;
+            }
+        }
+
+        // File completions run asynchronously (flush, then mark complete); all-complete must wait for them
+        let pendingCompletions = 0;
+        const completionWaiters = [];
+        function whenCompletionsDone(callback) {
+            if (pendingCompletions === 0) {
+                callback();
+            } else {
+                completionWaiters.push(callback);
+            }
+        }
+
+        function transportLabel(conn) {
+            return conn.isDrop ? ' (files stored on the server)' : (conn.isRelay ? ' (via relay)' : ' (direct)');
+        }
+
+        // A direct connection can open and still carry no data (mobile networks, strict NATs). If nothing
+        // arrives for a while, or the transfer stalls, continue through the relay instead of looping.
+        function watchDirectStall(conn) {
+            if (conn.isRelay) {
+                return;
+            }
+            conn.__lastData = Date.now();
+            conn.__gotData = false;
+            const limitFirst = (window.P2P_FALLBACK_MS || 10000) + 2000;
+            const limitLater = 20000;
+            const timer = setInterval(function() {
+                if (conn.__abandoned || conn.__finished || transferFinished || currentConnection !== conn) {
+                    clearInterval(timer);
+                    return;
+                }
+                const idle = Date.now() - conn.__lastData;
+                if (idle > (conn.__gotData ? limitLater : limitFirst)) {
+                    clearInterval(timer);
+                    isConnected = false;
+                    dlog('direct connection stalled, trying the relay');
+                    startRelay(currentPeerId, conn, 'no data from the direct connection');
+                }
+            }, 1000);
+            conn.__stallTimer = timer;
+        }
+
+        // Downloads from the server's drop: the files the sender stored encrypted, kept until the share expires
+        async function startDrop() {
+            if (dropMode) {
+                return true;
+            }
+            const key = P2PTransport.keyFromHash();
+            if (!(await P2PTransport.isAvailable(key))) {
+                return false;
+            }
+            dropMode = true;
+            try {
+                const reader = await P2PTransport.openDropReader({ type: 'share', token: token, key: key, peer: currentPeerId || 'drop' });
+                if (!reader) {
+                    dropMode = false;
+                    return false;
+                }
+                if (currentConnection) {
+                    currentConnection.__abandoned = true;
+                    try { currentConnection.close(); } catch (e) { /* ignore */ }
+                }
+                isConnecting = false;
+                isConnected = false;
+                currentConnection = reader;
+                wireConnection(reader);
+                reader.start();
+                return true;
+            } catch (err) {
+                console.error('Could not open the drop:', err);
+                dropMode = false;
+                return false;
+            }
+        }
+
+        function wireConnection(conn) {
             conn.on('open', async function() {
+                dlog('connection open' + transportLabel(conn) + (conn.__abandoned ? ' (ignored: abandoned)' : ''));
+                if (conn.__abandoned) {
+                    try { conn.close(); } catch (e) { /* ignore */ }
+                    return;
+                }
                 isConnected = true;
                 isConnecting = false;
                 document.getElementById('connection-status').className = 'ui green message';
                 document.getElementById('connection-status').innerHTML = 
-                    '<i class="check circle icon"></i> Connected! Receiving files...';
+                    '<i class="check circle icon"></i> Connected' + transportLabel(conn) + '! Receiving files...';
+                watchDirectStall(conn);
                 
                 // DEBUG: Reset network session tracking for each new connection
                 // This ensures we only count chunks received in THIS network session
@@ -328,6 +528,15 @@
                     return;
                 }
                 
+                // This browser cannot store files: ask the sender to leave them on the server instead
+                if (!storageAvailable && !conn.isDrop && !dropMode && await P2PTransport.isAvailable(P2PTransport.keyFromHash())) {
+                    document.getElementById('connection-status').className = 'ui blue message';
+                    document.getElementById('connection-status').innerHTML =
+                        '<i class="loading spinner icon"></i> Asking the sender to leave the files on the server...';
+                    conn.send({ type: 'request-drop' });
+                    return;
+                }
+
                 // Request files
                 conn.send({ type: 'request-files', completedFileIds: [...completedFileIds] });
                 
@@ -383,13 +592,45 @@
                         '<i class="check circle icon"></i> Connected! Receiving files...';
                 }
                 
+                conn.__lastData = Date.now();
+                conn.__gotData = true;
                 handleDataMessage(data, conn);
             });
             
             conn.on('close', function() {
+                dlog('connection closed' + transportLabel(conn) + (conn.__abandoned ? ' (abandoned)' : ''));
+                if (conn.__abandoned) {
+                    return;
+                }
+                if (conn.__finished) {
+                    isConnected = false;
+                    isConnecting = false;
+                    currentConnection = null;
+                    return;
+                }
+                if (conn.isDrop) {
+                    // The share expired or the sender deleted the stored files
+                    isConnected = false;
+                    currentConnection = null;
+                    if (!transferFinished) {
+                        document.getElementById('connection-status').className = 'ui red message';
+                        document.getElementById('connection-status').innerHTML =
+                            '<i class="exclamation circle icon"></i> The files are no longer available on the server (the share expired or the sender deleted them).';
+                    }
+                    return;
+                }
                 isConnected = false;
                 isConnecting = false;
                 currentConnection = null;
+                if (conn.__stallTimer) {
+                    clearInterval(conn.__stallTimer);
+                }
+                if (conn.isRelay) {
+                    relayMode = false;
+                } else if (!transferFinished && ++directDrops >= 2) {
+                    dlog('direct connection dropped ' + directDrops + ' times, trying the relay');
+                    startRelay(currentPeerId, conn, 'the direct connection keeps dropping');
+                }
                 
                 // Flush any remaining buffered chunks when connection closes
                 P2PChunkStorage.flushAllChunkBuffers().then(() => {
@@ -404,12 +645,19 @@
                 // Keeping currentPeerId allows for faster reconnection if the close was stale
                 
                 
+                if (sessionDone || transferFinished) {
+                    return;
+                }
                 document.getElementById('connection-status').className = 'ui yellow message';
                 document.getElementById('connection-status').innerHTML = 
                     '<i class="info circle icon"></i> Waiting for sender to reconnect...';
             });
             
             conn.on('error', function(err) {
+                dlog('connection error' + transportLabel(conn) + ': ' + (err && err.type ? err.type : err));
+                if (conn.__abandoned) {
+                    return;
+                }
                 isConnected = false;
                 isConnecting = false;
                 currentConnection = null;
@@ -421,6 +669,7 @@
         
         peer.on('error', function(err) {
             console.error('PeerJS error:', err);
+            dlog('PeerJS error: ' + err.type);
             isConnected = false;
             isConnecting = false; // Reset connecting state on error
             if (err.type === 'peer-unavailable') {
@@ -465,8 +714,8 @@
                     }
                 }
                 
-                // Skip polling if already connected
-                if (isConnected) {
+                // Skip polling if already connected or if a final explanation is on screen
+                if (isConnected || stickyError || sessionDone) {
                     return;
                 }
                 
@@ -563,6 +812,9 @@
         
         function handleDataMessage(data, conn) {
             
+            if (data.type === 'file-start' || data.type === 'file-complete' || data.type === 'all-complete') {
+                dlog('received ' + data.type + (data.name ? ' ' + data.name : ''));
+            }
             if (data.type === 'file-start') {
                 // Start receiving a new file - store metadata in IndexedDB
                 const name = data.name;
@@ -685,6 +937,7 @@
                     const networkCount = file.networkReceivedChunks.size;
                     
                     // Flush any remaining buffered chunks before checking completion
+                    pendingCompletions++;
                     P2PChunkStorage.flushChunkBuffer(file.fileId).then(() => {
                         // Check if all chunks are received (from IndexedDB + network buffer)
                         return P2PChunkStorage.getReceivedChunks(file.fileId);
@@ -720,12 +973,58 @@
                     }).catch(err => {
                         console.error('Error checking received chunks:', err);
                         updateStatus('Error processing ' + file.name);
+                    }).finally(() => {
+                        pendingCompletions--;
+                        if (pendingCompletions === 0) {
+                            completionWaiters.splice(0).forEach(callback => callback());
+                        }
                     });
                 }
             }
+            else if (data.type === 'file-error') {
+                // The sender could not read this file, so retrying would only repeat the failure
+                dlog('sender could not read ' + data.name + ': ' + data.message);
+                sessionDone = true;
+                document.getElementById('connection-status').className = 'ui red message';
+                document.getElementById('connection-status').innerHTML =
+                    '<i class="exclamation circle icon"></i> The sender could not read "' + (data.name || 'a file') + '". Ask them to select it again.';
+            }
+            else if (data.type === 'drop-ready') {
+                // The sender stored the files on the server: continue from there
+                startDrop().then(function(ok) {
+                    if (!ok) {
+                        document.getElementById('connection-status').className = 'ui red message';
+                        document.getElementById('connection-status').innerHTML =
+                            '<i class="exclamation circle icon"></i> Could not open the files the sender stored on the server.';
+                    }
+                });
+            }
+            else if (data.type === 'drop-unavailable') {
+                // The sender cannot use the server drop: receive directly, keeping the files in memory
+                conn.send({ type: 'request-files', completedFileIds: [...completedFileIds] });
+            }
             else if (data.type === 'all-complete') {
-                // All files received
-                finishTransfer();
+                // All files received, once the files still being stored are done (otherwise the
+                // completed list, and a download started right away, could miss the last file)
+                whenCompletionsDone(function() {
+                    sessionDone = true;
+                    if (receivedFiles.length > 0) {
+                        // Some files never arrived complete: say so (and do not loop reconnecting)
+                        dlog('sender finished but ' + receivedFiles.length + ' file(s) are incomplete');
+                        document.getElementById('connection-status').className = 'ui red message';
+                        document.getElementById('connection-status').innerHTML =
+                            '<i class="exclamation circle icon"></i> The sender finished, but ' + receivedFiles.length +
+                            ' file(s) did not arrive complete. Reload this page to try again.';
+                        return;
+                    }
+                    finishTransfer();
+                });
+                // Over the relay, tell the server we are done so it deletes the channel. A drop stays
+                // open: the sender may add more files and the server keeps them until the share expires.
+                if (conn && conn.isRelay && !conn.isDrop) {
+                    conn.__finished = true;
+                    setTimeout(function() { conn.close(); }, 0);
+                }
             }
         }
         
@@ -736,6 +1035,7 @@
             }
 
         function finishTransfer() {
+            transferFinished = true;
 
             document.getElementById('connection-status').className = 'ui green message';
             document.getElementById('connection-status').innerHTML =

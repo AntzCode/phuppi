@@ -33,16 +33,137 @@ const CHUNK_SIZE = 16 * 1024; // 16KB default chunk size
  * @property {ArrayBuffer} data
  */
 
+
+// ============================================
+// In-memory fallback when IndexedDB is unavailable
+// ============================================
+
+let memoryMode = false;
+
+/** @type {Object<string, Map<string, Object>>} */
+const memoryStores = { [CHUNK_STORE_NAME]: new Map(), [METADATA_STORE_NAME]: new Map(), [COMPLETED_STORE_NAME]: new Map() };
+const MEMORY_KEY_PATHS = { [CHUNK_STORE_NAME]: ['fileId', 'chunkIndex'], [METADATA_STORE_NAME]: 'fileId', [COMPLETED_STORE_NAME]: 'fileId' };
+
+/**
+ * Whether IndexedDB can be used. Tries to open it, so call it before relying on memoryMode.
+ * @returns {Promise<boolean>}
+ */
+async function isStorageAvailable() {
+    await openDatabase();
+    return !memoryMode;
+}
+
+function switchToMemoryMode(error) {
+    if (!memoryMode) {
+        memoryMode = true;
+        console.warn('IndexedDB is unavailable, keeping received files in memory only (they are lost when this page closes).', error);
+        try {
+            window.dispatchEvent(new CustomEvent('p2p-storage-memory-mode'));
+        } catch (e) { /* ignore */ }
+    }
+}
+
+/**
+ * Minimal in-memory stand-in for the parts of IDBDatabase used in this file.
+ * Requests complete asynchronously; a transaction completes once its requests are done.
+ */
+function createMemoryDatabase() {
+    return {
+        close() {},
+        transaction() {
+            const tx = { oncomplete: null, onerror: null, pending: 0, done: false };
+            const finishSoon = () => {
+                setTimeout(() => {
+                    if (tx.pending === 0 && !tx.done) {
+                        tx.done = true;
+                        if (tx.oncomplete) tx.oncomplete();
+                    }
+                }, 0);
+            };
+            const run = (fn) => {
+                const request = { result: undefined, onsuccess: null, onerror: null };
+                tx.pending++;
+                setTimeout(() => {
+                    try {
+                        request.result = fn();
+                        if (request.onsuccess) request.onsuccess({ target: request });
+                    } catch (e) {
+                        request.error = e;
+                        if (request.onerror) request.onerror({ target: request });
+                    }
+                    tx.pending--;
+                    if (tx.pending === 0) finishSoon();
+                }, 0);
+                return request;
+            };
+            const keyOf = (name, value) => {
+                const kp = MEMORY_KEY_PATHS[name];
+                return JSON.stringify(Array.isArray(kp) ? kp.map(k => value[k]) : value[kp]);
+            };
+            tx.objectStore = (name) => {
+                const map = memoryStores[name];
+                return {
+                    put: (value) => run(() => { map.set(keyOf(name, value), value); return value; }),
+                    get: (key) => run(() => map.get(JSON.stringify(key))),
+                    getAll: () => run(() => Array.from(map.values())),
+                    delete: (key) => run(() => { map.delete(JSON.stringify(key)); }),
+                    clear: () => run(() => { map.clear(); }),
+                    index: () => ({
+                        // Only the 'fileId' index is used; the range comes from IDBKeyRange.only().
+                        openCursor: (range) => {
+                            const items = Array.from(map.entries())
+                                .filter(([, v]) => !range || v.fileId === range.lower);
+                            let position = -1;
+                            const request = { result: null, onsuccess: null, onerror: null };
+                            const step = () => {
+                                tx.pending++;
+                                setTimeout(() => {
+                                    position++;
+                                    if (position < items.length) {
+                                        const [key, value] = items[position];
+                                        request.result = { value, continue: step, delete: () => { map.delete(key); } };
+                                    } else {
+                                        request.result = null;
+                                    }
+                                    if (request.onsuccess) request.onsuccess({ target: request });
+                                    tx.pending--;
+                                    if (tx.pending === 0) finishSoon();
+                                }, 0);
+                            };
+                            step();
+                            return request;
+                        }
+                    })
+                };
+            };
+            return tx;
+        }
+    };
+}
+
 /**
  * Opens the IndexedDB database
  * @returns {Promise<IDBDatabase>}
  */
 function openDatabase() {
+    if (memoryMode) {
+        return Promise.resolve(createMemoryDatabase());
+    }
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        let request;
+        try {
+            request = indexedDB.open(DB_NAME, DB_VERSION);
+        } catch (e) {
+            switchToMemoryMode(e);
+            resolve(createMemoryDatabase());
+            return;
+        }
 
         request.onerror = () => {
-            reject(new Error('Failed to open IndexedDB database'));
+            // IndexedDB is unavailable (for example private browsing in some browsers):
+            // keep the transfer working from memory. Files are lost when the page closes.
+            switchToMemoryMode(request.error);
+            resolve(createMemoryDatabase());
         };
 
         request.onsuccess = () => {
@@ -1474,6 +1595,7 @@ async function getCompletedReceivedFilesCount() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         openDatabase,
+        isStorageAvailable,
         saveChunk,
         getChunk,
         getReceivedChunks,
@@ -1539,6 +1661,7 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof window !== 'undefined') {
     window.P2PChunkStorage = {
         openDatabase,
+        isStorageAvailable,
         saveChunk,
         getChunk,
         getReceivedChunks,

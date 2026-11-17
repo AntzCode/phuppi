@@ -50,4 +50,17 @@ test.describe('P2P file sharing', () => {
         const received = await downloadZipHashes(guest, '#download-all-zip-btn');
         expect(received).toEqual(Object.fromEntries(files.map((f) => [f.name, sha256(f.buffer)])));
     });
+
+    test('the sender page reopens the share after a reload', async ({ sender }) => {
+        await sender.goto('/p2p/share');
+        await sender.locator('#file-input').setInputFiles({ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('a') });
+        await sender.locator('#create-share-btn').click();
+        await expect(sender.locator('#connection-status')).toContainText('Ready!');
+        const pin = (await sender.locator('#pin-display').innerText()).trim();
+
+        await sender.reload();
+
+        await expect(sender.locator('#share-section')).toBeVisible();
+        await expect(sender.locator('#pin-display')).toHaveText(pin);
+    });
 });
